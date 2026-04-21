@@ -47,6 +47,66 @@ void LayerManager::DeleteLayer(size_t index) {
     m_compositeDirty = true;
 }
 
+void LayerManager::DuplicateLayer(size_t index) {
+    if (index >= m_layers.size()) return;
+    auto clone = m_layers[index]->Clone();
+    clone->SetName(m_layers[index]->GetName() + L" 拷贝");
+    m_layers.insert(m_layers.begin() + index, clone);
+    m_activeLayerIndex = index;
+    m_compositeDirty = true;
+}
+
+void LayerManager::MergeDown(size_t index) {
+    if (index + 1 >= m_layers.size()) return;
+    auto upper = m_layers[index];
+    auto lower = m_layers[index + 1];
+    
+    uint32_t gridW = upper->GetGridWidth();
+    uint32_t gridH = upper->GetGridHeight();
+    float opacity = upper->GetOpacity() / 255.0f;
+    BlendMode mode = upper->GetBlendMode();
+    
+    for (uint32_t gy = 0; gy < gridH; ++gy) {
+        for (uint32_t gx = 0; gx < gridW; ++gx) {
+            Render::Tile* upperTile = upper->GetTile(gx, gy);
+            if (!upperTile) continue;
+            
+            Render::Tile* lowerTile = lower->GetTile(gx, gy);
+            if (!lowerTile) {
+                // Create a transparent tile for merging
+                lower->SetPixel(gx * Render::TILE_SIZE, gy * Render::TILE_SIZE, Color(0,0,0,0));
+                lowerTile = lower->GetTile(gx, gy);
+                if (!lowerTile) continue;
+            }
+            
+            for (uint32_t ty = 0; ty < Render::TILE_SIZE; ++ty) {
+                for (uint32_t tx = 0; tx < Render::TILE_SIZE; ++tx) {
+                    uint32_t idx = (ty * Render::TILE_SIZE + tx) * 4;
+                    Color src(upperTile->data[idx + 2], upperTile->data[idx + 1],
+                              upperTile->data[idx], upperTile->data[idx + 3]);
+                    if (src.a == 0) continue;
+                    
+                    Color dst(lowerTile->data[idx + 2], lowerTile->data[idx + 1],
+                              lowerTile->data[idx], lowerTile->data[idx + 3]);
+                    
+                    Color blended = BlendOperations::BlendPixel(src, dst, mode, opacity);
+                    lowerTile->data[idx] = blended.b;
+                    lowerTile->data[idx + 1] = blended.g;
+                    lowerTile->data[idx + 2] = blended.r;
+                    lowerTile->data[idx + 3] = blended.a;
+                }
+            }
+        }
+    }
+    
+    // Delete upper layer
+    m_layers.erase(m_layers.begin() + index);
+    if (m_activeLayerIndex >= m_layers.size() && m_layers.size() > 0) {
+        m_activeLayerIndex = m_layers.size() - 1;
+    }
+    m_compositeDirty = true;
+}
+
 void LayerManager::MoveLayer(size_t fromIndex, size_t toIndex) {
     if (fromIndex >= m_layers.size() || toIndex >= m_layers.size()) return;
     auto layer = m_layers[fromIndex];

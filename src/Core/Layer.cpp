@@ -208,6 +208,7 @@ void Layer::BeginStroke() {
 void Layer::EndStroke() {
     if (m_currentUndoItem) {
         if (!m_currentUndoItem->IsEmpty()) {
+            m_currentUndoItem->CaptureRedoTiles();
             HistoryManager::GetInstance().Push(std::move(m_currentUndoItem));
         }
         m_currentUndoItem.reset();

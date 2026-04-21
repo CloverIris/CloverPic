@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <commdlg.h>
 #include <shlobj.h>
+#include <cmath>
 
 namespace VividPic {
 namespace UI {
@@ -13,16 +14,51 @@ namespace UI {
 HomeScreen::HomeScreen() = default;
 
 bool HomeScreen::Initialize() {
-    int width = 900;
-    int height = 700;
+    // Safety: if Theme::Scale is unreasonably low, something went wrong in DPI detection.
+    // Force it to 1.25f (the previous comfortable default) so the UI remains usable.
+    if (Theme::Scale < 0.5f) {
+        Theme::Scale = 1.25f;
+    }
+    
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
+    
+    // Use screen-relative sizing so the window looks good on any resolution
+    int width = static_cast<int>(screenW * 0.55f * Theme::Scale);
+    int height = static_cast<int>(screenH * 0.65f * Theme::Scale);
+    
+    // Clamp to reasonable bounds (never smaller than 900x700, never larger than 1600x1100)
+    if (width < Theme::GetSize(900)) width = Theme::GetSize(900);
+    if (height < Theme::GetSize(700)) height = Theme::GetSize(700);
+    if (width > Theme::GetSize(1600)) width = Theme::GetSize(1600);
+    if (height > Theme::GetSize(1100)) height = Theme::GetSize(1100);
+    
     int x = (screenW - width) / 2;
     int y = (screenH - height) / 2;
     Rect bounds(x, y, width, height);
     if (!Create(L"ViVidPic v1.0.0", bounds, nullptr)) {
         return false;
     }
+    
+    // After window creation, query the actual monitor DPI and update Scale if needed
+    UINT winDpi = 96;
+    if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
+        using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+        auto pfn = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(hUser32, "GetDpiForWindow"));
+        if (pfn) {
+            winDpi = pfn(m_hwnd);
+        }
+    }
+    if (winDpi >= 96) {
+        float newScale = static_cast<float>(winDpi) / 96.0f;
+        if (std::abs(newScale - Theme::Scale) > 0.1f) {
+            Theme::Scale = newScale;
+            // Re-layout with corrected scale
+            OnSize(GetClientBounds().GetSize());
+            Invalidate();
+        }
+    }
+    
     Application::GetInstance().SetMainWindow(this);
     return true;
 }
@@ -125,33 +161,33 @@ void HomeScreen::CreateButtonGroups() {
 
 void HomeScreen::LayoutButtons() {
     Rect client = GetClientBounds();
-    int currentY = TitleHeight + 20;
-    int currentX = LeftMargin;
+    int currentY = Theme::GetSize(TitleHeight) + Theme::GetSize(20);
+    int currentX = Theme::GetSize(LeftMargin);
     int maxGroupHeight = 0;
     
     for (auto& group : m_groups) {
-        int groupHeight = static_cast<int>(group.buttons.size()) * (ButtonHeight + ButtonSpacing) + 30;
+        int groupHeight = static_cast<int>(group.buttons.size()) * (Theme::GetSize(ButtonHeight) + Theme::GetSize(ButtonSpacing)) + Theme::GetSize(30);
         
-        if (currentY + groupHeight > client.Height() - StatusBarHeight - 20 && currentX == LeftMargin) {
+        if (currentY + groupHeight > client.Height() - Theme::GetSize(StatusBarHeight) - Theme::GetSize(20) && currentX == Theme::GetSize(LeftMargin)) {
             // Would overflow, try next column (simplified: we use 2 columns max)
-            if (currentX == LeftMargin) {
-                currentX = LeftMargin + ButtonWidth + 40;
-                currentY = TitleHeight + 20;
+            if (currentX == Theme::GetSize(LeftMargin)) {
+                currentX = Theme::GetSize(LeftMargin) + Theme::GetSize(ButtonWidth) + Theme::GetSize(40);
+                currentY = Theme::GetSize(TitleHeight) + Theme::GetSize(20);
             }
         }
         
         for (size_t i = 0; i < group.buttons.size(); ++i) {
             auto& btn = group.buttons[i];
-            Rect btnBounds(currentX, currentY + 30 + static_cast<int>(i) * (ButtonHeight + ButtonSpacing), 
-                           currentX + ButtonWidth, currentY + 30 + static_cast<int>(i) * (ButtonHeight + ButtonSpacing) + ButtonHeight);
+            Rect btnBounds(currentX, currentY + Theme::GetSize(30) + static_cast<int>(i) * (Theme::GetSize(ButtonHeight) + Theme::GetSize(ButtonSpacing)), 
+                           currentX + Theme::GetSize(ButtonWidth), currentY + Theme::GetSize(30) + static_cast<int>(i) * (Theme::GetSize(ButtonHeight) + Theme::GetSize(ButtonSpacing)) + Theme::GetSize(ButtonHeight));
             btn->Create(L"", btnBounds, this);
         }
         
-        currentY += groupHeight + GroupSpacing;
+        currentY += groupHeight + Theme::GetSize(GroupSpacing);
         if (currentY > maxGroupHeight) maxGroupHeight = currentY;
     }
     
-    m_statusBarRect = Rect(0, client.Height() - StatusBarHeight, client.Width(), client.Height());
+    m_statusBarRect = Rect(0, client.Height() - Theme::GetSize(StatusBarHeight), client.Width(), client.Height());
 }
 
 void HomeScreen::OnSize(const Size& newSize) {
@@ -163,7 +199,7 @@ void HomeScreen::OnSize(const Size& newSize) {
     
     CreateButtonGroups();
     LayoutButtons();
-    m_statusBarRect = Rect(0, newSize.height - StatusBarHeight, newSize.width, newSize.height);
+    m_statusBarRect = Rect(0, newSize.height - Theme::GetSize(StatusBarHeight), newSize.width, newSize.height);
     Invalidate();
 }
 
@@ -172,16 +208,16 @@ void HomeScreen::OnPaint(HDC hdc, const Rect& clip) {
     DrawTitle(hdc);
     
     // Draw group titles
-    int currentY = TitleHeight + 20;
-    int currentX = LeftMargin;
+    int currentY = Theme::GetSize(TitleHeight) + Theme::GetSize(20);
+    int currentX = Theme::GetSize(LeftMargin);
     
     for (auto& group : m_groups) {
-        int groupHeight = static_cast<int>(group.buttons.size()) * (ButtonHeight + ButtonSpacing) + 30;
+        int groupHeight = static_cast<int>(group.buttons.size()) * (Theme::GetSize(ButtonHeight) + Theme::GetSize(ButtonSpacing)) + Theme::GetSize(30);
         
-        if (currentY + groupHeight > GetClientBounds().Height() - StatusBarHeight - 20 && currentX == LeftMargin) {
-            if (currentX == LeftMargin) {
-                currentX = LeftMargin + ButtonWidth + 40;
-                currentY = TitleHeight + 20;
+        if (currentY + groupHeight > GetClientBounds().Height() - Theme::GetSize(StatusBarHeight) - Theme::GetSize(20) && currentX == Theme::GetSize(LeftMargin)) {
+            if (currentX == Theme::GetSize(LeftMargin)) {
+                currentX = Theme::GetSize(LeftMargin) + Theme::GetSize(ButtonWidth) + Theme::GetSize(40);
+                currentY = Theme::GetSize(TitleHeight) + Theme::GetSize(20);
             }
         }
         
@@ -194,13 +230,13 @@ void HomeScreen::OnPaint(HDC hdc, const Rect& clip) {
                                        DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
         
-        RECT titleRect = { currentX, currentY, currentX + ButtonWidth, currentY + 24 };
+        RECT titleRect = { currentX, currentY, currentX + Theme::GetSize(ButtonWidth), currentY + Theme::GetSize(24) };
         DrawTextW(hdc, group.title.c_str(), -1, &titleRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
         
         SelectObject(hdc, oldFont);
         DeleteObject(titleFont);
         
-        currentY += groupHeight + GroupSpacing;
+        currentY += groupHeight + Theme::GetSize(GroupSpacing);
     }
     
     DrawStatusBar(hdc);
@@ -219,7 +255,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
     
     // Title background
     HBRUSH titleBrush = Theme::SolidBrush(Theme::BackgroundDark);
-    RECT titleRect = { 0, 0, client.Width(), TitleHeight };
+    RECT titleRect = { 0, 0, client.Width(), Theme::GetSize(TitleHeight) };
     FillRect(hdc, &titleRect, titleBrush);
     DeleteObject(titleBrush);
     
@@ -232,7 +268,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
     
-    RECT textRect = { LeftMargin, 10, client.Width() - LeftMargin, TitleHeight - 10 };
+    RECT textRect = { Theme::GetSize(LeftMargin), Theme::GetSize(10), client.Width() - Theme::GetSize(LeftMargin), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
     DrawTextW(hdc, L"ViVidPic", -1, &textRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     // Version
@@ -241,7 +277,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                  DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     SelectObject(hdc, verFont);
-    RECT verRect = { LeftMargin + 140, 20, LeftMargin + 240, TitleHeight - 10 };
+    RECT verRect = { Theme::GetSize(LeftMargin) + Theme::GetSize(140), Theme::GetSize(20), Theme::GetSize(LeftMargin) + Theme::GetSize(240), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
     DrawTextW(hdc, L"v1.0.0", -1, &verRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     SelectObject(hdc, oldFont);
@@ -251,15 +287,15 @@ void HomeScreen::DrawTitle(HDC hdc) {
     // Separator line
     HPEN linePen = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, linePen));
-    MoveToEx(hdc, LeftMargin, TitleHeight - 1, nullptr);
-    LineTo(hdc, client.Width() - LeftMargin, TitleHeight - 1);
+    MoveToEx(hdc, Theme::GetSize(LeftMargin), Theme::GetSize(TitleHeight) - 1, nullptr);
+    LineTo(hdc, client.Width() - Theme::GetSize(LeftMargin), Theme::GetSize(TitleHeight) - 1);
     SelectObject(hdc, oldPen);
     DeleteObject(linePen);
 }
 
 void HomeScreen::DrawStatusBar(HDC hdc) {
     Rect client = GetClientBounds();
-    m_statusBarRect = Rect(0, client.Height() - StatusBarHeight, client.Width(), client.Height());
+    m_statusBarRect = Rect(0, client.Height() - Theme::GetSize(StatusBarHeight), client.Width(), client.Height());
     
     // Status bar background
     HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
@@ -284,7 +320,7 @@ void HomeScreen::DrawStatusBar(HDC hdc) {
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
-    RECT langRect = { client.Width() - 200, m_statusBarRect.top + 4, client.Width() - 20, m_statusBarRect.bottom - 4 };
+    RECT langRect = { client.Width() - Theme::GetSize(200), m_statusBarRect.top + Theme::GetSize(4), client.Width() - Theme::GetSize(20), m_statusBarRect.bottom - Theme::GetSize(4) };
     DrawTextW(hdc, m_languageText.c_str(), -1, &langRect, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
     
     SelectObject(hdc, oldFont);
@@ -406,3 +442,4 @@ void HomeScreen::OnVideoWorks() {
 
 } // namespace UI
 } // namespace VividPic
+

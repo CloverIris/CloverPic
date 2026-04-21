@@ -3,6 +3,7 @@
 #include "UI/Core/Theme.h"
 #include <gdiplus.h>
 #include <shellscalingapi.h>
+#include <iostream>
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "shcore.lib")
@@ -42,12 +43,17 @@ bool Application::Initialize() {
             dpi = pfn();
         }
     }
-    if (dpi == 96) {
+    // Fallback: if API returns 0 or abnormally low value, use GDI
+    if (dpi < 96) {
         HDC hdc = GetDC(nullptr);
         dpi = GetDeviceCaps(hdc, LOGPIXELSX);
         ReleaseDC(nullptr, hdc);
     }
+    // Safety clamp: never go below 96 DPI (Scale < 1.0)
+    // This prevents unreadable UI on systems with broken DPI reporting
+    if (dpi < 96) dpi = 96;
     UI::Theme::Scale = static_cast<float>(dpi) / 96.0f;
+    std::cout << "[VividPic] System DPI: " << dpi << ", Theme::Scale: " << UI::Theme::Scale << std::endl;
     
     // Initialize GDI+
     Gdiplus::GdiplusStartupInput input;

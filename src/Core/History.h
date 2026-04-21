@@ -24,12 +24,14 @@ public:
     bool IsEmpty() const { return m_snapshots.empty(); }
     size_t GetMemorySize() const;
 
+    void CaptureRedoTiles();
     void Undo();
     void Redo();
 
 private:
     Layer* m_layer = nullptr;
-    std::vector<TileSnapshot> m_snapshots;
+    std::vector<TileSnapshot> m_snapshots;      // before stroke
+    std::vector<TileSnapshot> m_redoSnapshots;  // after stroke
     // Fast lookup: gridX | (gridY << 16)
     mutable std::unordered_set<uint32_t> m_capturedSet;
 };

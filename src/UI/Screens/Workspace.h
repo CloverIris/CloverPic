@@ -25,6 +25,7 @@ public:
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
     void OnSize(const Size& newSize) override;
+    void OnMouseDown(const Point& pos, MouseButton button) override;
     void OnKeyDown(uint32_t keyCode) override;
     bool OnCreate() override;
     
@@ -57,6 +58,14 @@ private:
     
     void BuildMenus();
     void OnMenuItemClicked(int menuIndex, int itemIndex);
+    
+    int HitTestMenuItem(const Point& pos) const;
+    int HitTestToolbarButton(const Point& pos) const;
+    void DrawToolbarButtons(HDC hdc);
+    void DrawMenuDropdown(HDC hdc);
+    
+    int m_openMenuIndex = -1;
+    int m_menuHoverItem = -1;
 };
 
 } // namespace UI

@@ -22,6 +22,8 @@ public:
     // Layer operations
     Ref<Layer> AddLayer(const String& name, LayerType type);
     void DeleteLayer(size_t index);
+    void DuplicateLayer(size_t index);
+    void MergeDown(size_t index);
     void MoveLayer(size_t fromIndex, size_t toIndex);
     Ref<Layer> GetLayer(size_t index);
     size_t GetLayerCount() const { return m_layers.size(); }

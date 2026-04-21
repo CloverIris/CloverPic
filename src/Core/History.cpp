@@ -32,7 +32,25 @@ size_t StrokeUndoItem::GetMemorySize() const {
     for (const auto& snap : m_snapshots) {
         total += snap.beforeData.size();
     }
+    for (const auto& snap : m_redoSnapshots) {
+        total += snap.beforeData.size();
+    }
     return total;
+}
+
+void StrokeUndoItem::CaptureRedoTiles() {
+    if (!m_layer || m_snapshots.empty()) return;
+    m_redoSnapshots.clear();
+    for (const auto& snap : m_snapshots) {
+        Render::Tile* tile = m_layer->GetTile(snap.gridX, snap.gridY);
+        if (!tile) continue;
+        TileSnapshot redoSnap;
+        redoSnap.gridX = snap.gridX;
+        redoSnap.gridY = snap.gridY;
+        redoSnap.beforeData.resize(Render::TILE_BYTES);
+        std::memcpy(redoSnap.beforeData.data(), tile->data, Render::TILE_BYTES);
+        m_redoSnapshots.push_back(std::move(redoSnap));
+    }
 }
 
 void StrokeUndoItem::Undo() {
@@ -47,10 +65,14 @@ void StrokeUndoItem::Undo() {
 }
 
 void StrokeUndoItem::Redo() {
-    // For stroke-based undo, we currently don't store after-image.
-    // Redo would require replaying the stroke or storing after-image.
-    // For now, Redo is no-op (same behavior as many simple painting apps).
-    // TODO: implement after-image snapshot for full redo support.
+    if (!m_layer || m_redoSnapshots.empty()) return;
+    std::cout << "[History] Redo stroke, tiles=" << m_redoSnapshots.size() << std::endl;
+    for (const auto& snap : m_redoSnapshots) {
+        Render::Tile* tile = m_layer->GetTile(snap.gridX, snap.gridY);
+        if (!tile) continue;
+        std::memcpy(tile->data, snap.beforeData.data(), snap.beforeData.size());
+    }
+    m_layer->MarkDirty();
 }
 
 // HistoryManager implementation

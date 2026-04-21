@@ -12,7 +12,7 @@ Workspace::Workspace() = default;
 
 bool Workspace::Initialize(Ref<Project> project) {
     m_project = project;
-    Rect bounds(50, 50, 1400, 900);
+    Rect bounds(50, 50, static_cast<int>(1400 * Theme::Scale), static_cast<int>(900 * Theme::Scale));
     if (!Create(L"ViVidPic - Workspace", bounds, nullptr)) {
         return false;
     }
@@ -98,6 +98,12 @@ bool Workspace::OnCreate() {
     Rect navRect(1400 - Theme::GetSize(RightPanelWidth), Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(300), 
                  1400, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(300) + Theme::GetSize(220));
     m_navigatorPanel->Create(L"", navRect, this);
+    m_navigatorPanel->SetOnPanChanged([this](float x, float y) {
+        if (m_canvasView) {
+            m_canvasView->SetPan(x, y);
+            m_canvasView->InvalidateCanvas();
+        }
+    });
     
     if (m_project) {
         const auto& canvas = m_project->GetCanvas();
@@ -162,6 +168,7 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
     
     DrawMenuBar(hdc);
     DrawToolbar(hdc);
+    DrawMenuDropdown(hdc);
 }
 
 void Workspace::DrawMenuBar(HDC hdc) {
@@ -208,6 +215,8 @@ void Workspace::DrawToolbar(HDC hdc) {
     FillRect(hdc, &toolbarRc, brush);
     DeleteObject(brush);
     
+    DrawToolbarButtons(hdc);
+    
     HPEN linePen = CreatePen(PS_SOLID, 1, Theme::BorderDark);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, linePen));
     MoveToEx(hdc, 0, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), nullptr);
@@ -233,7 +242,258 @@ void Workspace::OnMenuItemClicked(int menuIndex, int itemIndex) {
         if (appWindow) {
             appWindow->SetVisible(true);
         }
+    } else if (menuIndex == 0 && itemIndex == 1) { // File > Save
+        MessageBoxW(m_hwnd, L"保存功能将在 M6 实现", L"保存", MB_OK);
+    } else if (menuIndex == 1 && itemIndex == 0) { // Edit > Undo
+        HistoryManager::GetInstance().Undo();
+        if (m_canvasView) m_canvasView->InvalidateCanvas();
+    } else if (menuIndex == 1 && itemIndex == 1) { // Edit > Redo
+        HistoryManager::GetInstance().Redo();
+        if (m_canvasView) m_canvasView->InvalidateCanvas();
+    } else {
+        std::wstring msg = L"菜单: " + m_menus[menuIndex].name + L" > " + m_menus[menuIndex].items[itemIndex];
+        MessageBoxW(m_hwnd, msg.c_str(), L"功能占位符", MB_OK);
     }
+}
+
+void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
+    if (button != MouseButton::Left) return;
+    
+    // Check menu bar
+    if (pos.y < Theme::GetSize(MenuBarHeight)) {
+        int menuIdx = HitTestMenuItem(pos);
+        if (menuIdx >= 0) {
+            if (m_openMenuIndex == menuIdx) {
+                m_openMenuIndex = -1;
+            } else {
+                m_openMenuIndex = menuIdx;
+            }
+            Invalidate();
+            return;
+        } else {
+            m_openMenuIndex = -1;
+            Invalidate();
+            return;
+        }
+    }
+    
+    // Check menu dropdown
+    if (m_openMenuIndex >= 0) {
+        int x = Theme::GetSize(8);
+        for (int i = 0; i < m_openMenuIndex; ++i) {
+            SIZE ts;
+            HDC hdc = GetDC(m_hwnd);
+            HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                     DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+            HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
+            GetTextExtentPoint32W(hdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
+            SelectObject(hdc, old);
+            DeleteObject(font);
+            ReleaseDC(m_hwnd, hdc);
+            x += ts.cx + Theme::GetSize(16);
+        }
+        SIZE ts;
+        HDC hdc = GetDC(m_hwnd);
+        HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
+        GetTextExtentPoint32W(hdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
+        SelectObject(hdc, old);
+        DeleteObject(font);
+        ReleaseDC(m_hwnd, hdc);
+        
+        int dropdownY = Theme::GetSize(MenuBarHeight);
+        int itemHeight = Theme::GetSize(22);
+        int dropdownWidth = ts.cx + Theme::GetSize(12);
+        for (size_t j = 0; j < m_menus[m_openMenuIndex].items.size(); ++j) {
+            int iy = dropdownY + static_cast<int>(j) * itemHeight;
+            if (pos.x >= x && pos.x < x + dropdownWidth && pos.y >= iy && pos.y < iy + itemHeight) {
+                OnMenuItemClicked(m_openMenuIndex, static_cast<int>(j));
+                m_openMenuIndex = -1;
+                Invalidate();
+                return;
+            }
+        }
+        m_openMenuIndex = -1;
+        Invalidate();
+        return;
+    }
+    
+    // Check toolbar
+    if (pos.y >= Theme::GetSize(MenuBarHeight) && pos.y < Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight)) {
+        int btnIdx = HitTestToolbarButton(pos);
+        switch (btnIdx) {
+            case 0: { // Undo
+                HistoryManager::GetInstance().Undo();
+                if (m_canvasView) m_canvasView->InvalidateCanvas();
+                break;
+            }
+            case 1: { // Redo
+                HistoryManager::GetInstance().Redo();
+                if (m_canvasView) m_canvasView->InvalidateCanvas();
+                break;
+            }
+            case 2: { // Toggle B/E
+                // Placeholder
+                MessageBoxW(m_hwnd, L"笔刷/橡皮切换", L"工具", MB_OK);
+                break;
+            }
+        }
+        Invalidate();
+        return;
+    }
+}
+
+int Workspace::HitTestMenuItem(const Point& pos) const {
+    if (pos.y >= Theme::GetSize(MenuBarHeight)) return -1;
+    int x = Theme::GetSize(8);
+    HDC hdc = GetDC(m_hwnd);
+    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
+    for (size_t i = 0; i < m_menus.size(); ++i) {
+        SIZE ts;
+        GetTextExtentPoint32W(hdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
+        int itemW = ts.cx + Theme::GetSize(16);
+        if (pos.x >= x && pos.x < x + itemW) {
+            SelectObject(hdc, old);
+            DeleteObject(font);
+            ReleaseDC(m_hwnd, hdc);
+            return static_cast<int>(i);
+        }
+        x += itemW;
+    }
+    SelectObject(hdc, old);
+    DeleteObject(font);
+    ReleaseDC(m_hwnd, hdc);
+    return -1;
+}
+
+int Workspace::HitTestToolbarButton(const Point& pos) const {
+    if (pos.y < Theme::GetSize(MenuBarHeight) || pos.y >= Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight)) return -1;
+    int btnSize = Theme::GetSize(28);
+    int spacing = Theme::GetSize(4);
+    int startX = Theme::GetSize(8);
+    int index = (pos.x - startX) / (btnSize + spacing);
+    int btnX = startX + index * (btnSize + spacing);
+    if (pos.x >= btnX && pos.x < btnX + btnSize && index >= 0 && index < 3) return index;
+    return -1;
+}
+
+void Workspace::DrawToolbarButtons(HDC hdc) {
+    int btnSize = Theme::GetSize(28);
+    int spacing = Theme::GetSize(4);
+    int startX = Theme::GetSize(8);
+    int y = Theme::GetSize(MenuBarHeight) + (Theme::GetSize(ToolbarHeight) - btnSize) / 2;
+    
+    const wchar_t* labels[3] = { L"↶", L"↷", L"B/E" };
+    HFONT font = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
+    SetTextColor(hdc, Theme::TextPrimary);
+    SetBkMode(hdc, TRANSPARENT);
+    
+    for (int i = 0; i < 3; ++i) {
+        int bx = startX + i * (btnSize + spacing);
+        HBRUSH btnBrush = Theme::SolidBrush(Theme::ButtonDefault);
+        RECT btnRc = { bx, y, bx + btnSize, y + btnSize };
+        FillRect(hdc, &btnRc, btnBrush);
+        DeleteObject(btnBrush);
+        
+        HPEN border = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+        HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, border));
+        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+        HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+        Rectangle(hdc, bx, y, bx + btnSize, y + btnSize);
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldBr);
+        DeleteObject(border);
+        
+        RECT textRc = { bx, y, bx + btnSize, y + btnSize };
+        DrawTextW(hdc, labels[i], -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+    
+    SelectObject(hdc, old);
+    DeleteObject(font);
+    
+    // Current color square
+    int colorX = startX + 3 * (btnSize + spacing) + Theme::GetSize(8);
+    int colorSize = btnSize;
+    Color c = m_canvasView ? m_canvasView->GetBrushColor() : Color(0,0,0,255);
+    HBRUSH colorBrush = CreateSolidBrush(RGB(c.r, c.g, c.b));
+    RECT colorRc = { colorX, y, colorX + colorSize, y + colorSize };
+    FillRect(hdc, &colorRc, colorBrush);
+    DeleteObject(colorBrush);
+    
+    HPEN border = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, border));
+    HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+    HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+    Rectangle(hdc, colorX, y, colorX + colorSize, y + colorSize);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBr);
+    DeleteObject(border);
+}
+
+void Workspace::DrawMenuDropdown(HDC hdc) {
+    if (m_openMenuIndex < 0 || m_openMenuIndex >= static_cast<int>(m_menus.size())) return;
+    
+    int x = Theme::GetSize(8);
+    HDC memdc = GetDC(m_hwnd);
+    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT old = static_cast<HFONT>(SelectObject(memdc, font));
+    for (int i = 0; i < m_openMenuIndex; ++i) {
+        SIZE ts;
+        GetTextExtentPoint32W(memdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
+        x += ts.cx + Theme::GetSize(16);
+    }
+    SIZE ts;
+    GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
+    SelectObject(memdc, old);
+    DeleteObject(font);
+    ReleaseDC(m_hwnd, memdc);
+    
+    int dropdownY = Theme::GetSize(MenuBarHeight);
+    int itemHeight = Theme::GetSize(22);
+    int dropdownWidth = ts.cx + Theme::GetSize(12);
+    int dropdownHeight = static_cast<int>(m_menus[m_openMenuIndex].items.size()) * itemHeight;
+    
+    // Background
+    HBRUSH bg = Theme::SolidBrush(Theme::PanelBackground);
+    RECT dropRc = { x, dropdownY, x + dropdownWidth, dropdownY + dropdownHeight };
+    FillRect(hdc, &dropRc, bg);
+    DeleteObject(bg);
+    
+    // Border
+    HPEN pen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
+    HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+    HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+    Rectangle(hdc, x, dropdownY, x + dropdownWidth, dropdownY + dropdownHeight);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBr);
+    DeleteObject(pen);
+    
+    // Items
+    HFONT itemFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                  DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, itemFont));
+    SetBkMode(hdc, TRANSPARENT);
+    for (size_t j = 0; j < m_menus[m_openMenuIndex].items.size(); ++j) {
+        int iy = dropdownY + static_cast<int>(j) * itemHeight;
+        RECT itemRc = { x + Theme::GetSize(6), iy, x + dropdownWidth - Theme::GetSize(6), iy + itemHeight };
+        SetTextColor(hdc, Theme::TextPrimary);
+        DrawTextW(hdc, m_menus[m_openMenuIndex].items[j].c_str(), -1, &itemRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+    }
+    SelectObject(hdc, oldFont);
+    DeleteObject(itemFont);
 }
 
 void Workspace::OnKeyDown(uint32_t keyCode) {

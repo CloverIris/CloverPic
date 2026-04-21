@@ -2,6 +2,7 @@
 
 #include "UI/Core/Window.h"
 #include "Core/LayerManager.h"
+#include <functional>
 
 namespace VividPic {
 namespace UI {
@@ -14,6 +15,8 @@ public:
     void SetCanvasViewTransform(float zoom, float panX, float panY);
     void SetCanvasSize(uint32_t width, uint32_t height);
     void Refresh();
+    
+    void SetOnPanChanged(std::function<void(float x, float y)> callback) { m_onPanChanged = std::move(callback); }
     
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
@@ -36,6 +39,8 @@ private:
     float m_panY = 0.0f;
     
     bool m_draggingView = false;
+    
+    std::function<void(float x, float y)> m_onPanChanged;
     
     static constexpr int ThumbMargin = 8;
     

@@ -18,6 +18,8 @@ public:
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
     void OnMouseDown(const Point& pos, MouseButton button) override;
+    void OnMouseMove(const Point& pos) override;
+    void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnSize(const Size& newSize) override;
 
     DWORD GetDefaultStyle() const override { return WS_CHILD | WS_VISIBLE; }
@@ -40,10 +42,18 @@ private:
     int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock
     bool HitTestBlendDropdown(const Point& pos) const;
     int HitTestBlendItem(const Point& pos) const;
+    int HitTestOpacitySlider(const Point& pos) const; // returns 0 if on track
+    int HitTestToolbarButton(const Point& pos) const; // 0=new, 1=duplicate, 2=merge, 3=delete
+
+    void DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t opacity);
+    void SetOpacityFromSliderPos(int x, int trackX, int trackWidth);
 
     // Blend mode dropdown state
     bool m_blendDropdownOpen = false;
     int m_blendHoverIndex = -1;
+
+    // Opacity slider state
+    bool m_opacityDragging = false;
 
     static constexpr int BlendModeCount = 8;
     static const BlendMode BlendModes[BlendModeCount];

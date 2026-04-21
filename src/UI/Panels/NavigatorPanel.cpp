@@ -204,6 +204,9 @@ void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
         
         m_panX = parentSize.width / 2.0f - canvasX * m_zoom;
         m_panY = parentSize.height / 2.0f - canvasY * m_zoom;
+        if (m_onPanChanged) {
+            m_onPanChanged(m_panX, m_panY);
+        }
         Invalidate();
     }
 }
@@ -229,6 +232,9 @@ void NavigatorPanel::OnMouseMove(const Point& pos) {
     
     m_panX = parentSize.width / 2.0f - canvasX * m_zoom;
     m_panY = parentSize.height / 2.0f - canvasY * m_zoom;
+    if (m_onPanChanged) {
+        m_onPanChanged(m_panX, m_panY);
+    }
     Invalidate();
 }
 

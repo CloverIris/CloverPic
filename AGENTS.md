@@ -68,7 +68,8 @@ LIBS     = -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 
 ```
 VividPic/
-├── AGENTS.md               # 本文件
+├── AGENTS.md               # 本文件（开发约束与进度）
+├── UI.md                   # UI 设计规范（HomeScreen/Workspace/面板布局与常量）
 ├── CMakeLists.txt          # 主构建配置
 ├── cmake-build-debug/      # CLion 默认构建目录
 │   ├── build.ninja         # Ninja 构建图
@@ -286,6 +287,8 @@ namespace TabletInput {
 - `BrushPanel`（tip 按钮 + 4 滑条 + preset 按钮）
 - WinTab `WT_PACKET` 完整解析（pressure + tilt + rotation）
 - `LayersPanel` blend mode 下拉框 UI
+- `UI.md` 设计文档（HomeScreen/Workspace/4 面板规范）
+- HomeScreen DPI 缩放修复（所有硬编码偏移量统一 `Theme::GetSize()`）
 
 ### Bugfix 记录
 
@@ -299,7 +302,11 @@ namespace TabletInput {
 
 ### Active Issues / 待办
 
-- [ ] **Undo/Redo**：未实现
+- [ ] **Redo**：`StrokeUndoItem::Redo()` 为 stub，需双快照实现
+- [ ] **图层操作增强**：duplicate、merge down、不透明度滑条、底部工具栏按钮
+- [ ] **NavigatorPanel**：缩略图、视图框、点击平移
+- [ ] **Workspace 工具栏**：撤销/重做/笔刷切换按钮（当前仅背景）
+- [ ] **菜单栏交互**：菜单项点击处理与下拉命令列表
 - [ ] **Save/Export**：stub 状态，需实现 `.vvp` 格式序列化
 - [ ] **采样率优化**：Windows Ink `WM_POINTERUPDATE` 受屏幕刷新率限制（60Hz），快速笔迹可能不够平滑。终极方案：`GetPointerPenInfoHistory()` 获取历史帧
 - [ ] **TilePool 真池化**：当前 `Layer` 使用 `new Tile`，真对象池分配 deferred

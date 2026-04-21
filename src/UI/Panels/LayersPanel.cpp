@@ -64,15 +64,21 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(sepPen);
 
     // Blend mode dropdown for active layer
-    int dropdownY = 26;
-    DrawBlendDropdown(hdc, 8, dropdownY, client.Width() - 16);
+    int dropdownY = Theme::GetSize(26);
+    DrawBlendDropdown(hdc, Theme::GetSize(8), dropdownY, client.Width() - Theme::GetSize(16));
 
     if (m_blendDropdownOpen) {
-        DrawBlendDropdownList(hdc, 8, dropdownY + DropdownHeight, client.Width() - 16);
+        DrawBlendDropdownList(hdc, Theme::GetSize(8), dropdownY + DropdownHeight, client.Width() - Theme::GetSize(16));
     }
 
+    // Opacity slider
+    int opacityY = dropdownY + DropdownHeight + Theme::GetSize(4);
+    auto activeLayer = m_layerManager ? m_layerManager->GetActiveLayer() : nullptr;
+    uint8_t opacity = activeLayer ? activeLayer->GetOpacity() : 255;
+    DrawOpacitySlider(hdc, Theme::GetSize(8), opacityY, client.Width() - Theme::GetSize(16), opacity);
+
     // Layer items (top to bottom order, but display top layers at top)
-    int y = dropdownY + DropdownHeight + 8;
+    int y = opacityY + Theme::GetSize(24) + Theme::GetSize(4);
     if (m_blendDropdownOpen) {
         y += BlendModeCount * DropdownHeight;
     }
@@ -133,7 +139,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(itemFont);
 
     // Bottom toolbar area
-    int toolbarY = client.Height() - 32;
+    int toolbarY = client.Height() - Theme::GetSize(32);
     HBRUSH toolbarBrush = CreateSolidBrush(RGB(0x2B, 0x2B, 0x2B));
     RECT toolbarRc = { 0, toolbarY, client.Width(), client.Height() };
     FillRect(hdc, &toolbarRc, toolbarBrush);
@@ -145,6 +151,23 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     LineTo(hdc, client.Width(), toolbarY);
     SelectObject(hdc, oldPen);
     DeleteObject(topLine);
+
+    // Toolbar buttons: New, Duplicate, Merge Down, Delete
+    int btnCount = 4;
+    int btnWidth = client.Width() / btnCount;
+    const wchar_t* btnLabels[4] = { L"+", L"⧉", L"↓", L"🗑" };
+    HFONT btnFont = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT oldBtnFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
+    SetTextColor(hdc, RGB(0xE0, 0xE0, 0xE0));
+    for (int i = 0; i < btnCount; ++i) {
+        int bx = i * btnWidth;
+        RECT btnRc = { bx, toolbarY, bx + btnWidth, client.Height() };
+        DrawTextW(hdc, btnLabels[i], -1, &btnRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+    SelectObject(hdc, oldBtnFont);
+    DeleteObject(btnFont);
 }
 
 void LayersPanel::DrawBlendDropdown(HDC hdc, int x, int y, int width) {
@@ -246,13 +269,11 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
     }
 
     Rect client = GetClientBounds();
-    int toolbarY = client.Height() - 32;
+    int toolbarY = client.Height() - Theme::GetSize(32);
 
     if (pos.y >= toolbarY) {
         // Toolbar buttons
-        int btnWidth = client.Width() / 4;
-        int btnIndex = pos.x / btnWidth;
-
+        int btnIndex = HitTestToolbarButton(pos);
         switch (btnIndex) {
             case 0: { // New layer
                 size_t count = m_layerManager->GetLayerCount();
@@ -261,28 +282,34 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
                 m_layerManager->AddLayer(name.str(), LayerType::Color);
                 break;
             }
-            case 1: { // Delete
+            case 1: { // Duplicate
+                size_t active = m_layerManager->GetActiveLayerIndex();
+                m_layerManager->DuplicateLayer(active);
+                break;
+            }
+            case 2: { // Merge down
+                size_t active = m_layerManager->GetActiveLayerIndex();
+                if (active < m_layerManager->GetLayerCount() - 1) {
+                    m_layerManager->MergeDown(active);
+                }
+                break;
+            }
+            case 3: { // Delete
                 size_t active = m_layerManager->GetActiveLayerIndex();
                 if (m_layerManager->GetLayerCount() > 1) {
                     m_layerManager->DeleteLayer(active);
                 }
                 break;
             }
-            case 2: { // Move up (in stack = lower index)
-                size_t active = m_layerManager->GetActiveLayerIndex();
-                if (active > 0) {
-                    m_layerManager->MoveLayer(active, active - 1);
-                }
-                break;
-            }
-            case 3: { // Move down
-                size_t active = m_layerManager->GetActiveLayerIndex();
-                if (active < m_layerManager->GetLayerCount() - 1) {
-                    m_layerManager->MoveLayer(active, active + 1);
-                }
-                break;
-            }
         }
+        Invalidate();
+        return;
+    }
+
+    // Opacity slider
+    if (HitTestOpacitySlider(pos) >= 0) {
+        m_opacityDragging = true;
+        SetOpacityFromSliderPos(pos.x, Theme::GetSize(8), client.Width() - Theme::GetSize(16));
         Invalidate();
         return;
     }
@@ -369,6 +396,98 @@ int LayersPanel::HitTestBlendItem(const Point& pos) const {
         }
     }
     return -1;
+}
+
+void LayersPanel::DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t opacity) {
+    // Label
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, Theme::TextSecondary);
+    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
+    std::wostringstream oss;
+    oss << L"不透明度: " << (opacity * 100 / 255) << L"%";
+    RECT labelRc = { x, y, x + width, y + Theme::GetSize(14) };
+    DrawTextW(hdc, oss.str().c_str(), -1, &labelRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    // Track
+    int trackY = y + Theme::GetSize(16);
+    int trackHeight = Theme::GetSize(4);
+    HBRUSH trackBrush = CreateSolidBrush(RGB(0x55, 0x55, 0x55));
+    RECT trackRc = { x, trackY, x + width, trackY + trackHeight };
+    FillRect(hdc, &trackRc, trackBrush);
+    DeleteObject(trackBrush);
+
+    // Filled portion
+    int thumbX = x + (opacity * width / 255);
+    HBRUSH fillBrush = CreateSolidBrush(RGB(0x00, 0x78, 0xD7));
+    RECT fillRc = { x, trackY, thumbX, trackY + trackHeight };
+    FillRect(hdc, &fillRc, fillBrush);
+    DeleteObject(fillBrush);
+
+    // Thumb
+    int thumbRadius = Theme::GetSize(4);
+    HBRUSH thumbBrush = CreateSolidBrush(RGB(0xE0, 0xE0, 0xE0));
+    RECT thumbRc = { thumbX - thumbRadius, trackY - thumbRadius + trackHeight / 2,
+                     thumbX + thumbRadius, trackY + thumbRadius + trackHeight / 2 };
+    FillRect(hdc, &thumbRc, thumbBrush);
+    DeleteObject(thumbBrush);
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(font);
+}
+
+void LayersPanel::SetOpacityFromSliderPos(int x, int trackX, int trackWidth) {
+    if (!m_layerManager) return;
+    auto layer = m_layerManager->GetActiveLayer();
+    if (!layer) return;
+    int relX = x - trackX;
+    if (relX < 0) relX = 0;
+    if (relX > trackWidth) relX = trackWidth;
+    uint8_t opacity = static_cast<uint8_t>(relX * 255 / trackWidth);
+    layer->SetOpacity(opacity);
+    m_layerManager->MarkCompositeDirty();
+}
+
+int LayersPanel::HitTestOpacitySlider(const Point& pos) const {
+    Rect client = GetClientBounds();
+    int dropdownY = Theme::GetSize(26);
+    int opacityY = dropdownY + DropdownHeight + Theme::GetSize(4);
+    int x = Theme::GetSize(8);
+    int width = client.Width() - Theme::GetSize(16);
+    int trackY = opacityY + Theme::GetSize(16);
+    int trackHeight = Theme::GetSize(4);
+    if (pos.x >= x && pos.x < x + width && pos.y >= trackY - Theme::GetSize(6) && pos.y < trackY + trackHeight + Theme::GetSize(6)) {
+        return 0;
+    }
+    return -1;
+}
+
+int LayersPanel::HitTestToolbarButton(const Point& pos) const {
+    Rect client = GetClientBounds();
+    int toolbarY = client.Height() - Theme::GetSize(32);
+    if (pos.y < toolbarY) return -1;
+    int btnCount = 4;
+    int btnWidth = client.Width() / btnCount;
+    int btnIndex = pos.x / btnWidth;
+    if (btnIndex < 0) btnIndex = 0;
+    if (btnIndex >= btnCount) btnIndex = btnCount - 1;
+    return btnIndex;
+}
+
+void LayersPanel::OnMouseMove(const Point& pos) {
+    if (m_opacityDragging) {
+        Rect client = GetClientBounds();
+        SetOpacityFromSliderPos(pos.x, Theme::GetSize(8), client.Width() - Theme::GetSize(16));
+        Invalidate();
+    }
+}
+
+void LayersPanel::OnMouseUp(const Point& pos, MouseButton button) {
+    if (button == MouseButton::Left) {
+        m_opacityDragging = false;
+    }
 }
 
 void LayersPanel::OnSize(const Size& newSize) {
