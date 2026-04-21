@@ -294,8 +294,6 @@ void CanvasView::OnMouseMove(const Point& pos) {
         if (state.isTouching) {
             float canvasX, canvasY;
             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
-            std::cout << "[CV] OnMouseMove(PEN) draw canvas=" << canvasX << "," << canvasY
-                      << " p=" << state.pressure << " last=" << m_lastCanvasX << "," << m_lastCanvasY << std::endl;
             ApplyBrush(canvasX, canvasY, state.pressure);
             m_lastCanvasX = canvasX;
             m_lastCanvasY = canvasY;
@@ -309,8 +307,6 @@ void CanvasView::OnMouseMove(const Point& pos) {
     if (m_isDrawing) {
         float canvasX, canvasY;
         ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
-        std::cout << "[CV] OnMouseMove(MOUSE) draw canvas=" << canvasX << "," << canvasY
-                  << " last=" << m_lastCanvasX << "," << m_lastCanvasY << std::endl;
         ApplyBrush(canvasX, canvasY, m_lastPressure);
         m_lastCanvasX = canvasX;
         m_lastCanvasY = canvasY;
@@ -422,8 +418,6 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         if (state.isTouching && m_isDrawing) {
                             float canvasX, canvasY;
                             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
-                            std::cout << "[CV] WM_POINTERUPDATE draw canvas=" << canvasX << "," << canvasY
-                                      << " p=" << state.pressure << std::endl;
                             ApplyBrush(canvasX, canvasY, state.pressure);
                             m_lastCanvasX = canvasX;
                             m_lastCanvasY = canvasY;
