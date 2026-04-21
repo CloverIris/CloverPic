@@ -1,4 +1,4 @@
-#include "UI/Screens/HomeScreen.h"
+﻿#include "UI/Screens/HomeScreen.h"
 #include "UI/Screens/NewCanvasDialog.h"
 #include "UI/Screens/Workspace.h"
 #include "App/Application.h"
@@ -183,7 +183,7 @@ void HomeScreen::OnPaint(HDC hdc, const Rect& clip) {
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, Theme::TextPrimary);
         
-        HFONT titleFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        HFONT titleFont = CreateFontW(Theme::GetFontSize(16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                        DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
@@ -221,7 +221,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
     
-    HFONT titleFont = CreateFontW(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT titleFont = CreateFontW(Theme::GetFontSize(28), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
@@ -231,7 +231,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
     
     // Version
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT verFont = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT verFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                  DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     SelectObject(hdc, verFont);
@@ -273,7 +273,7 @@ void HomeScreen::DrawStatusBar(HDC hdc) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
     
-    HFONT font = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));

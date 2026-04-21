@@ -39,6 +39,11 @@ struct Theme {
     static constexpr uint32_t BrushTagBrush      = 0xF1C40F; // Yellow = brush
     static constexpr uint32_t BrushTagEffect     = 0x95A5A6; // Gray = effect
     
+    // DPI / UI Scale
+    static float Scale;
+    static float GetFontSize(float base) { return base * Scale; }
+    static int   GetSize(int base) { return static_cast<int>(base * Scale); }
+    
     // Utility
     static Color ColorFromHex(uint32_t hex) {
         return Color::FromHex(hex);

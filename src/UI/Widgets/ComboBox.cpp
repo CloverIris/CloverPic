@@ -1,4 +1,4 @@
-#include "UI/Widgets/ComboBox.h"
+﻿#include "UI/Widgets/ComboBox.h"
 
 namespace VividPic {
 namespace UI {
@@ -51,7 +51,7 @@ void ComboBox::OnPaint(HDC hdc, const Rect& clip) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
     
-    HFONT font = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
@@ -106,7 +106,7 @@ void ComboBox::DrawDropdown(HDC hdc) {
     
     // Items
     SetBkMode(hdc, TRANSPARENT);
-    HFONT font = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));

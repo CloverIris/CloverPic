@@ -1,4 +1,5 @@
 #include "UI/Core/Window.h"
+#include "UI/Core/Theme.h"
 #include <algorithm>
 #include <windowsx.h>
 
@@ -60,9 +61,28 @@ bool Window::Create(const String& title, const Rect& bounds, Window* parent, DWO
         parent->AddChild(this);
     }
     
+    // Query DPI scale for this window
+    UINT dpi = 96;
+    if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
+        using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
+        auto pfn = reinterpret_cast<GetDpiForWindowFn>(GetProcAddress(hUser32, "GetDpiForWindow"));
+        if (pfn) {
+            dpi = pfn(m_hwnd);
+        }
+    }
+    m_dpiScale = static_cast<float>(dpi) / 96.0f;
+    
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
     return true;
+}
+
+int Window::ScaleSize(int base) {
+    return static_cast<int>(base * UI::Theme::Scale);
+}
+
+int Window::ScaleFont(int base) {
+    return static_cast<int>(base * UI::Theme::Scale);
 }
 
 void Window::Destroy() {

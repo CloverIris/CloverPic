@@ -1,8 +1,11 @@
 #include "App/Application.h"
 #include "UI/Core/Window.h"
+#include "UI/Core/Theme.h"
 #include <gdiplus.h>
+#include <shellscalingapi.h>
 
 #pragma comment(lib, "gdiplus.lib")
+#pragma comment(lib, "shcore.lib")
 
 namespace VividPic {
 
@@ -22,6 +25,14 @@ Application::~Application() {
 }
 
 bool Application::Initialize() {
+    // Set DPI awareness for crisp rendering on high-DPI displays
+    // Try Per-Monitor V2 first (Win10 1703+), fallback to System aware
+    if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE)) {
+            SetProcessDPIAware();
+        }
+    }
+    
     // Initialize GDI+
     Gdiplus::GdiplusStartupInput input;
     input.GdiplusVersion = 1;

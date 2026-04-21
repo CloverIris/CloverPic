@@ -198,16 +198,16 @@ TabletManager& TabletManager::GetInstance() {
 }
 
 bool TabletManager::Initialize(HWND hwnd) {
-    // Try WinTab first (preferred for professional tablets)
-    if (m_wintabDriver.Initialize(hwnd)) {
-        m_activeDriver = DriverType::WinTab;
+    // Try Windows Ink first (modern, reliable on Win10+)
+    if (m_inkDriver.Initialize(hwnd)) {
+        m_activeDriver = DriverType::WindowsInk;
         m_initialized = true;
         return true;
     }
 
-    // Fall back to Windows Ink
-    if (m_inkDriver.Initialize(hwnd)) {
-        m_activeDriver = DriverType::WindowsInk;
+    // Fall back to WinTab (legacy Wacom driver)
+    if (m_wintabDriver.Initialize(hwnd)) {
+        m_activeDriver = DriverType::WinTab;
         m_initialized = true;
         return true;
     }

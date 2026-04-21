@@ -1,4 +1,4 @@
-#include "UI/Panels/BrushPanel.h"
+﻿#include "UI/Panels/BrushPanel.h"
 #include "UI/Core/Theme.h"
 #include <algorithm>
 #include <sstream>
@@ -18,7 +18,7 @@ void BrushPanel::OnPaint(HDC hdc, const Rect& clip) {
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
@@ -64,7 +64,7 @@ void BrushPanel::OnPaint(HDC hdc, const Rect& clip) {
 
 void BrushPanel::DrawSlider(HDC hdc, int x, int y, int width, float value, const String& label, const String& valueText) {
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT labelFont = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT labelFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, labelFont));
@@ -129,7 +129,7 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y) {
         DeleteObject(pen);
 
         SetTextColor(hdc, selected ? RGB(0xFF, 0xFF, 0xFF) : Theme::TextPrimary);
-        HFONT fnt = CreateFontW(10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        HFONT fnt = CreateFontW(Theme::GetFontSize(10), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldF = static_cast<HFONT>(SelectObject(hdc, fnt));
@@ -142,7 +142,7 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y) {
 
 void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
@@ -174,7 +174,7 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
         DeleteObject(pen);
 
         SetTextColor(hdc, Theme::TextPrimary);
-        HFONT fnt = CreateFontW(10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        HFONT fnt = CreateFontW(Theme::GetFontSize(10), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldF = static_cast<HFONT>(SelectObject(hdc, fnt));

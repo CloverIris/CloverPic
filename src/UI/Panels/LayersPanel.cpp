@@ -1,4 +1,4 @@
-#include "UI/Panels/LayersPanel.h"
+﻿#include "UI/Panels/LayersPanel.h"
 #include "UI/Core/Theme.h"
 #include <algorithm>
 #include <sstream>
@@ -46,7 +46,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
     // Title
     SetTextColor(hdc, RGB(0xA0, 0xA0, 0xA0));
-    HFONT titleFont = CreateFontW(12, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT titleFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
@@ -77,7 +77,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
         y += BlendModeCount * DropdownHeight;
     }
 
-    HFONT itemFont = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT itemFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     oldFont = static_cast<HFONT>(SelectObject(hdc, itemFont));
@@ -172,7 +172,7 @@ void LayersPanel::DrawBlendDropdown(HDC hdc, int x, int y, int width) {
     }
 
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT font = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
@@ -198,7 +198,7 @@ void LayersPanel::DrawBlendDropdownList(HDC hdc, int x, int y, int width) {
         DeleteObject(bg);
 
         SetTextColor(hdc, hovered ? RGB(0xFF, 0xFF, 0xFF) : Theme::TextPrimary);
-        HFONT font = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                  DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));

@@ -1,4 +1,4 @@
-#include "UI/Screens/Workspace.h"
+﻿#include "UI/Screens/Workspace.h"
 #include "App/Application.h"
 #include "Render/BrushEngine.h"
 #include "Render/BrushPresetManager.h"
@@ -172,7 +172,7 @@ void Workspace::DrawMenuBar(HDC hdc) {
     DeleteObject(brush);
     
     SetBkMode(hdc, TRANSPARENT);
-    HFONT font = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));

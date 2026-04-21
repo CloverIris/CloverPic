@@ -1,4 +1,4 @@
-#include "UI/Screens/NewCanvasDialog.h"
+﻿#include "UI/Screens/NewCanvasDialog.h"
 #include "Core/MemoryAdvisor.h"
 #include <sstream>
 #include <iomanip>
@@ -213,7 +213,7 @@ void NewCanvasDialog::OnPaint(HDC hdc, const Rect& clip) {
     // Title
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT titleFont = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+    HFONT titleFont = CreateFontW(Theme::GetFontSize(16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
@@ -223,7 +223,7 @@ void NewCanvasDialog::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(titleFont);
     
     // Labels
-    HFONT labelFont = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT labelFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     oldFont = static_cast<HFONT>(SelectObject(hdc, labelFont));
@@ -256,7 +256,7 @@ void NewCanvasDialog::OnPaint(HDC hdc, const Rect& clip) {
     row += 2;
     int infoY = y + row * RowHeight;
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT infoFont = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT infoFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     oldFont = static_cast<HFONT>(SelectObject(hdc, infoFont));
@@ -320,7 +320,7 @@ void NewCanvasDialog::UpdateMemoryGauge(HDC hdc) {
     // Text
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT font = CreateFontW(11, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));

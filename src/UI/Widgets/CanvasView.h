@@ -59,6 +59,7 @@ private:
     void CompositeAndRender();
     void DrawCheckerboard(ID2D1RenderTarget* rt);
     void DrawCanvasBorder(ID2D1RenderTarget* rt);
+    void DrawBrushCursor(ID2D1RenderTarget* rt);
     void UpdateCompositeBitmap();
     
     // D2D
@@ -86,6 +87,11 @@ private:
     float m_lastCanvasX = 0.0f;
     float m_lastCanvasY = 0.0f;
     float m_lastPressure = 1.0f;
+    
+    // Cursor tracking for brush preview ring
+    float m_cursorScreenX = 0.0f;
+    float m_cursorScreenY = 0.0f;
+    bool m_cursorInside = false;
     
     // Brush color
     Color m_brushColor = Color::FromHex(0x000000);

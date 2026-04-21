@@ -173,6 +173,7 @@ void CanvasView::CompositeAndRender() {
         m_renderTarget->DrawBitmap(m_compositeBitmap, destRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         
         DrawCanvasBorder(m_renderTarget);
+        DrawBrushCursor(m_renderTarget);
         
         m_renderTarget->SetTransform(oldTransform);
     }
@@ -250,10 +251,45 @@ void CanvasView::DrawCanvasBorder(ID2D1RenderTarget* rt) {
     }
 }
 
+void CanvasView::DrawBrushCursor(ID2D1RenderTarget* rt) {
+    if (!rt || m_isDrawing || !m_cursorInside) return;
+    
+    float canvasX, canvasY;
+    ScreenToCanvas(m_cursorScreenX, m_cursorScreenY, canvasX, canvasY);
+    
+    // Only draw if inside canvas bounds
+    if (canvasX < 0 || canvasX >= static_cast<float>(m_canvasWidth) ||
+        canvasY < 0 || canvasY >= static_cast<float>(m_canvasHeight)) {
+        return;
+    }
+    
+    auto& brush = Render::BrushEngine::GetInstance();
+    float radius = (brush.GetSize() * 0.5f) * m_zoom;
+    if (radius < 1.0f) radius = 1.0f;
+    
+    ID2D1SolidColorBrush* cursorBrush = nullptr;
+    rt->CreateSolidColorBrush(D2D1::ColorF(0.7f, 0.7f, 0.7f, 0.8f), &cursorBrush);
+    
+    if (cursorBrush) {
+        D2D1_ELLIPSE ellipse = D2D1::Ellipse(
+            D2D1::Point2F(canvasX, canvasY),
+            radius, radius
+        );
+        rt->DrawEllipse(ellipse, cursorBrush, 1.0f);
+        cursorBrush->Release();
+    }
+}
+
 void CanvasView::OnMouseMove(const Point& pos) {
-    if (m_tablet && m_tablet->GetActiveDriver() != TabletInput::TabletManager::DriverType::Mouse) {
+    // Track cursor for brush preview ring
+    m_cursorScreenX = static_cast<float>(pos.x);
+    m_cursorScreenY = static_cast<float>(pos.y);
+    m_cursorInside = true;
+    
+    // Tablet pointer input (Windows Ink or WinTab)
+    if (m_tablet && m_tablet->HasPressure() && m_isDrawing) {
         TabletInput::TabletState state = m_tablet->GetState();
-        if (state.isTouching && m_isDrawing) {
+        if (state.isTouching) {
             float canvasX, canvasY;
             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
             ApplyBrush(canvasX, canvasY, state.pressure);
@@ -265,6 +301,7 @@ void CanvasView::OnMouseMove(const Point& pos) {
         }
     }
     
+    // Mouse fallback
     if (m_isDrawing) {
         float canvasX, canvasY;
         ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
@@ -278,6 +315,9 @@ void CanvasView::OnMouseMove(const Point& pos) {
         m_panX += dx;
         m_panY += dy;
         m_panStartPos = pos;
+        Invalidate();
+    } else {
+        // Not drawing/panning: just refresh to show cursor ring
         Invalidate();
     }
 }
@@ -339,9 +379,10 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_POINTERUPDATE:
         case WM_POINTERUP:
             if (m_tablet) {
-                if (m_tablet->ProcessMessage(msg, wParam, lParam)) {
+                bool processed = m_tablet->ProcessMessage(msg, wParam, lParam);
+                if (processed || m_tablet->GetActiveDriver() == TabletInput::TabletManager::DriverType::WindowsInk) {
+                    TabletInput::TabletState state = m_tablet->GetState();
                     if (msg == WM_POINTERDOWN) {
-                        TabletInput::TabletState state = m_tablet->GetState();
                         m_isDrawing = true;
                         float canvasX, canvasY;
                         ScreenToCanvas(state.x, state.y, canvasX, canvasY);
@@ -351,8 +392,20 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         ApplyBrush(canvasX, canvasY, state.pressure);
                         Invalidate();
                         return 0;
+                    } else if (msg == WM_POINTERUPDATE) {
+                        if (state.isTouching && m_isDrawing) {
+                            float canvasX, canvasY;
+                            ScreenToCanvas(state.x, state.y, canvasX, canvasY);
+                            ApplyBrush(canvasX, canvasY, state.pressure);
+                            m_lastCanvasX = canvasX;
+                            m_lastCanvasY = canvasY;
+                            m_lastPressure = state.pressure;
+                            Invalidate();
+                        }
+                        return 0;
                     } else if (msg == WM_POINTERUP) {
                         m_isDrawing = false;
+                        Invalidate();
                         return 0;
                     }
                 }

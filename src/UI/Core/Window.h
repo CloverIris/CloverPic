@@ -30,6 +30,11 @@ public:
     void SetBounds(const Rect& bounds);
     Rect GetBounds() const;
     Rect GetClientBounds() const;
+    
+    // DPI scaling
+    float GetDpiScale() const { return m_dpiScale; }
+    static int ScaleSize(int base);
+    static int ScaleFont(int base);
     void SetVisible(bool visible);
     bool IsVisible() const;
     void Invalidate();
@@ -76,6 +81,7 @@ protected:
     String m_className;
     bool m_mouseTracking = false;
     bool m_mouseInside = false;
+    float m_dpiScale = 1.0f;
     
     static constexpr wchar_t BaseClassName[] = L"VividPic_Window";
     static bool s_classRegistered;
