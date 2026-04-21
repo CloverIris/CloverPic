@@ -42,7 +42,12 @@ bool WindowsInkDriver::ProcessPointerMessage(UINT msg, WPARAM wParam, LPARAM lPa
                 m_state.tiltY = static_cast<float>(penInfo.tiltY) / 10.0f;
                 m_state.rotation = static_cast<float>(penInfo.rotation);
                 m_state.isEraser = (penInfo.penFlags & PEN_FLAG_ERASER) != 0;
-                m_state.isTouching = (penInfo.penFlags & PEN_FLAG_BARREL) != 0 || msg == WM_POINTERDOWN || msg == WM_POINTERUPDATE;
+                if (msg == WM_POINTERDOWN) {
+                    m_state.isTouching = true;
+                } else if (msg == WM_POINTERUP) {
+                    m_state.isTouching = false;
+                }
+                // WM_POINTERUPDATE: keep isTouching as-is (hover stays false, drag stays true)
                 return true;
             }
             break;
