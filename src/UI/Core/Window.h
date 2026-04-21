@@ -68,7 +68,7 @@ protected:
     virtual DWORD GetDefaultStyle() const { return WS_OVERLAPPEDWINDOW; }
     virtual DWORD GetDefaultExStyle() const { return 0; }
     
-    LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
+    virtual LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
     
     HWND m_hwnd = nullptr;
     Window* m_parent = nullptr;

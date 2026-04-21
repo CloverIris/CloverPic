@@ -31,6 +31,7 @@ public:
     // Returns true if user clicked Create, false if cancelled
     bool ShowModal(Window* parent);
     void CloseDialog();
+    void CenterOnParent(Window* parent);
     
     bool WasConfirmed() const { return m_confirmed; }
     CanvasSettings GetSettings() const { return m_settings; }
@@ -43,9 +44,11 @@ protected:
     bool OnCreate() override;
     
     DWORD GetDefaultStyle() const override { 
-        return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU; 
+        return WS_POPUP | WS_CAPTION | WS_SYSMENU; 
     }
     DWORD GetDefaultExStyle() const override { return WS_EX_DLGMODALFRAME; }
+    
+    LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
     
 private:
     void CreateControls();
@@ -101,6 +104,7 @@ private:
     void OnUnitChanged(int index);
     void OnCreateClicked();
     void OnCancelClicked();
+    void OnCloseClicked();
     void SwapDimensions();
     
     float ConvertToPixels(float value, const String& unit, float dpi);

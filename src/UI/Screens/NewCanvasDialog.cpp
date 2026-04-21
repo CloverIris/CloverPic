@@ -10,17 +10,24 @@ namespace UI {
 NewCanvasDialog::NewCanvasDialog() = default;
 
 bool NewCanvasDialog::Initialize() {
-    Rect bounds(200, 150, 200 + DialogWidth, 150 + DialogHeight);
-    if (!Create(L"新建画布", bounds, nullptr)) {
-        return false;
-    }
+    // Window will be created in ShowModal with proper parent/owner
     return true;
 }
 
 bool NewCanvasDialog::ShowModal(Window* parent) {
+    // Create popup window owned by parent
+    if (!m_hwnd) {
+        Rect bounds(0, 0, DialogWidth, DialogHeight);
+        DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
+        DWORD exStyle = WS_EX_DLGMODALFRAME;
+        if (!Create(L"新建画布", bounds, parent, style, exStyle)) {
+            return false;
+        }
+        CenterOnParent(parent);
+    }
+    
     if (parent) {
         EnableWindow(parent->GetHandle(), FALSE);
-        ::SetParent(m_hwnd, parent->GetHandle());
     }
     
     SetVisible(true);
@@ -41,6 +48,37 @@ bool NewCanvasDialog::ShowModal(Window* parent) {
     }
     
     return m_confirmed;
+}
+
+void NewCanvasDialog::CenterOnParent(Window* parent) {
+    if (!m_hwnd) return;
+    
+    RECT rc;
+    GetWindowRect(m_hwnd, &rc);
+    int dlgW = rc.right - rc.left;
+    int dlgH = rc.bottom - rc.top;
+    
+    int cx, cy;
+    if (parent && parent->GetHandle()) {
+        RECT prc;
+        GetWindowRect(parent->GetHandle(), &prc);
+        cx = (prc.left + prc.right - dlgW) / 2;
+        cy = (prc.top + prc.bottom - dlgH) / 2;
+    } else {
+        cx = (GetSystemMetrics(SM_CXSCREEN) - dlgW) / 2;
+        cy = (GetSystemMetrics(SM_CYSCREEN) - dlgH) / 2;
+    }
+    
+    SetWindowPos(m_hwnd, nullptr, cx, cy, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+}
+
+LRESULT NewCanvasDialog::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CLOSE:
+            OnCloseClicked();
+            return 0;
+    }
+    return Window::HandleMessage(msg, wParam, lParam);
 }
 
 void NewCanvasDialog::CloseDialog() {
@@ -410,6 +448,10 @@ void NewCanvasDialog::OnCancelClicked() {
     if (m_onCancel) {
         m_onCancel();
     }
+}
+
+void NewCanvasDialog::OnCloseClicked() {
+    OnCancelClicked();
 }
 
 } // namespace UI
