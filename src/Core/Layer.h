@@ -60,8 +60,10 @@ public:
     void SetPixel(uint32_t x, uint32_t y, const Color& color);
     
     // Draw a brush stamp with tip shape, flow and wet mix
+    // If mask is non-null, only pixels where mask->GetPixel(x,y) > 0 are modified.
     void DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
-                         Render::BrushTipType tipType, float flow, float wetMix);
+                         Render::BrushTipType tipType, float flow, float wetMix,
+                         const class SelectionMask* mask = nullptr);
     
     // Stroke-based undo support
     void BeginStroke();

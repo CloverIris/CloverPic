@@ -7,6 +7,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 #include <cmath>
+#include <iostream>
 
 namespace VividPic {
 namespace UI {
@@ -23,9 +24,11 @@ bool HomeScreen::Initialize() {
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
     
-    // Use screen-relative sizing so the window looks good on any resolution
-    int width = static_cast<int>(screenW * 0.55f * Theme::Scale);
-    int height = static_cast<int>(screenH * 0.65f * Theme::Scale);
+    // Use screen-relative sizing so the window looks good on any resolution.
+    // Do NOT multiply by Theme::Scale here — Scale only affects internal UI
+    // element sizes (buttons, fonts), not the window frame itself.
+    int width = static_cast<int>(screenW * 0.55f);
+    int height = static_cast<int>(screenH * 0.65f);
     
     // Clamp to reasonable bounds (never smaller than 900x700, never larger than 1600x1100)
     if (width < Theme::GetSize(900)) width = Theme::GetSize(900);
@@ -40,7 +43,10 @@ bool HomeScreen::Initialize() {
         return false;
     }
     
-    // After window creation, query the actual monitor DPI and update Scale if needed
+    // After window creation, query the actual monitor DPI and log it.
+    // Do NOT override the global Theme::Scale here — Application::Initialize()
+    // already enforces a comfortable minimum. Changing it here would undo
+    // the intentional upscaling for 96-DPI displays.
     UINT winDpi = 96;
     if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
         using GetDpiForWindowFn = UINT(WINAPI*)(HWND);
@@ -49,15 +55,7 @@ bool HomeScreen::Initialize() {
             winDpi = pfn(m_hwnd);
         }
     }
-    if (winDpi >= 96) {
-        float newScale = static_cast<float>(winDpi) / 96.0f;
-        if (std::abs(newScale - Theme::Scale) > 0.1f) {
-            Theme::Scale = newScale;
-            // Re-layout with corrected scale
-            OnSize(GetClientBounds().GetSize());
-            Invalidate();
-        }
-    }
+    std::cout << "[HomeScreen] Window DPI: " << winDpi << ", Theme::Scale: " << Theme::Scale << std::endl;
     
     Application::GetInstance().SetMainWindow(this);
     return true;
@@ -265,7 +263,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
     
     HFONT titleFont = CreateFontW(Theme::GetFontSize(28), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+                                   CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
     
     RECT textRect = { Theme::GetSize(LeftMargin), Theme::GetSize(10), client.Width() - Theme::GetSize(LeftMargin), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
@@ -275,7 +273,7 @@ void HomeScreen::DrawTitle(HDC hdc) {
     SetTextColor(hdc, Theme::TextSecondary);
     HFONT verFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+                                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
     SelectObject(hdc, verFont);
     RECT verRect = { Theme::GetSize(LeftMargin) + Theme::GetSize(140), Theme::GetSize(20), Theme::GetSize(LeftMargin) + Theme::GetSize(240), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
     DrawTextW(hdc, L"v1.0.0", -1, &verRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
@@ -317,7 +315,7 @@ void HomeScreen::DrawStatusBar(HDC hdc) {
     
     HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     RECT langRect = { client.Width() - Theme::GetSize(200), m_statusBarRect.top + Theme::GetSize(4), client.Width() - Theme::GetSize(20), m_statusBarRect.bottom - Theme::GetSize(4) };

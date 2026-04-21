@@ -1,9 +1,11 @@
 #pragma once
 
 #include "UI/Core/Window.h"
+#include "UI/Core/ToolType.h"
 #include "Render/BrushEngine.h"
 #include "Tablet/TabletInput.h"
 #include "Core/LayerManager.h"
+#include "Core/SelectionMask.h"
 #include "UI/Core/Theme.h"
 #include <d2d1.h>
 
@@ -30,6 +32,9 @@ public:
     // Force re-composite and render
     void InvalidateCanvas();
     void ApplyBrush(float x, float y, float pressure);
+    Color PickColor(int x, int y);
+    void ApplyFill(float x, float y);
+    void ApplyGradient(float x1, float y1, float x2, float y2);
     
     // Layer access
     LayerManager* GetLayerManager() const { return m_layerManager; }
@@ -37,6 +42,15 @@ public:
     // Current brush color
     void SetBrushColor(const Color& color);
     Color GetBrushColor() const { return m_brushColor; }
+    
+    // Current tool
+    void SetCurrentTool(ToolType tool);
+    ToolType GetCurrentTool() const { return m_currentTool; }
+    
+    // Selection
+    SelectionMask* GetSelection() const { return m_selection.get(); }
+    void ClearSelection();
+    bool HasSelection() const;
     
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
@@ -60,7 +74,25 @@ private:
     void DrawCheckerboard(ID2D1RenderTarget* rt);
     void DrawCanvasBorder(ID2D1RenderTarget* rt);
     void DrawBrushCursor(ID2D1RenderTarget* rt);
+    void DrawSelectionOutline(ID2D1RenderTarget* rt);
     void UpdateCompositeBitmap();
+    
+    // Tool-specific helpers
+    void StartSelectionRect(float x, float y);
+    void UpdateSelectionRect(float x, float y);
+    void FinishSelectionRect();
+    void StartSelectionEllipse(float x, float y);
+    void UpdateSelectionEllipse(float x, float y);
+    void FinishSelectionEllipse();
+    void StartLasso(float x, float y);
+    void UpdateLasso(float x, float y);
+    void FinishLasso();
+    void StartMove(float x, float y);
+    void UpdateMove(float x, float y);
+    void FinishMove();
+    void StartGradient(float x, float y);
+    void UpdateGradient(float x, float y);
+    void FinishGradient();
     
     // D2D
     ID2D1HwndRenderTarget* m_renderTarget = nullptr;
@@ -95,6 +127,31 @@ private:
     
     // Brush color
     Color m_brushColor = Color::FromHex(0x000000);
+    
+    // Tool
+    ToolType m_currentTool = ToolType::Brush;
+    ToolType m_previousTool = ToolType::Brush; // For eyedropper restore
+    
+    // Selection
+    std::unique_ptr<SelectionMask> m_selection;
+    
+    // Tool interaction state
+    bool m_isDragging = false;         // Generic drag gesture active
+    float m_dragStartX = 0.0f;         // Canvas coords
+    float m_dragStartY = 0.0f;
+    float m_dragCurrentX = 0.0f;
+    float m_dragCurrentY = 0.0f;
+    std::vector<Point> m_lassoPoints;  // For lasso selection
+    
+    // Move tool state
+    struct MoveState {
+        std::vector<uint8_t> pixelBuffer; // RGBA copy of moved region
+        int srcX = 0, srcY = 0;
+        int width = 0, height = 0;
+        int offsetX = 0, offsetY = 0;
+        bool hasSelection = false;
+    };
+    MoveState m_moveState;
     
     // Tablet
     TabletInput::TabletManager* m_tablet = nullptr;

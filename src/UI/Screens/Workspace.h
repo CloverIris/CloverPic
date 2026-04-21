@@ -6,6 +6,8 @@
 #include "UI/Panels/ColorsPanel.h"
 #include "UI/Panels/BrushPanel.h"
 #include "UI/Panels/NavigatorPanel.h"
+#include "UI/Panels/ToolBar.h"
+#include "UI/Panels/BrushSizePanel.h"
 #include "Core/Project.h"
 #include <memory>
 
@@ -35,6 +37,7 @@ private:
     void LayoutPanels();
     void DrawMenuBar(HDC hdc);
     void DrawToolbar(HDC hdc);
+    void DrawStatusBar(HDC hdc);
     void SyncPanels();
     
     Ref<Project> m_project;
@@ -43,10 +46,14 @@ private:
     Scope<ColorsPanel> m_colorsPanel;
     Scope<BrushPanel> m_brushPanel;
     Scope<NavigatorPanel> m_navigatorPanel;
+    Scope<ToolBar> m_toolBar;
+    Scope<BrushSizePanel> m_brushSizePanel;
     
     // Layout metrics
-    static constexpr int MenuBarHeight = 24;
-    static constexpr int ToolbarHeight = 32;
+    static constexpr int MenuBarHeight = 26;
+    static constexpr int ToolbarHeight = 36;
+    static constexpr int ToolBarWidth = 40;
+    static constexpr int StatusBarHeight = 26;
     static constexpr int LeftPanelWidth = 240;
     static constexpr int RightPanelWidth = 240;
     

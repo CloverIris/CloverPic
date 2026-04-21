@@ -47,10 +47,10 @@ private:
     
     // Layout constants
     static constexpr int TitleHeight = 60;
-    static constexpr int StatusBarHeight = 32;
+    static constexpr int StatusBarHeight = 36;
     static constexpr int GroupSpacing = 24;
-    static constexpr int ButtonHeight = 32;
-    static constexpr int ButtonSpacing = 4;
+    static constexpr int ButtonHeight = 38;
+    static constexpr int ButtonSpacing = 8;
     static constexpr int LeftMargin = 40;
     static constexpr int ButtonWidth = 200;
     

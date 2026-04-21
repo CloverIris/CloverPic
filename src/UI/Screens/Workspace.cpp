@@ -4,6 +4,7 @@
 #include "Render/BrushPresetManager.h"
 #include "UI/Core/Theme.h"
 #include "Core/History.h"
+#include <sstream>
 
 namespace VividPic {
 namespace UI {
@@ -41,16 +42,26 @@ bool Workspace::OnCreate() {
 
     BuildMenus();
     
+    // Create left tool bar
+    m_toolBar = MakeScope<ToolBar>();
+    Rect toolBarRect(0, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), 
+                     Theme::GetSize(ToolBarWidth), 900);
+    m_toolBar->Create(L"", toolBarRect, this);
+    
     // Create CanvasView
     m_canvasView = MakeScope<CanvasView>();
-    Rect canvasRect(Theme::GetSize(LeftPanelWidth), Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), 
-                    1400 - Theme::GetSize(RightPanelWidth), 900 - Theme::GetSize(MenuBarHeight) - Theme::GetSize(ToolbarHeight));
+    int canvasLeft = Theme::GetSize(ToolBarWidth) + Theme::GetSize(LeftPanelWidth);
+    int canvasRight = 1400 - Theme::GetSize(RightPanelWidth);
+    int contentTop = Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight);
+    int contentBottom = 900 - Theme::GetSize(StatusBarHeight);
+    Rect canvasRect(canvasLeft, contentTop, canvasRight, contentBottom);
     m_canvasView->Create(L"", canvasRect, this);
     
     // Create left panels
+    int leftPanelX = Theme::GetSize(ToolBarWidth);
     m_colorsPanel = MakeScope<ColorsPanel>();
-    Rect colorsRect(0, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), Theme::GetSize(LeftPanelWidth), 
-                    Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(260));
+    Rect colorsRect(leftPanelX, contentTop, leftPanelX + Theme::GetSize(LeftPanelWidth), 
+                    contentTop + Theme::GetSize(260));
     m_colorsPanel->Create(L"", colorsRect, this);
     m_colorsPanel->SetOnColorChanged([this](const Color& color) {
         if (m_canvasView) {
@@ -59,8 +70,8 @@ bool Workspace::OnCreate() {
     });
     
     m_brushPanel = MakeScope<BrushPanel>();
-    Rect brushRect(0, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(260), Theme::GetSize(LeftPanelWidth),
-                   Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(260) + Theme::GetSize(240));
+    Rect brushRect(leftPanelX, contentTop + Theme::GetSize(260), leftPanelX + Theme::GetSize(LeftPanelWidth),
+                   contentTop + Theme::GetSize(260) + Theme::GetSize(240));
     m_brushPanel->Create(L"", brushRect, this);
     m_brushPanel->SetOnSizeChanged([this](float size) {
         Render::BrushEngine::GetInstance().SetSize(size);
@@ -89,15 +100,25 @@ bool Workspace::OnCreate() {
     });
     
     // Create right panels
+    int rightPanelX = 1400 - Theme::GetSize(RightPanelWidth);
     m_layersPanel = MakeScope<LayersPanel>();
-    Rect layersRect(1400 - Theme::GetSize(RightPanelWidth), Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), 
-                    1400, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(300));
+    Rect layersRect(rightPanelX, contentTop, 
+                    rightPanelX + Theme::GetSize(RightPanelWidth), contentTop + Theme::GetSize(300));
     m_layersPanel->Create(L"", layersRect, this);
     
     m_navigatorPanel = MakeScope<NavigatorPanel>();
-    Rect navRect(1400 - Theme::GetSize(RightPanelWidth), Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(300), 
-                 1400, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight) + Theme::GetSize(300) + Theme::GetSize(220));
+    Rect navRect(rightPanelX, contentTop + Theme::GetSize(300), 
+                 rightPanelX + Theme::GetSize(RightPanelWidth), contentTop + Theme::GetSize(300) + Theme::GetSize(180));
     m_navigatorPanel->Create(L"", navRect, this);
+    
+    m_brushSizePanel = MakeScope<BrushSizePanel>();
+    Rect bsRect(rightPanelX, contentTop + Theme::GetSize(300) + Theme::GetSize(180),
+                rightPanelX + Theme::GetSize(RightPanelWidth), contentBottom);
+    m_brushSizePanel->Create(L"", bsRect, this);
+    m_brushSizePanel->SetOnSizeChanged([this](float size) {
+        Render::BrushEngine::GetInstance().SetSize(size);
+        if (m_brushPanel) m_brushPanel->SetBrushSize(size);
+    });
     m_navigatorPanel->SetOnPanChanged([this](float x, float y) {
         if (m_canvasView) {
             m_canvasView->SetPan(x, y);
@@ -129,20 +150,30 @@ void Workspace::LayoutPanels() {
     Rect client = GetClientBounds();
     int rightPanelLeft = client.Width() - Theme::GetSize(RightPanelWidth);
     int contentTop = Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight);
-    int contentHeight = client.Height() - contentTop;
+    int contentBottom = client.Height() - Theme::GetSize(StatusBarHeight);
+    int contentHeight = contentBottom - contentTop;
+    int leftPanelX = Theme::GetSize(ToolBarWidth);
+    int canvasLeft = leftPanelX + Theme::GetSize(LeftPanelWidth);
+    
+    if (m_toolBar) {
+        Rect tbRect(0, contentTop, Theme::GetSize(ToolBarWidth), contentBottom);
+        m_toolBar->SetBounds(tbRect);
+    }
     
     if (m_canvasView) {
-        Rect canvasRect(Theme::GetSize(LeftPanelWidth), contentTop, rightPanelLeft, client.Height());
+        Rect canvasRect(canvasLeft, contentTop, rightPanelLeft, contentBottom);
         m_canvasView->SetBounds(canvasRect);
     }
     
     if (m_colorsPanel) {
-        Rect colorsRect(0, contentTop, Theme::GetSize(LeftPanelWidth), contentTop + Theme::GetSize(260));
+        Rect colorsRect(leftPanelX, contentTop, leftPanelX + Theme::GetSize(LeftPanelWidth), contentTop + Theme::GetSize(260));
         m_colorsPanel->SetBounds(colorsRect);
     }
     
     if (m_brushPanel) {
-        Rect brushRect(0, contentTop + Theme::GetSize(260), Theme::GetSize(LeftPanelWidth), contentTop + Theme::GetSize(500));
+        int brushBottom = contentTop + contentHeight * 3 / 5;
+        if (brushBottom < contentTop + Theme::GetSize(300)) brushBottom = contentTop + Theme::GetSize(300);
+        Rect brushRect(leftPanelX, contentTop + Theme::GetSize(260), leftPanelX + Theme::GetSize(LeftPanelWidth), brushBottom);
         m_brushPanel->SetBounds(brushRect);
     }
     
@@ -152,9 +183,18 @@ void Workspace::LayoutPanels() {
     }
     
     if (m_navigatorPanel) {
-        Rect navRect(rightPanelLeft, contentTop + contentHeight * 3 / 5, 
-                     client.Width(), client.Height());
+        int navTop = contentTop + contentHeight * 3 / 5;
+        int navBottom = navTop + contentHeight * 1 / 5;
+        if (navBottom > contentBottom - Theme::GetSize(100)) navBottom = contentBottom - Theme::GetSize(100);
+        Rect navRect(rightPanelLeft, navTop, client.Width(), navBottom);
         m_navigatorPanel->SetBounds(navRect);
+    }
+    
+    if (m_brushSizePanel) {
+        int bsTop = contentTop + contentHeight * 3 / 5 + contentHeight * 1 / 5;
+        if (bsTop > contentBottom - Theme::GetSize(80)) bsTop = contentBottom - Theme::GetSize(80);
+        Rect bsRect(rightPanelLeft, bsTop, client.Width(), contentBottom);
+        m_brushSizePanel->SetBounds(bsRect);
     }
 }
 
@@ -169,6 +209,7 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
     DrawMenuBar(hdc);
     DrawToolbar(hdc);
     DrawMenuDropdown(hdc);
+    DrawStatusBar(hdc);
 }
 
 void Workspace::DrawMenuBar(HDC hdc) {
@@ -336,8 +377,15 @@ void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
                 break;
             }
             case 2: { // Toggle B/E
-                // Placeholder
-                MessageBoxW(m_hwnd, L"笔刷/橡皮切换", L"工具", MB_OK);
+                if (m_canvasView) {
+                    auto current = m_canvasView->GetCurrentTool();
+                    if (current == ToolType::Brush) {
+                        m_canvasView->SetCurrentTool(ToolType::Eraser);
+                    } else {
+                        m_canvasView->SetCurrentTool(ToolType::Brush);
+                    }
+                    m_canvasView->InvalidateCanvas();
+                }
                 break;
             }
         }
@@ -494,6 +542,59 @@ void Workspace::DrawMenuDropdown(HDC hdc) {
     }
     SelectObject(hdc, oldFont);
     DeleteObject(itemFont);
+}
+
+void Workspace::DrawStatusBar(HDC hdc) {
+    Rect client = GetClientBounds();
+    int sbTop = client.Height() - Theme::GetSize(StatusBarHeight);
+    
+    // Background
+    HBRUSH bg = Theme::SolidBrush(Theme::BackgroundDark);
+    RECT sbRc = { 0, sbTop, client.Width(), client.Height() };
+    FillRect(hdc, &sbRc, bg);
+    DeleteObject(bg);
+    
+    // Top border
+    HPEN pen = Theme::Pen(Theme::BorderDark);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
+    MoveToEx(hdc, 0, sbTop, nullptr);
+    LineTo(hdc, client.Width(), sbTop);
+    SelectObject(hdc, oldPen);
+    DeleteObject(pen);
+    
+    // Left: tool info
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, Theme::TextSecondary);
+    HFONT font = Theme::GetFont(Theme::FontID::Small);
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
+    
+    std::wostringstream leftOss;
+    leftOss << L"笔刷: " << static_cast<int>(Render::BrushEngine::GetInstance().GetSize()) 
+            << L"px | 不透明度: " << static_cast<int>(Render::BrushEngine::GetInstance().GetOpacity() * 100) << L"%";
+    RECT leftRc = { Theme::GetSize(8), sbTop, client.Width() / 3, client.Height() };
+    DrawTextW(hdc, leftOss.str().c_str(), -1, &leftRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+    
+    // Center: canvas info
+    std::wostringstream centerOss;
+    if (m_project) {
+        const auto& c = m_project->GetCanvas();
+        centerOss << c.widthPx << L" x " << c.heightPx << L" px | " << c.dpi << L" dpi";
+    } else {
+        centerOss << L"未命名画布";
+    }
+    RECT centerRc = { client.Width() / 3, sbTop, client.Width() * 2 / 3, client.Height() };
+    DrawTextW(hdc, centerOss.str().c_str(), -1, &centerRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    
+    // Right: zoom
+    std::wostringstream rightOss;
+    if (m_canvasView) {
+        rightOss << static_cast<int>(m_canvasView->GetZoom() * 100) << L"%";
+    }
+    RECT rightRc = { client.Width() * 2 / 3, sbTop, client.Width() - Theme::GetSize(8), client.Height() };
+    DrawTextW(hdc, rightOss.str().c_str(), -1, &rightRc, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
+    
+    SelectObject(hdc, oldFont);
+    DeleteObject(font);
 }
 
 void Workspace::OnKeyDown(uint32_t keyCode) {

@@ -53,6 +53,10 @@ bool Application::Initialize() {
     // This prevents unreadable UI on systems with broken DPI reporting
     if (dpi < 96) dpi = 96;
     UI::Theme::Scale = static_cast<float>(dpi) / 96.0f;
+    // Enforce a minimum scale so the UI remains comfortable on 96 DPI displays.
+    // 1.5x is a sweet spot: buttons and text are clearly readable without
+    // making the window excessively large on 1080p screens.
+    if (UI::Theme::Scale < 1.5f) UI::Theme::Scale = 1.5f;
     std::cout << "[VividPic] System DPI: " << dpi << ", Theme::Scale: " << UI::Theme::Scale << std::endl;
     
     // Initialize GDI+

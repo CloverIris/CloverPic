@@ -1,4 +1,5 @@
 #include "Core/Layer.h"
+#include "Core/SelectionMask.h"
 #include "Core/History.h"
 #include "Render/TilePool.h"
 #include <cmath>
@@ -220,7 +221,8 @@ void Layer::CancelStroke() {
 }
 
 void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
-                              Render::BrushTipType tipType, float flow, float wetMix) {
+                              Render::BrushTipType tipType, float flow, float wetMix,
+                              const SelectionMask* mask) {
     if (m_locked) return;
     if (radius < 0.5f) return;
 
@@ -235,6 +237,9 @@ void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color,
 
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
+            // Selection mask check
+            if (mask && mask->GetPixel(static_cast<uint32_t>(x), static_cast<uint32_t>(y)) == 0) continue;
+
             float dx = static_cast<float>(x) - cx + 0.5f;
             float dy = static_cast<float>(y) - cy + 0.5f;
 

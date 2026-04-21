@@ -51,9 +51,9 @@ void Button::OnPaint(HDC hdc, const Rect& clip) {
     if (m_hasSizePreset) {
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, Theme::TextSecondary);
-        HFONT font = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+                                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
         
         String presetText = std::to_wstring(m_sizePreset);
@@ -70,9 +70,9 @@ void Button::OnPaint(HDC hdc, const Rect& clip) {
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, Theme::TextPrimary);
         
-        HFONT font = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                  DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+                                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
         
         RECT textRect = { client.left + leftOffset, client.top, client.right - 8, client.bottom };
