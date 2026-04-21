@@ -33,6 +33,22 @@ bool Application::Initialize() {
         }
     }
     
+    // Detect system DPI and set global UI scale
+    UINT dpi = 96;
+    if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
+        using GetDpiForSystemFn = UINT(WINAPI*)();
+        auto pfn = reinterpret_cast<GetDpiForSystemFn>(GetProcAddress(hUser32, "GetDpiForSystem"));
+        if (pfn) {
+            dpi = pfn();
+        }
+    }
+    if (dpi == 96) {
+        HDC hdc = GetDC(nullptr);
+        dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+        ReleaseDC(nullptr, hdc);
+    }
+    UI::Theme::Scale = static_cast<float>(dpi) / 96.0f;
+    
     // Initialize GDI+
     Gdiplus::GdiplusStartupInput input;
     input.GdiplusVersion = 1;
@@ -68,6 +84,7 @@ void Application::Shutdown() {
         Gdiplus::GdiplusShutdown(m_gdiplusToken);
         m_gdiplusToken = 0;
     }
+    FreeConsole();
 }
 
 void Application::SetMainWindow(UI::Window* window) {

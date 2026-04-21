@@ -13,7 +13,13 @@ namespace UI {
 HomeScreen::HomeScreen() = default;
 
 bool HomeScreen::Initialize() {
-    Rect bounds(100, 100, 900, 700);
+    int width = 900;
+    int height = 700;
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    int x = (screenW - width) / 2;
+    int y = (screenH - height) / 2;
+    Rect bounds(x, y, width, height);
     if (!Create(L"ViVidPic v1.0.0", bounds, nullptr)) {
         return false;
     }

@@ -8,6 +8,7 @@ namespace UI {
 class ColorsPanel : public Window {
 public:
     ColorsPanel();
+    ~ColorsPanel();
     
     void SetOnColorChanged(std::function<void(const Color&)> callback) { m_onColorChanged = callback; }
     Color GetCurrentColor() const { return m_currentColor; }
@@ -27,6 +28,10 @@ private:
     void DrawColorHistory(HDC hdc);
     void DrawCurrentColor(HDC hdc);
     void UpdateColorFromPosition(const Point& pos);
+    
+    void RebuildSVBitmap();
+    void RebuildHueBitmap();
+    void CleanupBitmaps();
     
     Color HsvToRgb(float h, float s, float v);
     void RgbToHsv(const Color& rgb, float& h, float& s, float& v);
@@ -52,6 +57,22 @@ private:
     std::function<void(const Color&)> m_onColorChanged;
     
     void AddToHistory(const Color& color);
+    
+    // DIB pre-rendered bitmaps for smooth painting
+    HDC m_svDC = nullptr;
+    HBITMAP m_svBitmap = nullptr;
+    HBITMAP m_svOldBitmap = nullptr;
+    uint32_t* m_svPixels = nullptr;
+    int m_svBitmapSize = 0;
+    
+    HDC m_hueDC = nullptr;
+    HBITMAP m_hueBitmap = nullptr;
+    HBITMAP m_hueOldBitmap = nullptr;
+    uint32_t* m_huePixels = nullptr;
+    int m_hueBitmapWidth = 0;
+    int m_hueBitmapHeight = 0;
+    
+    float m_lastHue = -1.0f; // tracks if hue changed to rebuild SV bitmap
 };
 
 } // namespace UI

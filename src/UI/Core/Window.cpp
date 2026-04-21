@@ -226,6 +226,22 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         
         case WM_DESTROY: {
             OnDestroy();
+            // If this is a top-level window and no other visible top-level
+            // windows remain in this thread, post WM_QUIT to end the app.
+            if (!m_parent && m_hwnd) {
+                bool hasOtherVisible = false;
+                EnumThreadWindows(GetCurrentThreadId(),
+                    [](HWND hwnd, LPARAM lParam) -> BOOL {
+                        if (IsWindowVisible(hwnd) && ::GetParent(hwnd) == nullptr) {
+                            *reinterpret_cast<bool*>(lParam) = true;
+                            return FALSE;
+                        }
+                        return TRUE;
+                    }, reinterpret_cast<LPARAM>(&hasOtherVisible));
+                if (!hasOtherVisible) {
+                    PostQuitMessage(0);
+                }
+            }
             return 0;
         }
         
