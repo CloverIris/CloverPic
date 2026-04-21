@@ -33,8 +33,10 @@ bool WindowsInkDriver::ProcessPointerMessage(UINT msg, WPARAM wParam, LPARAM lPa
 
             POINTER_PEN_INFO penInfo = {};
             if (GetPointerPenInfo(GET_POINTERID_WPARAM(wParam), &penInfo)) {
-                m_state.x = static_cast<float>(penInfo.pointerInfo.ptPixelLocation.x);
-                m_state.y = static_cast<float>(penInfo.pointerInfo.ptPixelLocation.y);
+                POINT pt = { penInfo.pointerInfo.ptPixelLocation.x, penInfo.pointerInfo.ptPixelLocation.y };
+                if (m_hwnd) ScreenToClient(m_hwnd, &pt);
+                m_state.x = static_cast<float>(pt.x);
+                m_state.y = static_cast<float>(pt.y);
                 m_state.pressure = static_cast<float>(penInfo.pressure) / 1024.0f;
                 m_state.tiltX = static_cast<float>(penInfo.tiltX) / 10.0f;
                 m_state.tiltY = static_cast<float>(penInfo.tiltY) / 10.0f;
@@ -158,9 +160,11 @@ bool WinTabDriver::ProcessPacket(WPARAM wParam, LPARAM lParam) {
         return false;
     }
 
-    // Map to screen coordinates (already done by WinTab context setup)
-    m_state.x = static_cast<float>(packet.pkX);
-    m_state.y = static_cast<float>(packet.pkY);
+    // Map to screen coordinates (already done by WinTab context setup), then to client
+    POINT pt = { static_cast<LONG>(packet.pkX), static_cast<LONG>(packet.pkY) };
+    if (m_hwnd) ScreenToClient(m_hwnd, &pt);
+    m_state.x = static_cast<float>(pt.x);
+    m_state.y = static_cast<float>(pt.y);
 
     // Normalize pressure
     if (m_maxPressure > 0) {

@@ -393,6 +393,10 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         Invalidate();
                         return 0;
                     } else if (msg == WM_POINTERUPDATE) {
+                        // Track pen hover position for brush preview ring
+                        m_cursorScreenX = state.x;
+                        m_cursorScreenY = state.y;
+                        m_cursorInside = true;
                         if (state.isTouching && m_isDrawing) {
                             float canvasX, canvasY;
                             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
@@ -400,8 +404,8 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                             m_lastCanvasX = canvasX;
                             m_lastCanvasY = canvasY;
                             m_lastPressure = state.pressure;
-                            Invalidate();
                         }
+                        Invalidate();
                         return 0;
                     } else if (msg == WM_POINTERUP) {
                         m_isDrawing = false;
@@ -409,6 +413,13 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         return 0;
                     }
                 }
+            }
+            break;
+            
+        case WM_SETCURSOR:
+            if (LOWORD(lParam) == HTCLIENT) {
+                SetCursor(nullptr);
+                return TRUE;
             }
             break;
             
