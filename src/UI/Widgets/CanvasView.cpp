@@ -320,13 +320,14 @@ void CanvasView::ApplyBrush(float x, float y, float pressure) {
     
     auto& brush = Render::BrushEngine::GetInstance();
     brush.SetColor(m_brushColor);
-    
+
     auto stamps = brush.GenerateStamps(m_lastCanvasX, m_lastCanvasY, m_lastPressure, x, y, pressure);
-    
+
     for (const auto& stamp : stamps) {
         float size = brush.GetSize() * (0.2f + 0.8f * stamp.pressure);
         float opacity = brush.GetOpacity() * stamp.pressure;
-        layer->DrawBrushStamp(stamp.x, stamp.y, size * 0.5f, m_brushColor, opacity);
+        layer->DrawBrushStamp(stamp.x, stamp.y, size * 0.5f, m_brushColor, opacity,
+                              brush.GetTipType(), brush.GetFlow(), brush.GetWetMix());
     }
     
     m_layerManager->MarkCompositeDirty();

@@ -1,6 +1,7 @@
 #include "UI/Screens/Workspace.h"
 #include "App/Application.h"
 #include "Render/BrushEngine.h"
+#include "Render/BrushPresetManager.h"
 #include "UI/Core/Theme.h"
 
 namespace VividPic {
@@ -34,6 +35,9 @@ void Workspace::SetProject(Ref<Project> project) {
 }
 
 bool Workspace::OnCreate() {
+    // Initialize brush preset manager
+    Render::BrushPresetManager::GetInstance().Initialize();
+
     BuildMenus();
     
     // Create CanvasView
@@ -54,14 +58,33 @@ bool Workspace::OnCreate() {
     });
     
     m_brushPanel = MakeScope<BrushPanel>();
-    Rect brushRect(0, MenuBarHeight + ToolbarHeight + 260, LeftPanelWidth, 
-                   MenuBarHeight + ToolbarHeight + 260 + 160);
+    Rect brushRect(0, MenuBarHeight + ToolbarHeight + 260, LeftPanelWidth,
+                   MenuBarHeight + ToolbarHeight + 260 + 240);
     m_brushPanel->Create(L"", brushRect, this);
     m_brushPanel->SetOnSizeChanged([this](float size) {
         Render::BrushEngine::GetInstance().SetSize(size);
     });
     m_brushPanel->SetOnOpacityChanged([this](float opacity) {
         Render::BrushEngine::GetInstance().SetOpacity(opacity);
+    });
+    m_brushPanel->SetOnFlowChanged([this](float flow) {
+        Render::BrushEngine::GetInstance().SetFlow(flow);
+    });
+    m_brushPanel->SetOnSpacingChanged([this](float spacing) {
+        Render::BrushEngine::GetInstance().SetSpacing(spacing);
+    });
+    m_brushPanel->SetOnTipTypeChanged([this](Render::BrushTipType type) {
+        Render::BrushEngine::GetInstance().SetTipType(type);
+    });
+    m_brushPanel->SetOnPresetSelected([this](int index) {
+        Render::BrushPresetManager::GetInstance().ApplyPreset(index);
+        // Sync panel UI back from engine
+        auto& engine = Render::BrushEngine::GetInstance();
+        m_brushPanel->SetBrushSize(engine.GetSize());
+        m_brushPanel->SetBrushOpacity(engine.GetOpacity());
+        m_brushPanel->SetBrushFlow(engine.GetFlow());
+        m_brushPanel->SetBrushSpacing(engine.GetSpacing());
+        m_brushPanel->SetTipType(engine.GetTipType());
     });
     
     // Create right panels
@@ -112,7 +135,7 @@ void Workspace::LayoutPanels() {
     }
     
     if (m_brushPanel) {
-        Rect brushRect(0, contentTop + 260, LeftPanelWidth, contentTop + 420);
+        Rect brushRect(0, contentTop + 260, LeftPanelWidth, contentTop + 500);
         m_brushPanel->SetBounds(brushRect);
     }
     

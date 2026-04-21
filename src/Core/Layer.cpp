@@ -2,6 +2,86 @@
 #include "Render/TilePool.h"
 #include <cmath>
 #include <cstring>
+#include <algorithm>
+
+// Simple procedural noise texture for brush tip (64x64)
+static float s_noiseTexture[64 * 64];
+static bool s_noiseInitialized = false;
+
+static void InitializeNoiseTexture() {
+    if (s_noiseInitialized) return;
+    s_noiseInitialized = true;
+    // Simple value noise using a hash function
+    auto hash = [](int x, int y) -> float {
+        int n = x + y * 57;
+        n = (n << 13) ^ n;
+        return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f) * 0.5f + 0.5f;
+    };
+    for (int y = 0; y < 64; ++y) {
+        for (int x = 0; x < 64; ++x) {
+            s_noiseTexture[y * 64 + x] = hash(x, y);
+        }
+    }
+}
+
+static float SampleNoise(float u, float v) {
+    u = std::fmod(std::abs(u), 1.0f) * 63.0f;
+    v = std::fmod(std::abs(v), 1.0f) * 63.0f;
+    int x0 = static_cast<int>(u);
+    int y0 = static_cast<int>(v);
+    int x1 = std::min(x0 + 1, 63);
+    int y1 = std::min(y0 + 1, 63);
+    float fx = u - x0;
+    float fy = v - y0;
+    float v00 = s_noiseTexture[y0 * 64 + x0];
+    float v10 = s_noiseTexture[y0 * 64 + x1];
+    float v01 = s_noiseTexture[y1 * 64 + x0];
+    float v11 = s_noiseTexture[y1 * 64 + x1];
+    return v00 * (1.0f - fx) * (1.0f - fy) + v10 * fx * (1.0f - fy)
+         + v01 * (1.0f - fx) * fy + v11 * fx * fy;
+}
+
+static float ComputeTipFalloff(float dx, float dy, float radius, VividPic::Render::BrushTipType tipType, float textureScale) {
+    float dist = std::sqrt(dx * dx + dy * dy);
+    if (dist >= radius) return 0.0f;
+    
+    switch (tipType) {
+        case VividPic::Render::BrushTipType::RoundHard: {
+            float t = dist / radius;
+            return 1.0f - std::pow(t, 8.0f); // Very sharp edge
+        }
+        case VividPic::Render::BrushTipType::RoundSoft: {
+            float t = dist / radius;
+            return std::cos(t * 3.14159265f * 0.5f); // Cosine falloff
+        }
+        case VividPic::Render::BrushTipType::Flat: {
+            // Elliptical flat tip
+            float major = radius;
+            float minor = radius * 0.35f;
+            float d = (dx * dx) / (major * major) + (dy * dy) / (minor * minor);
+            if (d >= 1.0f) return 0.0f;
+            return 1.0f - std::pow(d, 4.0f);
+        }
+        case VividPic::Render::BrushTipType::Bristle: {
+            // Multiple fine lines
+            float base = std::cos(dist / radius * 3.14159265f * 0.5f);
+            if (base <= 0.0f) return 0.0f;
+            // Add fine streaks based on angle
+            float angle = std::atan2(dy, dx);
+            float streak = std::sin(angle * 8.0f + dist * 0.5f);
+            return base * (0.6f + 0.4f * streak);
+        }
+        case VividPic::Render::BrushTipType::Texture: {
+            float base = std::cos(dist / radius * 3.14159265f * 0.5f);
+            if (base <= 0.0f) return 0.0f;
+            float nu = (dx / radius + 1.0f) * 0.5f * textureScale;
+            float nv = (dy / radius + 1.0f) * 0.5f * textureScale;
+            float nval = SampleNoise(nu, nv);
+            return base * (0.5f + 0.5f * nval);
+        }
+    }
+    return 0.0f;
+}
 
 namespace VividPic {
 
@@ -117,36 +197,76 @@ void Layer::SetPixel(uint32_t x, uint32_t y, const Color& color) {
     MarkDirty();
 }
 
-void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity) {
+void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
+                              Render::BrushTipType tipType, float flow, float wetMix) {
     if (m_locked) return;
     if (radius < 0.5f) return;
-    
+
+    InitializeNoiseTexture();
+
     int x0 = static_cast<int>(std::max(0.0f, cx - radius));
     int y0 = static_cast<int>(std::max(0.0f, cy - radius));
     int x1 = static_cast<int>(std::min(static_cast<float>(m_canvasWidth - 1), cx + radius));
     int y1 = static_cast<int>(std::min(static_cast<float>(m_canvasHeight - 1), cy + radius));
-    
-    float radiusSq = radius * radius;
-    
+
     DetachForWrite();
-    
+
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
             float dx = static_cast<float>(x) - cx + 0.5f;
             float dy = static_cast<float>(y) - cy + 0.5f;
-            float distSq = dx * dx + dy * dy;
-            
-            if (distSq <= radiusSq) {
-                float falloff = 1.0f - std::sqrt(distSq) / radius;
-                falloff = std::clamp(falloff * 2.0f, 0.0f, 1.0f); // Sharper edge
-                
-                Color stampColor = color;
-                stampColor.a = static_cast<uint8_t>(stampColor.a * falloff * opacity);
-                
-                SetPixel(static_cast<uint32_t>(x), static_cast<uint32_t>(y), stampColor);
+
+            float falloff = ComputeTipFalloff(dx, dy, radius, tipType, 1.0f);
+            if (falloff <= 0.0f) continue;
+
+            float alpha = (color.a / 255.0f) * falloff * opacity * flow;
+            if (alpha <= 0.01f) continue;
+            if (alpha > 1.0f) alpha = 1.0f;
+
+            uint32_t gridX = static_cast<uint32_t>(x) / Render::TILE_SIZE;
+            uint32_t gridY = static_cast<uint32_t>(y) / Render::TILE_SIZE;
+            uint32_t localX = static_cast<uint32_t>(x) % Render::TILE_SIZE;
+            uint32_t localY = static_cast<uint32_t>(y) % Render::TILE_SIZE;
+
+            if (gridX >= m_gridWidth || gridY >= m_gridHeight) continue;
+
+            Render::Tile* tile = AcquireTile(gridX, gridY);
+            if (!tile) continue;
+
+            uint32_t idx = (localY * Render::TILE_SIZE + localX) * 4;
+
+            // Read destination
+            Color dst(tile->data[idx + 2], tile->data[idx + 1], tile->data[idx], tile->data[idx + 3]);
+
+            // Wet mix: blend brush color with existing pixel color
+            Color src = color;
+            if (wetMix > 0.0f && dst.a > 0) {
+                src.r = static_cast<uint8_t>(src.r * (1.0f - wetMix) + dst.r * wetMix);
+                src.g = static_cast<uint8_t>(src.g * (1.0f - wetMix) + dst.g * wetMix);
+                src.b = static_cast<uint8_t>(src.b * (1.0f - wetMix) + dst.b * wetMix);
+            }
+
+            if (m_protectAlpha) {
+                uint8_t oldA = tile->data[idx + 3];
+                tile->data[idx + 2] = static_cast<uint8_t>(dst.r + (src.r - dst.r) * alpha);
+                tile->data[idx + 1] = static_cast<uint8_t>(dst.g + (src.g - dst.g) * alpha);
+                tile->data[idx]     = static_cast<uint8_t>(dst.b + (src.b - dst.b) * alpha);
+                tile->data[idx + 3] = oldA;
+            } else {
+                // Proper alpha blend
+                float sa = alpha;
+                float da = dst.a / 255.0f;
+                float outA = sa + da * (1.0f - sa);
+                if (outA > 0.001f) {
+                    tile->data[idx + 2] = static_cast<uint8_t>(std::clamp((src.r * sa + dst.r * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
+                    tile->data[idx + 1] = static_cast<uint8_t>(std::clamp((src.g * sa + dst.g * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
+                    tile->data[idx]     = static_cast<uint8_t>(std::clamp((src.b * sa + dst.b * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
+                    tile->data[idx + 3] = static_cast<uint8_t>(std::clamp(outA * 255.0f, 0.0f, 255.0f));
+                }
             }
         }
     }
+    MarkDirty();
 }
 
 Render::Tile* Layer::GetTile(uint32_t gridX, uint32_t gridY) const {

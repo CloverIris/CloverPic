@@ -58,8 +58,37 @@ struct WintabLogContext {
 };
 
 static constexpr UINT WT_PACKET_MSG = 0x7FF0;
+static constexpr UINT WTI_DEFCONTEXT = 3;
 static constexpr UINT WTI_DEVICES = 100;
 static constexpr UINT DVC_NAME = 1;
+static constexpr UINT DVC_NPRESSURE = 15;
+static constexpr UINT DVC_TPRESSURE = 16;
+static constexpr UINT DVC_ORIENTATION = 17;
+static constexpr UINT DVC_ROTATION = 18;
+
+// WinTab data packet structure (self-contained)
+struct ORIENTATION {
+    int orAzimuth;
+    int orAltitude;
+    int orTwist;
+};
+
+struct WintabPacket {
+    HCTX pkContext;
+    UINT pkStatus;
+    LONG pkTime;
+    DWORD pkChanged;
+    UINT pkSerialNumber;
+    UINT pkCursor;
+    DWORD pkButtons;
+    LONG pkX;
+    LONG pkY;
+    LONG pkZ;
+    UINT pkNormalPressure;
+    UINT pkTangentPressure;
+    ORIENTATION pkOrientation;
+    DWORD pkRotation; // fw 1.1
+};
 
 // Windows Ink API driver (Windows 8+ Pointer API)
 class WindowsInkDriver {
@@ -86,6 +115,7 @@ public:
     
     bool Initialize(HWND hwnd);
     bool LoadWintab32();
+    bool OpenContext(HWND hwnd);
     void UnloadWintab32();
     bool ProcessPacket(WPARAM wParam, LPARAM lParam);
     TabletState GetState() const { return m_state; }
@@ -102,14 +132,19 @@ private:
     using WTCLOSE_Fn = BOOL(WINAPI*)(HCTX);
     using WTPACKET_Fn = BOOL(WINAPI*)(HCTX, UINT, LPVOID);
     using WTENABLE_Fn = BOOL(WINAPI*)(HCTX, BOOL);
+    using WTGETA_Fn = BOOL(WINAPI*)(HCTX, LPVOID);
+    using WTDEFCONTEXTA_Fn = BOOL(WINAPI*)(UINT, UINT, LPVOID);
     
     WTINFOA_Fn pWTInfoA = nullptr;
     WTOPENA_Fn pWTOpenA = nullptr;
     WTCLOSE_Fn pWTClose = nullptr;
     WTPACKET_Fn pWTPacket = nullptr;
     WTENABLE_Fn pWTEnable = nullptr;
-    
+    WTGETA_Fn pWTGetA = nullptr;
+
     HCTX m_hCtx = nullptr;
+    UINT m_maxPressure = 2048;
+    bool m_contextOpened = false;
 };
 
 // Unified tablet manager

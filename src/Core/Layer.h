@@ -3,6 +3,7 @@
 #include "Utils/Types.h"
 #include "Core/BlendMode.h"
 #include "Render/TilePool.h"
+#include "Render/BrushPreset.h"
 
 namespace VividPic {
 
@@ -58,8 +59,9 @@ public:
     // Write pixel at canvas coordinates (acquires tiles as needed)
     void SetPixel(uint32_t x, uint32_t y, const Color& color);
     
-    // Draw a circular brush stamp
-    void DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity);
+    // Draw a brush stamp with tip shape, flow and wet mix
+    void DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
+                         Render::BrushTipType tipType, float flow, float wetMix);
     
     // Tile access for compositing
     uint32_t GetGridWidth() const { return m_gridWidth; }
