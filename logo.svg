@@ -1,0 +1,38 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景 -->
+  <rect width="320" height="320" rx="64" fill="#2B2B2B"/>
+  <rect x="16" y="16" width="288" height="288" rx="52" fill="#323232"/>
+
+  <!-- 画板 -->
+  <rect x="56" y="64" width="148" height="116" rx="12" fill="#3C3C3C" stroke="#4A4A4A" stroke-width="3"/>
+  <rect x="68" y="76" width="124" height="92" rx="6" fill="#2B2B2B"/>
+
+  <!-- 抽象色彩笔触 -->
+  <path d="M80 140 Q100 110 120 130 T160 120 T200 135" stroke="url(#paintGradient)" stroke-width="14" stroke-linecap="round" fill="none"/>
+
+  <!-- 画笔 -->
+  <g transform="translate(210, 80) rotate(35)">
+    <rect x="0" y="0" width="22" height="85" rx="5" fill="#555555"/>
+    <rect x="-2" y="65" width="26" height="7" rx="2" fill="#777777"/>
+    <path d="M2 72 L11 108 L20 72 Z" fill="#CCCCCC"/>
+    <path d="M6 88 L11 108 L16 88 Z" fill="#0078D7"/>
+  </g>
+
+  <!-- 颜料飞溅 -->
+  <circle cx="78" cy="205" r="9" fill="#E74C3C" opacity="0.9"/>
+  <circle cx="118" cy="220" r="6" fill="#F1C40F" opacity="0.9"/>
+  <circle cx="158" cy="200" r="8" fill="#2ECC71" opacity="0.9"/>
+  <circle cx="198" cy="225" r="7" fill="#9B59B6" opacity="0.9"/>
+  <circle cx="238" cy="205" r="9" fill="#0078D7" opacity="0.9"/>
+
+  <!-- 品牌名 -->
+  <text x="160" y="270" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei UI', Arial, sans-serif" font-size="30" font-weight="bold" fill="#E0E0E0" letter-spacing="3">VividPic</text>
+
+  <defs>
+    <linearGradient id="paintGradient" x1="80" y1="140" x2="200" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0078D7"/>
+      <stop offset="50%" stop-color="#1C97EA"/>
+      <stop offset="100%" stop-color="#2ECC71"/>
+    </linearGradient>
+  </defs>
+</svg>
