@@ -380,7 +380,7 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_POINTERUP:
             if (m_tablet) {
                 bool processed = m_tablet->ProcessMessage(msg, wParam, lParam);
-                if (processed || m_tablet->GetActiveDriver() == TabletInput::TabletManager::DriverType::WindowsInk) {
+                if (processed) {
                     TabletInput::TabletState state = m_tablet->GetState();
                     if (msg == WM_POINTERDOWN) {
                         m_isDrawing = true;
