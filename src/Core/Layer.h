@@ -63,6 +63,12 @@ public:
     void DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
                          Render::BrushTipType tipType, float flow, float wetMix);
     
+    // Stroke-based undo support
+    void BeginStroke();
+    void EndStroke();
+    void CancelStroke();
+    bool IsInStroke() const { return m_currentUndoItem != nullptr; }
+    
     // Tile access for compositing
     uint32_t GetGridWidth() const { return m_gridWidth; }
     uint32_t GetGridHeight() const { return m_gridHeight; }
@@ -108,6 +114,9 @@ private:
     
     bool m_dirty = true;
     std::vector<uint8_t> m_thumbnail; // RGBA32 thumbnail data
+    
+    // Current stroke undo item (active during a drawing stroke)
+    std::unique_ptr<class StrokeUndoItem> m_currentUndoItem;
     
     void InitializeGrid();
     void ReleaseAllTiles();

@@ -1,4 +1,5 @@
 #include "Core/Layer.h"
+#include "Core/History.h"
 #include "Render/TilePool.h"
 #include <cmath>
 #include <cstring>
@@ -197,6 +198,26 @@ void Layer::SetPixel(uint32_t x, uint32_t y, const Color& color) {
     MarkDirty();
 }
 
+void Layer::BeginStroke() {
+    if (m_currentUndoItem) {
+        CancelStroke();
+    }
+    m_currentUndoItem = std::make_unique<StrokeUndoItem>(this);
+}
+
+void Layer::EndStroke() {
+    if (m_currentUndoItem) {
+        if (!m_currentUndoItem->IsEmpty()) {
+            HistoryManager::GetInstance().Push(std::move(m_currentUndoItem));
+        }
+        m_currentUndoItem.reset();
+    }
+}
+
+void Layer::CancelStroke() {
+    m_currentUndoItem.reset();
+}
+
 void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
                               Render::BrushTipType tipType, float flow, float wetMix) {
     if (m_locked) return;
@@ -232,6 +253,11 @@ void Layer::DrawBrushStamp(float cx, float cy, float radius, const Color& color,
 
             Render::Tile* tile = AcquireTile(gridX, gridY);
             if (!tile) continue;
+
+            // Undo snapshot: capture tile before first modification in this stroke
+            if (m_currentUndoItem && !m_currentUndoItem->HasTile(gridX, gridY)) {
+                m_currentUndoItem->CaptureTile(gridX, gridY, tile->data, Render::TILE_BYTES);
+            }
 
             uint32_t idx = (localY * Render::TILE_SIZE + localX) * 4;
 

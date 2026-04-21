@@ -3,6 +3,7 @@
 #include "Render/BrushEngine.h"
 #include "Render/BrushPresetManager.h"
 #include "UI/Core/Theme.h"
+#include "Core/History.h"
 
 namespace VividPic {
 namespace UI {
@@ -256,9 +257,12 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
         case 'Z':
             if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
                 if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
-                    MessageBoxW(m_hwnd, L"重做 (M6 实现)", L"编辑", MB_OK);
+                    HistoryManager::GetInstance().Redo();
                 } else {
-                    MessageBoxW(m_hwnd, L"撤销 (M6 实现)", L"编辑", MB_OK);
+                    HistoryManager::GetInstance().Undo();
+                }
+                if (m_canvasView) {
+                    m_canvasView->InvalidateCanvas();
                 }
             }
             break;

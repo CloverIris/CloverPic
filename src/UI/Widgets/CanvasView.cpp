@@ -3,6 +3,8 @@
 #include "App/Application.h"
 #include <windowsx.h>
 #include <algorithm>
+#include <iostream>
+#include <iomanip>
 
 namespace VividPic {
 namespace UI {
@@ -292,6 +294,8 @@ void CanvasView::OnMouseMove(const Point& pos) {
         if (state.isTouching) {
             float canvasX, canvasY;
             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
+            std::cout << "[CV] OnMouseMove(PEN) draw canvas=" << canvasX << "," << canvasY
+                      << " p=" << state.pressure << " last=" << m_lastCanvasX << "," << m_lastCanvasY << std::endl;
             ApplyBrush(canvasX, canvasY, state.pressure);
             m_lastCanvasX = canvasX;
             m_lastCanvasY = canvasY;
@@ -305,6 +309,8 @@ void CanvasView::OnMouseMove(const Point& pos) {
     if (m_isDrawing) {
         float canvasX, canvasY;
         ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
+        std::cout << "[CV] OnMouseMove(MOUSE) draw canvas=" << canvasX << "," << canvasY
+                  << " last=" << m_lastCanvasX << "," << m_lastCanvasY << std::endl;
         ApplyBrush(canvasX, canvasY, m_lastPressure);
         m_lastCanvasX = canvasX;
         m_lastCanvasY = canvasY;
@@ -326,12 +332,18 @@ void CanvasView::OnMouseDown(const Point& pos, MouseButton button) {
     if (!m_layerManager) return;
     
     if (button == MouseButton::Left) {
-        m_isDrawing = true;
         float canvasX, canvasY;
         ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
+        std::cout << "[CV] OnMouseDown MOUSE pos=" << pos.x << "," << pos.y
+                  << " canvas=" << canvasX << "," << canvasY
+                  << " lastBefore=" << m_lastCanvasX << "," << m_lastCanvasY
+                  << " isDrawing=" << m_isDrawing << std::endl;
+        m_isDrawing = true;
         m_lastCanvasX = canvasX;
         m_lastCanvasY = canvasY;
         m_lastPressure = 1.0f;
+        auto layer = m_layerManager->GetActiveLayer();
+        if (layer) layer->BeginStroke();
         ApplyBrush(canvasX, canvasY, m_lastPressure);
         Invalidate();
     } else if (button == MouseButton::Middle) {
@@ -342,7 +354,10 @@ void CanvasView::OnMouseDown(const Point& pos, MouseButton button) {
 
 void CanvasView::OnMouseUp(const Point& pos, MouseButton button) {
     if (button == MouseButton::Left) {
+        std::cout << "[CV] OnMouseUp MOUSE isDrawing=false" << std::endl;
         m_isDrawing = false;
+        auto layer = m_layerManager->GetActiveLayer();
+        if (layer) layer->EndStroke();
     } else if (button == MouseButton::Middle) {
         m_isPanning = false;
     }
@@ -383,12 +398,19 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                 if (processed) {
                     TabletInput::TabletState state = m_tablet->GetState();
                     if (msg == WM_POINTERDOWN) {
+                        std::cout << "[CV] WM_POINTERDOWN processed=" << processed
+                                  << " state.x=" << state.x << " y=" << state.y
+                                  << " p=" << state.pressure << " touching=" << state.isTouching << std::endl;
                         m_isDrawing = true;
                         float canvasX, canvasY;
                         ScreenToCanvas(state.x, state.y, canvasX, canvasY);
+                        std::cout << "[CV] WM_POINTERDOWN canvas=" << canvasX << "," << canvasY
+                                  << " lastBefore=" << m_lastCanvasX << "," << m_lastCanvasY << std::endl;
                         m_lastCanvasX = canvasX;
                         m_lastCanvasY = canvasY;
                         m_lastPressure = state.pressure;
+                        auto layer = m_layerManager->GetActiveLayer();
+                        if (layer) layer->BeginStroke();
                         ApplyBrush(canvasX, canvasY, state.pressure);
                         Invalidate();
                         return 0;
@@ -400,6 +422,8 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         if (state.isTouching && m_isDrawing) {
                             float canvasX, canvasY;
                             ScreenToCanvas(state.x, state.y, canvasX, canvasY);
+                            std::cout << "[CV] WM_POINTERUPDATE draw canvas=" << canvasX << "," << canvasY
+                                      << " p=" << state.pressure << std::endl;
                             ApplyBrush(canvasX, canvasY, state.pressure);
                             m_lastCanvasX = canvasX;
                             m_lastCanvasY = canvasY;
@@ -408,7 +432,10 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                         Invalidate();
                         return 0;
                     } else if (msg == WM_POINTERUP) {
+                        std::cout << "[CV] WM_POINTERUP isDrawing=false" << std::endl;
                         m_isDrawing = false;
+                        auto layer = m_layerManager->GetActiveLayer();
+                        if (layer) layer->EndStroke();
                         Invalidate();
                         return 0;
                     }
