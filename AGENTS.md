@@ -1,114 +1,308 @@
-# Agents.md（开发环境与技术约束）
+# AGENTS.md（开发环境、技术约束与项目进度）
 
-> **本文件为 KimiCode 开发 ViVidPic 的强制约束文档。所有代码生成、架构决策、依赖选择必须优先遵循以下条款。**
+> **本文件为 KimiCode 开发 VividPic 的强制约束与参考文档。所有代码生成、架构决策、依赖选择、编译调试必须优先遵循以下条款。**
 
-## 1. 开发环境（绝对约束）
+---
+
+## 1. 开发环境与工具链（绝对约束）
+
+### 1.1 系统与编译器
 
 | 约束项 | 强制要求 | 说明 |
 |--------|----------|------|
-| **操作系统** | Windows 10 (x64) | 目标运行平台，开发调试必须基于此 |
-| **编译器** | MinGW-w64 GCC 13+ | **禁止**使用 MSVC 或 Clang-CL |
-| **C++ 标准** | C++20 | 必须完整使用 `-std=c++20`，充分利用 Concepts、Ranges、Coroutines（如适用） |
-| **构建系统** | CMake 3.25+ | 生成 MinGW Makefiles 或 Ninja |
-| **链接器** | ld/lld (MinGW 自带) | 兼容 Windows 10 SDK 但**不依赖** MSVC runtime |
-| **调试器** | GDB (MinGW 自带) 或 LLDB | |
+| **操作系统** | Windows 10/11 (x64) | 目标运行平台，开发调试必须基于此 |
+| **C++ 标准** | C++20 (`-std=c++20`) | extensions off，禁止使用 GNU 扩展 |
+| **编译器** | MinGW-w64 GCC 13.1.0 | **禁止**使用 MSVC 或 Clang-CL |
+| **构建系统** | CMake 3.25+ (CLion bundled) | 生成 Ninja 构建文件 |
+| **链接器** | ld (MinGW 自带) | 兼容 Windows 10 SDK，不依赖 MSVC runtime |
+| **调试器** | GDB (MinGW 自带) | CLion 集成调试 |
 
-## 2. 技术栈选择原则
+### 1.2 工具链绝对路径
 
-### 2.1 允许使用的技术
-- **Win32 API**：窗口创建、消息循环、Raw Input、Windows Ink (`WM_POINTER*`)、WinTab (`Wintab32.dll`)
-- **Direct2D / Direct3D 11**：渲染后端（MinGW 可通过 `-ld2d1 -ld3d11` 链接系统 DLL）
-- **DirectWrite**：字体渲染
-- **WIC (Windows Imaging Component)**：图像编解码（PNG/JPEG/TIFF/BMP）
-- **STL + 标准库**：`std::filesystem`, `std::thread`, `std::future`, 智能指针
-- **第三方库（仅限头文件或 MinGW 可编译）**：
-  - **Dear ImGui**（可选，用于调试工具或内部编辑器）
-  - **stb_image / stb_image_write**（图像 I/O 备选）
-  - **nlohmann/json**（配置与项目元数据）
-  - **zlib / minizip**（VVP 文件压缩）
+以下路径在本机上固定，如迁移环境需同步更新：
 
-### 2.2 禁止使用的技术
-- **Qt / wxWidgets / MFC**：保持"纯 C++"与最小依赖原则，UI 必须自研或基于轻量级方案
+```
+G++ 编译器:
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\mingw\bin\g++.exe
+
+C 编译器:
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\mingw\bin\gcc.exe
+
+C++ 前端 (cc1plus，g++ 内部调用):
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\mingw\libexec\gcc\x86_64-w64-mingw32\13.1.0\cc1plus.exe
+
+CMake:
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\cmake\win\x64\bin\cmake.exe
+
+Ninja (构建系统):
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\ninja\win\x64\ninja.exe
+  (备用 cygwin 路径: ...\bin\ninja\cygwin\x64\ninja.exe)
+
+MinGW bin 目录 (必须加入 PATH 才能编译):
+  C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\mingw\bin
+```
+
+### 1.3 编译标志（CMake 已固化）
+
+```
+DEFINES  = -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00
+CXXFLAGS = -Wall -Wextra -O2 -g -std=c++20 -fdiagnostics-color=always
+INCLUDES = -IC:/Users/CloverIris/CLionProjects/VividPic/src
+LDFLAGS  = -static-libgcc -static-libstdc++ -mwindows -mconsole -municode
+LIBS     = -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+           -luser32 -lgdi32 -lgdiplus -lshell32 -lole32 -luuid
+           -lcomctl32 -ldwmapi -lshlwapi -lwinmm
+           -ld2d1 -ldwrite -lwindowscodecs
+           -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32
+           -luuid -lcomdlg32 -ladvapi32
+```
+
+**关键约束**：
+- `-static-libgcc -static-libstdc++`：必须静态链接 C/C++ 运行时，否则目标机器缺少 MinGW DLL
+- `-Wl,-Bstatic -lwinpthread -Wl,-Bdynamic`：winpthread 必须静态链接，否则运行时报 DLL 缺失
+- `-mwindows -municode`：Win32 GUI 子系统 + Unicode 入口点
+
+---
+
+## 2. 项目目录结构
+
+```
+VividPic/
+├── AGENTS.md               # 本文件
+├── CMakeLists.txt          # 主构建配置
+├── cmake-build-debug/      # CLion 默认构建目录
+│   ├── build.ninja         # Ninja 构建图
+│   ├── CMakeFiles/         # 对象文件目录树
+│   └── VividPic.exe        # 输出可执行文件
+├── assets/                 # 运行时资源（由 CMake POST_BUILD 复制）
+└── src/
+    ├── App/                # Application 单例（消息泵、生命周期）
+    ├── Core/               # Project, Layer, LayerManager, BlendMode, MemoryAdvisor
+    ├── Render/             # RenderBackend, D2DCanvas, TilePool, BrushEngine, BrushPreset
+    ├── Tablet/             # TabletInput (WindowsInkDriver + WinTabDriver + TabletManager)
+    ├── UI/
+    │   ├── Core/           # Window, Theme, 消息分发基类
+    │   ├── Widgets/        # Button, Panel, EditBox, ComboBox, CanvasView
+    │   ├── Panels/         # BrushPanel, ColorsPanel, LayersPanel, NavigatorPanel
+    │   └── Screens/        # HomeScreen, NewCanvasDialog, Workspace
+    └── Utils/              # Types (String, Point, Rect, Size, Color 等)
+```
+
+---
+
+## 3. 编译与开发流程
+
+### 3.1 CLion 内编译（推荐）
+
+直接点击 CLion 的 **Build** (Ctrl+F9) 或 **Run** (Shift+F10)。CLion 会自动调用 bundled CMake + Ninja。
+
+### 3.2 命令行手动编译（PowerShell）
+
+当只需要快速编译修改的单个文件时：
+
+```powershell
+$mingwBin = "C:\Users\CloverIris\AppData\Local\Programs\CLion\bin\mingw\bin"
+$gpp      = "$mingwBin\g++.exe"
+$wd       = "C:\Users\CloverIris\CLionProjects\VividPic"
+$env:PATH = "$mingwBin;$env:PATH"
+
+# 编译单个文件（示例：TabletInput.cpp）
+& $gpp -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 `
+  -IC:/Users/CloverIris/CLionProjects/VividPic/src `
+  -Wall -Wextra -O2 -g -std=c++20 `
+  -o cmake-build-debug/CMakeFiles/VividPic.dir/src/Tablet/TabletInput.cpp.obj `
+  -c src/Tablet/TabletInput.cpp
+```
+
+**注意**：`$env:PATH` **必须**包含 `mingw\bin`，否则 g++ 找不到 `cc1plus.exe` 和 `as.exe`，会静默失败（exit 1，无输出）。
+
+### 3.3 命令行链接
+
+```powershell
+$objs = @(
+  "CMakeFiles/VividPic.dir/src/App/Application.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/BlendMode.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/Layer.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/LayerManager.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/MemoryAdvisor.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/Project.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Render/BrushEngine.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Render/BrushPresetManager.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Render/D2DCanvas.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Render/RenderBackend.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Render/TilePool.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Tablet/TabletInput.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Core/Theme.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Core/Window.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Panels/BrushPanel.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Panels/ColorsPanel.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Panels/LayersPanel.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Panels/NavigatorPanel.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Screens/HomeScreen.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Screens/NewCanvasDialog.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Screens/Workspace.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Widgets/Button.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Widgets/CanvasView.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Widgets/ComboBox.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Widgets/EditBox.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/UI/Widgets/Panel.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/main.cpp.obj"
+) -join " "
+
+& $gpp -Wall -Wextra -O2 -g -static-libgcc -static-libstdc++ `
+  -mwindows -municode -o VividPic.exe $objs `
+  -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic `
+  -luser32 -lgdi32 -lgdiplus -lshell32 -lole32 -luuid `
+  -lcomctl32 -ldwmapi -lshlwapi -lwinmm -ld2d1 -ldwrite -lwindowscodecs `
+  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 `
+  -luuid -lcomdlg32 -ladvapi32
+```
+
+### 3.4 调试流程
+
+1. **CLion 调试**：设置断点 → Shift+F9 (Debug)。GDB 会自动附加。
+2. **命令行 GDB**（如果需要）：`C:\...\mingw\bin\gdb.exe VividPic.exe`
+3. **日志调试**：在关键路径插入 `OutputDebugStringA()` 或临时 `MessageBoxW()`。
+4. **DPI 调试**：Window 基类已集成 `GetDpiForWindow()`，注意 `Theme::Scale = 1.25f` 在 125% DPI 下的表现。
+
+---
+
+## 4. 技术栈与架构决策
+
+### 4.1 允许使用的技术
+
+- **Win32 API**：窗口创建、消息循环、Raw Input
+- **Windows Ink (`WM_POINTER*`)**：现代数位板输入（Win10+ 首选）
+- **WinTab (`Wintab32.dll`)**： legacy Wacom 驱动兼容层（动态加载，fallback）
+- **Direct2D / WIC / DirectWrite**：画布最终 blit、图像编解码
+- **GDI / GDI+**：UI chrome（面板、按钮、对话框）自绘
+- **STL + 标准库**：`std::filesystem`, `std::vector`, 智能指针
+
+### 4.2 禁止使用的技术
+
+- **Qt / wxWidgets / MFC / Electron**：UI 必须自研轻量级框架
 - **C++/CLI 或 .NET**：严禁引入 CLR
-- **MSVC 特有扩展**：如 `#pragma comment`, `__declspec(uuid)`, COM 智能指针（使用 `WRL` 需谨慎确保 MinGW 兼容）
-- **Vulkan / OpenGL**：除非必要，优先使用 Direct2D/D3D（Windows 原生、MinGW 兼容性好）
+- **MSVC 特有扩展**：`#pragma comment`, `__declspec(uuid)`, COM 智能指针需确保 MinGW 兼容
+- **Vulkan / OpenGL**：当前无需，D2D 已满足需求
 
-## 3. 数位板输入层强制规范
+### 4.3 渲染架构（已落地）
 
-所有数位板相关代码必须封装在 `TabletInput` 命名空间下，且**同时**实现以下两个后端：
+```
+CanvasView 渲染管线（CPU 软合成 + D2D 硬显示）：
+  LayerManager::CompositeToBuffer()
+    ├── 遍历 Layer 栈（bottom → top）
+    ├── 每图层遍历 dirty tiles
+    └── CPU 逐像素 alpha 混合 → m_compositeBuffer (RGBA)
+  CanvasView::UpdateCompositeBitmap()
+    └── m_compositeBuffer → WIC Bitmap → D2D Bitmap
+  CanvasView::CompositeAndRender()
+    └── D2D RenderTarget::DrawBitmap() + zoom/pan transform
+        + checkerboard + canvas border + brush cursor ring
+
+Brush 绘制（纯 CPU rasterize）：
+  CanvasView::ApplyBrush() → BrushEngine::GenerateStamps()
+    → Layer::DrawBrushStamp() → 逐像素 tip shape + wetMix + flow
+```
+
+**关键认知**：当前已经是"软合成、软渲染"。D2D 仅用于最终 RGBA buffer 的屏幕 blit。TileGrid（256x256 分块）本质是分块 RGBA buffer，COW 机制避免不必要拷贝。
+
+### 4.4 数位板输入层规范
+
+所有数位板代码封装在 `TabletInput` 命名空间下：
 
 ```cpp
 namespace TabletInput {
-    // 后端 1：Windows Ink (Windows 8+ Pointer API)
-    class WindowsInkDriver {
-        bool Initialize(HWND hwnd);
-        bool ProcessPointerMessage(UINT msg, WPARAM wParam, LPARAM lParam);
-        TabletState GetState() const;
-    };
-    
-    // 后端 2：WinTab (Wacom 兼容层)
-    class WinTabDriver {
-        bool Initialize(HWND hwnd);
-        bool LoadWintab32();
-        bool ProcessPacket(WTPKT packet);
-        TabletState GetState() const;
-    };
-    
-    // 统一状态结构
     struct TabletState {
-        float x, y;
-        float pressure;
-        float tiltX, tiltY;
-        float rotation;
+        float x, y;         // 客户区坐标（已 ScreenToClient）
+        float pressure;     // 0.0 ~ 1.0
+        float tiltX, tiltY; // -90 ~ +90
+        float rotation;     // degrees
         bool isEraser;
         bool isTouching;
     };
+
+    class WindowsInkDriver;  // WM_POINTERDOWN/UPDATE/UP
+    class WinTabDriver;      // WT_PACKET 消息，动态加载 Wintab32.dll
+    class TabletManager;     // 统一入口：Windows Ink first → WinTab fallback → Mouse
 }
 ```
 
-**运行时策略**：优先尝试 WinTab，若检测到设备则使用；否则回退到 Windows Ink；若两者都失败，则启用鼠标模拟模式（无压感）。
+**运行时策略（重要）**：
+- **Windows Ink 优先**（Win10+ 原生支持，可靠性高）
+- **WinTab fallback**（ legacy Wacom 驱动，无 Windows Ink 时启用）
+- **Mouse 兜底**（无压感）
+- **坐标转换**：两个 driver 内部必须使用 `ScreenToClient(m_hwnd, &pt)`，因为 `ptPixelLocation` / WinTab 输出都是**屏幕坐标**，而 CanvasView 期望**客户区坐标**
 
-## 4. 内存管理强制规范
+---
 
-- **禁止使用裸 `new/delete`**（除底层内存池实现外），全部使用智能指针与 RAII
-- **大内存分配**：画布像素数据必须使用自定义对齐分配（`alignas(32)` 或 `VirtualAlloc`），便于 SIMD 优化
-- **瓦片内存池**：实现 `TilePool` 类，使用对象池复用 256x256 RGBA 瓦片内存
-- **内存上限检查**：任何可能导致内存超限的操作（新建图层、扩大画布）必须先调用 `MemoryAdvisor::CheckAvailability()`，失败则抛出 `MemoryException` 并由 UI 捕获提示用户
+## 5. 内存管理规范
 
-## 5. 构建与打包
+- **TileGrid**：256x256 RGBA 分块存储，空 tile 延迟分配
+- **Copy-on-Write**：`Layer::DetachForWrite()` 在 `m_tileRefCount > 1` 时克隆 tile
+- **MemoryAdvisor**：新建画布/图层前检查可用内存，超限弹窗提示
+- **大内存**：画布像素数据可用 `alignas(32)` 或 `VirtualAlloc` 分配（为 SIMD 预留）
 
-```cmake
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-target_link_libraries(VividPic PRIVATE 
-    d2d1 dwrite windowscodecs wintab32 
-    d3d11 dxgi user32 gdi32 ole32 uuid
-)
-```
+---
 
 ## 6. 代码风格
 
-- 命名：`PascalCase` 类名 / 结构体，`camelCase` 函数与变量，`SCREAMING_SNAKE_CASE` 宏与常量
-- 文件编码：UTF-8 with BOM（确保中文资源在 MinGW 下正确编译）
-- 头文件：使用 `#pragma once`，接口类使用纯虚函数定义
+- **命名**：`PascalCase` 类名/结构体，`camelCase` 函数与变量，`SCREAMING_SNAKE_CASE` 宏与常量
+- **编码**：UTF-8（**不带 BOM**，除非编译报错再切换）
+- **头文件**：`#pragma once`
+- **消息处理**：`Window::HandleMessage()` 已设为 `virtual`，子类覆盖时必须调用 `Window::HandleMessage()` fallback
 
-## 7. M1 已落地架构决策
+---
 
-- **UI 框架**：自研轻量级 retained-mode 框架（`UI::Window` 基类 + `Button`/`Panel` 控件），基于 Win32 API + GDI 自绘，支持暗色主题
-- **渲染策略**：GDI 负责 UI chrome（HomeScreen、对话框、面板），Direct2D 仅用于画布渲染区域（M2 实施）
-- **项目目录结构**：
-  ```
-  src/
-    App/          # Application 单例
-    Core/         # Project/Canvas/Layer/MemoryAdvisor
-    Tablet/       # TabletInput 双栈驱动
-    UI/
-      Core/       # Window/Theme
-      Widgets/    # Button/Panel/EditBox/ComboBox/CanvasView
-      Screens/    # HomeScreen/NewCanvasDialog/Workspace
-    Render/       # RenderBackend/D2DCanvas/TilePool/BrushEngine
-    Utils/        # Types
-  ```
-- **已编译验证模块**：HomeScreen（暗色主题 + 分组按钮）、MemoryAdvisor（系统内存检测 + 预算计算）、TabletInput（Windows Ink + WinTab 动态加载 stub）
+## 7. 项目进度（Milestone 追踪）
+
+### M1 ✅ 基础框架（已落地）
+- HomeScreen（14 按钮分组布局）
+- `Window` 基类（HWND 封装、消息路由、DPI 感知）
+- `Theme` 暗色主题 + DPI 缩放（`Scale = 1.25f`）
+- `Button` / `Panel` 基础控件
+- `MemoryAdvisor` 系统内存检测
+- `Project` 模型（画布尺寸、DPI、图层数）
+- `TabletInput` stub（双驱动架构）
+
+### M2 ✅ 画布与视口（已落地）
+- Direct2D `RenderBackend` / `D2DCanvas` / `TilePool` 框架
+- `NewCanvasDialog`（内存用量仪表盘）
+- `Workspace`（中心视口 + 左右面板布局）
+- `CanvasView`（zoom/pan、D2D render target）
+- `BrushEngine` 基础（size/opacity/color/spacing）
+- `EditBox` / `ComboBox` 输入控件
+
+### M3 ✅ 图层系统与持久绘制（已落地）
+- `Layer` / `LayerManager` TileGrid（256x256，COW）
+- 8 种 blend mode（Normal, Multiply, Screen, Overlay, Difference, Add, Subtract, Darken, Lighten）
+- 4 面板（Layers / Navigator / Colors / Brush）
+- 快捷键系统（Workspace::OnKeyDown）
+- 持久绘制（非预览模式，直接写入 tile）
+
+### M4 ✅ 完整笔刷引擎与数位板（已落地）
+- 5 种笔头（RoundHard, RoundSoft, Flat, Bristle, Texture）
+- flow + wetMix 参数
+- `BrushPreset` 系统（5 内置预设）
+- `BrushPanel`（tip 按钮 + 4 滑条 + preset 按钮）
+- WinTab `WT_PACKET` 完整解析（pressure + tilt + rotation）
+- `LayersPanel` blend mode 下拉框 UI
+
+### Bugfix 记录
+
+| Commit | 问题 | 修复方案 |
+|--------|------|----------|
+| `87d80cd` | M3 里程碑 | — |
+| `9abbad4` | M4 里程碑 | — |
+| `7e7e1df` | 新建画布对话框嵌套/无法点击 | `WS_OVERLAPPED` → `WS_POPUP`，延迟 `Create` 到 `ShowModal`，添加 `CenterOnParent` |
+| `3529299` | DPI 缩放、数位笔只能画一笔 | `SetProcessDpiAwarenessContext`，`GetDpiForWindow`，`Theme::Scale=1.25f`，WinTab → Windows Ink 优先级切换，`WM_POINTERUPDATE` 缺失 |
+| `ad890e6` | 笔光标偏移、鼠标/笔连线、系统光标干扰 | WindowsInkDriver/WinTabDriver `ScreenToClient`，`WM_POINTERUPDATE` 更新 cursor，`WM_SETCURSOR` 隐藏系统光标 |
+
+### Active Issues / 待办
+
+- [ ] **Undo/Redo**：未实现
+- [ ] **Save/Export**：stub 状态，需实现 `.vvp` 格式序列化
+- [ ] **采样率优化**：Windows Ink `WM_POINTERUPDATE` 受屏幕刷新率限制（60Hz），快速笔迹可能不够平滑。终极方案：`GetPointerPenInfoHistory()` 获取历史帧
+- [ ] **TilePool 真池化**：当前 `Layer` 使用 `new Tile`，真对象池分配 deferred
+- [ ] **D2D 批量 composite**：当前 `CompositeToBuffer` 是纯 CPU，可考虑 D2D 图层合成加速
+- [ ] **纹理导入**：`Texture` brush tip 目前使用 64x64 过程噪声，需支持外部图片
+- [ ] **抗锯齿**：笔刷 stamp 边缘在高 zoom 下可见像素颗粒
