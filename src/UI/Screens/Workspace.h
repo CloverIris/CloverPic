@@ -90,6 +90,7 @@ private:
         void OnMouseDown(const Point& pos, MouseButton button) override;
         void OnMouseMove(const Point& pos) override;
         void OnMouseLeave() override;
+        LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
         DWORD GetDefaultStyle() const override { return WS_POPUP | WS_VISIBLE; }
         DWORD GetDefaultExStyle() const override { return WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE; }
     private:
@@ -101,6 +102,11 @@ private:
     Scope<MenuDropdownWindow> m_dropdownWindow;
     void ShowMenuDropdown(int menuIndex, int x, int y, int width);
     void HideMenuDropdown();
+    
+    void DoSave(bool saveAs);
+    void RefreshStatusBar();
+    String m_saveStatusText;
+    uint64_t m_saveStatusTime = 0;
 };
 
 } // namespace UI

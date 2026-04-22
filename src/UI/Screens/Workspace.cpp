@@ -50,6 +50,11 @@ bool Workspace::OnCreate() {
     Rect toolBarRect(0, Theme::GetSize(MenuBarHeight) + Theme::GetSize(ToolbarHeight), 
                      Theme::GetSize(ToolBarWidth), 900);
     m_toolBar->Create(L"", toolBarRect, this);
+    m_toolBar->SetOnStatusMessage([this](const wchar_t* msg) {
+        m_saveStatusText = msg;
+        m_saveStatusTime = GetTickCount64();
+        RefreshStatusBar();
+    });
     
     // Create CanvasView
     m_canvasView = MakeScope<CanvasView>();
@@ -78,18 +83,23 @@ bool Workspace::OnCreate() {
     m_brushPanel->Create(L"", brushRect, this);
     m_brushPanel->SetOnSizeChanged([this](float size) {
         Render::BrushEngine::GetInstance().SetSize(size);
+        RefreshStatusBar();
     });
     m_brushPanel->SetOnOpacityChanged([this](float opacity) {
         Render::BrushEngine::GetInstance().SetOpacity(opacity);
+        RefreshStatusBar();
     });
     m_brushPanel->SetOnFlowChanged([this](float flow) {
         Render::BrushEngine::GetInstance().SetFlow(flow);
+        RefreshStatusBar();
     });
     m_brushPanel->SetOnSpacingChanged([this](float spacing) {
         Render::BrushEngine::GetInstance().SetSpacing(spacing);
+        RefreshStatusBar();
     });
     m_brushPanel->SetOnTipTypeChanged([this](Render::BrushTipType type) {
         Render::BrushEngine::GetInstance().SetTipType(type);
+        RefreshStatusBar();
     });
     m_brushPanel->SetOnPresetSelected([this](int index) {
         Render::BrushPresetManager::GetInstance().ApplyPreset(index);
@@ -100,6 +110,7 @@ bool Workspace::OnCreate() {
         m_brushPanel->SetBrushFlow(engine.GetFlow());
         m_brushPanel->SetBrushSpacing(engine.GetSpacing());
         m_brushPanel->SetTipType(engine.GetTipType());
+        RefreshStatusBar();
     });
     
     // Create right panels
@@ -121,6 +132,7 @@ bool Workspace::OnCreate() {
     m_brushSizePanel->SetOnSizeChanged([this](float size) {
         Render::BrushEngine::GetInstance().SetSize(size);
         if (m_brushPanel) m_brushPanel->SetBrushSize(size);
+        RefreshStatusBar();
     });
     m_navigatorPanel->SetOnPanChanged([this](float x, float y) {
         if (m_canvasView) {
@@ -223,29 +235,31 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
     DrawStatusBar(hdc);
     
     // Dropdown is rendered in a popup window to avoid child-window occlusion
-    if (m_openMenuIndex >= 0 && !m_dropdownWindow) {
-        // Calculate position
-        int x = Theme::GetSize(8);
-        HDC memdc = GetDC(m_hwnd);
-        HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
-        HFONT old = static_cast<HFONT>(SelectObject(memdc, font));
-        for (int i = 0; i < m_openMenuIndex; ++i) {
+    if (m_openMenuIndex >= 0) {
+        if (!m_dropdownWindow || !m_dropdownWindow->IsVisible()) {
+            // Calculate position
+            int x = Theme::GetSize(8);
+            HDC memdc = GetDC(m_hwnd);
+            HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                     DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+            HFONT old = static_cast<HFONT>(SelectObject(memdc, font));
+            for (int i = 0; i < m_openMenuIndex; ++i) {
+                SIZE ts;
+                GetTextExtentPoint32W(memdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
+                x += ts.cx + Theme::GetSize(16);
+            }
             SIZE ts;
-            GetTextExtentPoint32W(memdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
-            x += ts.cx + Theme::GetSize(16);
+            GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
+            SelectObject(memdc, old);
+            DeleteObject(font);
+            ReleaseDC(m_hwnd, memdc);
+            
+            POINT pt = { x, Theme::GetSize(MenuBarHeight) };
+            ClientToScreen(m_hwnd, &pt);
+            ShowMenuDropdown(m_openMenuIndex, pt.x, pt.y, ts.cx + Theme::GetSize(12));
         }
-        SIZE ts;
-        GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
-        SelectObject(memdc, old);
-        DeleteObject(font);
-        ReleaseDC(m_hwnd, memdc);
-        
-        POINT pt = { x, Theme::GetSize(MenuBarHeight) };
-        ClientToScreen(m_hwnd, &pt);
-        ShowMenuDropdown(m_openMenuIndex, pt.x, pt.y, ts.cx + Theme::GetSize(12));
-    } else if (m_openMenuIndex < 0 && m_dropdownWindow) {
+    } else if (m_openMenuIndex < 0 && m_dropdownWindow && m_dropdownWindow->IsVisible()) {
         HideMenuDropdown();
     }
 }
@@ -487,6 +501,42 @@ void Workspace::CaptureLayerSnapshot(Layer* layer) {
     HistoryManager::GetInstance().Push(std::move(undoItem));
 }
 
+void Workspace::DoSave(bool saveAs) {
+    if (saveAs || m_currentFilePath.empty()) {
+        wchar_t filePath[MAX_PATH] = {0};
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = m_hwnd;
+        ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+        ofn.lpstrFile = filePath;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.Flags = OFN_OVERWRITEPROMPT;
+        ofn.lpstrDefExt = L"vvp";
+        if (GetSaveFileNameW(&ofn)) {
+            m_currentFilePath = filePath;
+        } else {
+            return; // User cancelled
+        }
+    }
+    if (!m_currentFilePath.empty() && m_canvasView) {
+        if (ProjectSerializer::SaveProject(m_currentFilePath, m_project.get(), m_canvasView->GetLayerManager())) {
+            m_saveStatusText = L"已保存";
+            m_saveStatusTime = GetTickCount64();
+        } else {
+            m_saveStatusText = L"保存失败";
+            m_saveStatusTime = GetTickCount64();
+        }
+        RefreshStatusBar();
+    }
+}
+
+void Workspace::RefreshStatusBar() {
+    Rect client = GetClientBounds();
+    int sbTop = client.Height() - Theme::GetSize(StatusBarHeight);
+    RECT rc = { 0, sbTop, client.Width(), client.Height() };
+    ::InvalidateRect(m_hwnd, &rc, FALSE);
+}
+
 void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
     
@@ -590,10 +640,10 @@ void Workspace::DrawToolbarButtons(HDC hdc) {
     int startX = Theme::GetSize(8);
     int y = Theme::GetSize(MenuBarHeight) + (Theme::GetSize(ToolbarHeight) - btnSize) / 2;
     
-    const wchar_t* labels[3] = { L"↶", L"↷", L"B/E" };
-    HFONT font = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    const wchar_t* labels[3] = { L"\uE7A7", L"\uE7A8", L"\uE76D" };
+    HFONT font = CreateFontW(Theme::GetFontSize(16), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe MDL2 Assets");
     HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
     SetTextColor(hdc, Theme::TextPrimary);
     SetBkMode(hdc, TRANSPARENT);
@@ -669,22 +719,28 @@ void Workspace::ShowMenuDropdown(int menuIndex, int screenX, int screenY, int ti
     int dropdownHeight = static_cast<int>(menu.items.size()) * itemHeight + 4;
     
     if (!m_dropdownWindow->GetHandle()) {
-        m_dropdownWindow->Create(L"", Rect(0, 0, dropdownWidth, dropdownHeight), nullptr);
+        m_dropdownWindow->Create(L"", Rect(screenX, screenY, screenX + dropdownWidth, screenY + dropdownHeight), nullptr);
     } else {
         m_dropdownWindow->SetBounds(Rect(screenX, screenY, screenX + dropdownWidth, screenY + dropdownHeight));
+        m_dropdownWindow->SetVisible(true);
     }
     
     m_dropdownWindow->SetItems(menu.items, menuIndex);
     m_dropdownWindow->SetCallback([this](int menuIdx, int itemIdx) {
         m_openMenuIndex = -1;
+        HideMenuDropdown();
         Invalidate();
-        OnMenuItemClicked(menuIdx, itemIdx);
+        if (itemIdx >= 0) {
+            OnMenuItemClicked(menuIdx, itemIdx);
+        }
     });
     SetWindowPos(m_dropdownWindow->GetHandle(), HWND_TOPMOST, screenX, screenY, dropdownWidth, dropdownHeight, SWP_SHOWWINDOW);
+    SetCapture(m_dropdownWindow->GetHandle());
 }
 
 void Workspace::HideMenuDropdown() {
     if (m_dropdownWindow) {
+        ReleaseCapture();
         m_dropdownWindow->SetVisible(false);
     }
 }
@@ -737,24 +793,51 @@ void Workspace::MenuDropdownWindow::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(itemFont);
 }
 
+LRESULT Workspace::MenuDropdownWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CAPTURECHANGED:
+            if (m_callback) {
+                m_callback(m_menuIndex, -1);
+            }
+            return 0;
+    }
+    return Window::HandleMessage(msg, wParam, lParam);
+}
+
 void Workspace::MenuDropdownWindow::OnMouseDown(const Point& pos, MouseButton button) {
     if (button == MouseButton::Left) {
+        Rect client = GetClientBounds();
+        // Click outside window bounds closes menu
+        if (pos.x < 0 || pos.x >= client.Width() || pos.y < 0 || pos.y >= client.Height()) {
+            if (m_callback) {
+                m_callback(m_menuIndex, -1);
+            }
+            ReleaseCapture();
+            return;
+        }
         int itemHeight = Theme::GetSize(24);
         int index = (pos.y - 2) / itemHeight;
         if (index >= 0 && index < static_cast<int>(m_items.size())) {
             if (m_callback) {
                 m_callback(m_menuIndex, index);
             }
+            ReleaseCapture();
         } else {
-            // Click outside items: close menu
+            // Click inside window but outside items: close menu
             if (m_callback) {
                 m_callback(m_menuIndex, -1);
             }
+            ReleaseCapture();
         }
     }
 }
 
 void Workspace::MenuDropdownWindow::OnMouseMove(const Point& pos) {
+    Rect client = GetClientBounds();
+    if (pos.x < 0 || pos.x >= client.Width() || pos.y < 0 || pos.y >= client.Height()) {
+        SetHoverIndex(-1);
+        return;
+    }
     int itemHeight = Theme::GetSize(24);
     int index = (pos.y - 2) / itemHeight;
     if (index >= 0 && index < static_cast<int>(m_items.size())) {
@@ -809,6 +892,18 @@ void Workspace::DrawStatusBar(HDC hdc) {
     RECT centerRc = { client.Width() / 3, sbTop, client.Width() * 2 / 3, client.Height() };
     DrawTextW(hdc, centerOss.str().c_str(), -1, &centerRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
     
+    // Center-right: save status (auto-clear after 3s)
+    if (!m_saveStatusText.empty()) {
+        if (GetTickCount64() - m_saveStatusTime > 3000) {
+            m_saveStatusText.clear();
+        } else {
+            SetTextColor(hdc, Theme::HighlightBlue);
+            RECT statusRc = { client.Width() / 2, sbTop, client.Width() * 2 / 3, client.Height() };
+            DrawTextW(hdc, m_saveStatusText.c_str(), -1, &statusRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+            SetTextColor(hdc, Theme::TextSecondary);
+        }
+    }
+    
     // Right: zoom
     std::wostringstream rightOss;
     if (m_canvasView) {
@@ -822,6 +917,17 @@ void Workspace::DrawStatusBar(HDC hdc) {
 }
 
 void Workspace::OnKeyDown(uint32_t keyCode) {
+    // Close open menu on ESC
+    if (keyCode == VK_ESCAPE && m_openMenuIndex >= 0) {
+        m_openMenuIndex = -1;
+        HideMenuDropdown();
+        Invalidate();
+        return;
+    }
+    
+    bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    
     switch (keyCode) {
         case 'B':
             if (m_canvasView) {
@@ -839,15 +945,17 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
             Render::BrushEngine::GetInstance().SetSize(
                 std::max(1.0f, Render::BrushEngine::GetInstance().GetSize() - 2.0f));
             if (m_brushPanel) m_brushPanel->Refresh();
+            RefreshStatusBar();
             break;
         case VK_OEM_6: // ']' key
             Render::BrushEngine::GetInstance().SetSize(
                 std::min(5000.0f, Render::BrushEngine::GetInstance().GetSize() + 2.0f));
             if (m_brushPanel) m_brushPanel->Refresh();
+            RefreshStatusBar();
             break;
         case 'Z':
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-                if (GetAsyncKeyState(VK_SHIFT) & 0x8000) {
+            if (ctrl) {
+                if (shift) {
                     HistoryManager::GetInstance().Redo();
                 } else {
                     HistoryManager::GetInstance().Undo();
@@ -858,29 +966,12 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
             }
             break;
         case 'S':
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-                if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) || m_currentFilePath.empty()) {
-                    // Save As
-                    wchar_t filePath[MAX_PATH] = {0};
-                    OPENFILENAMEW ofn = {};
-                    ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = m_hwnd;
-                    ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
-                    ofn.lpstrFile = filePath;
-                    ofn.nMaxFile = MAX_PATH;
-                    ofn.Flags = OFN_OVERWRITEPROMPT;
-                    ofn.lpstrDefExt = L"vvp";
-                    if (GetSaveFileNameW(&ofn)) {
-                        m_currentFilePath = filePath;
-                    }
-                }
-                if (!m_currentFilePath.empty() && m_canvasView) {
-                    ProjectSerializer::SaveProject(m_currentFilePath, m_project.get(), m_canvasView->GetLayerManager());
-                }
+            if (ctrl) {
+                DoSave(shift || m_currentFilePath.empty());
             }
             break;
         case 'O':
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            if (ctrl) {
                 wchar_t filePath[MAX_PATH] = {0};
                 OPENFILENAMEW ofn = {};
                 ofn.lStructSize = sizeof(ofn);
@@ -917,14 +1008,14 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
             }
             break;
         case '0':
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            if (ctrl) {
                 if (m_canvasView) {
                     m_canvasView->FitToWindow();
                 }
             }
             break;
         case '1':
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+            if (ctrl) {
                 if (m_canvasView) {
                     m_canvasView->SetZoom(1.0f);
                     m_canvasView->InvalidateCanvas();

@@ -19,9 +19,9 @@ HFONT Theme::GetFont(FontID id) {
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
         case FontID::Toolbar:
-            return CreateFontW(static_cast<int>(GetFontSize(12)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            return CreateFontW(static_cast<int>(GetFontSize(16)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                               CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+                               CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe MDL2 Assets");
         case FontID::PanelTitle:
             return CreateFontW(static_cast<int>(GetFontSize(13)), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,

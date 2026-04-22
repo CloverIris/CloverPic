@@ -40,34 +40,21 @@ public:
     static Color AlphaBlend(const Color& src, const Color& dst, float srcOpacity);
     
 private:
-    // Individual blend mode functions (operate on normalized RGB 0.0-1.0)
-    static void NormalBlend(float sr, float sg, float sb, float sa,
-                            float dr, float dg, float db, float da,
-                            float& outR, float& outG, float& outB, float& outA);
-    static void MultiplyBlend(float sr, float sg, float sb, float sa,
-                               float dr, float dg, float db, float da,
-                               float& outR, float& outG, float& outB, float& outA);
-    static void ScreenBlend(float sr, float sg, float sb, float sa,
-                             float dr, float dg, float db, float da,
-                             float& outR, float& outG, float& outB, float& outA);
-    static void OverlayBlend(float sr, float sg, float sb, float sa,
-                              float dr, float dg, float db, float da,
-                              float& outR, float& outG, float& outB, float& outA);
-    static void DifferenceBlend(float sr, float sg, float sb, float sa,
-                                 float dr, float dg, float db, float da,
-                                 float& outR, float& outG, float& outB, float& outA);
-    static void AddBlend(float sr, float sg, float sb, float sa,
-                          float dr, float dg, float db, float da,
-                          float& outR, float& outG, float& outB, float& outA);
-    static void SubtractBlend(float sr, float sg, float sb, float sa,
-                               float dr, float dg, float db, float da,
-                               float& outR, float& outG, float& outB, float& outA);
-    static void DarkenBlend(float sr, float sg, float sb, float sa,
-                             float dr, float dg, float db, float da,
-                             float& outR, float& outG, float& outB, float& outA);
-    static void LightenBlend(float sr, float sg, float sb, float sa,
-                              float dr, float dg, float db, float da,
-                              float& outR, float& outG, float& outB, float& outA);
+    // Blend formula: compute blended RGB from two unpremultiplied colors
+    // Output is unpremultiplied RGB (alpha handled separately by Over)
+    static void BlendFormula(float sr, float sg, float sb,
+                             float dr, float dg, float db,
+                             BlendMode mode,
+                             float& br, float& bg, float& bb);
+    
+    // Alpha over-composite: blend src over dst using source alpha
+    // bsr/bsg/bsb = blended source RGB (unpremultiplied)
+    // sa = source alpha
+    // dr/dg/db = destination RGB (unpremultiplied)
+    // da = destination alpha
+    static void Over(float bsr, float bsg, float bsb, float sa,
+                     float dr, float dg, float db, float da,
+                     float& outR, float& outG, float& outB, float& outA);
 };
 
 } // namespace VividPic

@@ -65,13 +65,17 @@ void ToolBar::DrawToolIcon(HDC hdc, int index, const Rect& rc, bool active, bool
         DeleteObject(pen);
     }
     
-    // Icon text
+    // Icon (single MDL2 character) — precisely centered by glyph metrics
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, active ? Theme::TextInverse : Theme::TextPrimary);
     HFONT font = Theme::GetFont(Theme::FontID::Toolbar);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
-    RECT textRc = rc.ToWin32Rect();
-    DrawTextW(hdc, Tools[index].icon, -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    wchar_t iconStr[2] = { Tools[index].icon, L'\0' };
+    SIZE iconSize;
+    GetTextExtentPoint32W(hdc, iconStr, 1, &iconSize);
+    int iconX = rc.left + (rc.Width() - iconSize.cx) / 2;
+    int iconY = rc.top + (rc.Height() - iconSize.cy) / 2;
+    TextOutW(hdc, iconX, iconY, iconStr, 1);
     SelectObject(hdc, oldFont);
     DeleteObject(font);
 }
@@ -80,6 +84,9 @@ void ToolBar::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
     int idx = HitTest(pos);
     if (idx >= 0) {
+        if (!Tools[idx].implemented && m_onStatusMessage) {
+            m_onStatusMessage(L"此功能即将推出");
+        }
         SetCurrentTool(Tools[idx].type);
     }
 }

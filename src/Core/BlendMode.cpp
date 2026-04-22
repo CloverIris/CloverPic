@@ -17,38 +17,13 @@ Color BlendOperations::BlendPixel(const Color& src, const Color& dst, BlendMode 
     float db = dst.b / 255.0f;
     float da = dst.a / 255.0f;
     
-    float outR, outG, outB, outA;
-    
-    switch (mode) {
-        case BlendMode::Multiply:
-            MultiplyBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Screen:
-            ScreenBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Overlay:
-            OverlayBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Difference:
-            DifferenceBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Add:
-            AddBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Subtract:
-            SubtractBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Darken:
-            DarkenBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Lighten:
-            LightenBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
-        case BlendMode::Normal:
-        default:
-            NormalBlend(sr, sg, sb, sa, dr, dg, db, da, outR, outG, outB, outA);
-            break;
+    float br = sr, bg = sg, bb = sb;
+    if (mode != BlendMode::Normal) {
+        BlendFormula(sr, sg, sb, dr, dg, db, mode, br, bg, bb);
     }
+    
+    float outR, outG, outB, outA;
+    Over(br, bg, bb, sa, dr, dg, db, da, outR, outG, outB, outA);
     
     return Color(
         static_cast<uint8_t>(std::clamp(outR * 255.0f, 0.0f, 255.0f)),
@@ -77,71 +52,69 @@ Color BlendOperations::AlphaBlend(const Color& src, const Color& dst, float srcO
     );
 }
 
-void BlendOperations::NormalBlend(float sr, float sg, float sb, float sa,
-                                   float dr, float dg, float db, float da,
-                                   float& outR, float& outG, float& outB, float& outA) {
+void BlendOperations::BlendFormula(float sr, float sg, float sb,
+                                    float dr, float dg, float db,
+                                    BlendMode mode,
+                                    float& br, float& bg, float& bb) {
+    switch (mode) {
+        case BlendMode::Multiply:
+            br = sr * dr;
+            bg = sg * dg;
+            bb = sb * db;
+            break;
+        case BlendMode::Screen:
+            br = 1.0f - (1.0f - sr) * (1.0f - dr);
+            bg = 1.0f - (1.0f - sg) * (1.0f - dg);
+            bb = 1.0f - (1.0f - sb) * (1.0f - db);
+            break;
+        case BlendMode::Overlay: {
+            auto overlay = [](float s, float d) {
+                return d < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
+            };
+            br = overlay(sr, dr);
+            bg = overlay(sg, dg);
+            bb = overlay(sb, db);
+            break;
+        }
+        case BlendMode::Difference:
+            br = std::abs(sr - dr);
+            bg = std::abs(sg - dg);
+            bb = std::abs(sb - db);
+            break;
+        case BlendMode::Add:
+            br = std::min(sr + dr, 1.0f);
+            bg = std::min(sg + dg, 1.0f);
+            bb = std::min(sb + db, 1.0f);
+            break;
+        case BlendMode::Subtract:
+            br = std::max(sr - dr, 0.0f);
+            bg = std::max(sg - dg, 0.0f);
+            bb = std::max(sb - db, 0.0f);
+            break;
+        case BlendMode::Darken:
+            br = std::min(sr, dr);
+            bg = std::min(sg, dg);
+            bb = std::min(sb, db);
+            break;
+        case BlendMode::Lighten:
+            br = std::max(sr, dr);
+            bg = std::max(sg, dg);
+            bb = std::max(sb, db);
+            break;
+        default:
+            br = sr; bg = sg; bb = sb;
+            break;
+    }
+}
+
+void BlendOperations::Over(float bsr, float bsg, float bsb, float sa,
+                            float dr, float dg, float db, float da,
+                            float& outR, float& outG, float& outB, float& outA) {
     outA = sa + da * (1.0f - sa);
     if (outA < 0.001f) { outR = outG = outB = 0; return; }
-    outR = (sr * sa + dr * da * (1.0f - sa)) / outA;
-    outG = (sg * sa + dg * da * (1.0f - sa)) / outA;
-    outB = (sb * sa + db * da * (1.0f - sa)) / outA;
-}
-
-void BlendOperations::MultiplyBlend(float sr, float sg, float sb, float sa,
-                                     float dr, float dg, float db, float da,
-                                     float& outR, float& outG, float& outB, float& outA) {
-    float br = sr * dr;
-    float bg = sg * dg;
-    float bb = sb * db;
-    NormalBlend(br, bg, bb, sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::ScreenBlend(float sr, float sg, float sb, float sa,
-                                   float dr, float dg, float db, float da,
-                                   float& outR, float& outG, float& outB, float& outA) {
-    float br = 1.0f - (1.0f - sr) * (1.0f - dr);
-    float bg = 1.0f - (1.0f - sg) * (1.0f - dg);
-    float bb = 1.0f - (1.0f - sb) * (1.0f - db);
-    NormalBlend(br, bg, bb, sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::OverlayBlend(float sr, float sg, float sb, float sa,
-                                    float dr, float dg, float db, float da,
-                                    float& outR, float& outG, float& outB, float& outA) {
-    auto overlay = [](float s, float d) {
-        return d < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
-    };
-    NormalBlend(overlay(sr, dr), overlay(sg, dg), overlay(sb, db), sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::DifferenceBlend(float sr, float sg, float sb, float sa,
-                                       float dr, float dg, float db, float da,
-                                       float& outR, float& outG, float& outB, float& outA) {
-    NormalBlend(std::abs(sr - dr), std::abs(sg - dg), std::abs(sb - db), sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::AddBlend(float sr, float sg, float sb, float sa,
-                                float dr, float dg, float db, float da,
-                                float& outR, float& outG, float& outB, float& outA) {
-    NormalBlend(std::min(sr + dr, 1.0f), std::min(sg + dg, 1.0f), std::min(sb + db, 1.0f), sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::SubtractBlend(float sr, float sg, float sb, float sa,
-                                     float dr, float dg, float db, float da,
-                                     float& outR, float& outG, float& outB, float& outA) {
-    NormalBlend(std::max(sr - dr, 0.0f), std::max(sg - dg, 0.0f), std::max(sb - db, 0.0f), sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::DarkenBlend(float sr, float sg, float sb, float sa,
-                                   float dr, float dg, float db, float da,
-                                   float& outR, float& outG, float& outB, float& outA) {
-    NormalBlend(std::min(sr, dr), std::min(sg, dg), std::min(sb, db), sa, dr, dg, db, da, outR, outG, outB, outA);
-}
-
-void BlendOperations::LightenBlend(float sr, float sg, float sb, float sa,
-                                    float dr, float dg, float db, float da,
-                                    float& outR, float& outG, float& outB, float& outA) {
-    NormalBlend(std::max(sr, dr), std::max(sg, dg), std::max(sb, db), sa, dr, dg, db, da, outR, outG, outB, outA);
+    outR = (bsr * sa + dr * da * (1.0f - sa)) / outA;
+    outG = (bsg * sa + dg * da * (1.0f - sa)) / outA;
+    outB = (bsb * sa + db * da * (1.0f - sa)) / outA;
 }
 
 } // namespace VividPic

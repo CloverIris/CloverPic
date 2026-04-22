@@ -57,9 +57,9 @@ void LayerManager::DuplicateLayer(size_t index) {
 }
 
 void LayerManager::MergeDown(size_t index) {
-    if (index + 1 >= m_layers.size()) return;
+    if (index == 0 || index >= m_layers.size()) return;
     auto upper = m_layers[index];
-    auto lower = m_layers[index + 1];
+    auto lower = m_layers[index - 1];
     
     uint32_t gridW = upper->GetGridWidth();
     uint32_t gridH = upper->GetGridHeight();
