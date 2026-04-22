@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Utils/Types.h"
-#include "Core/Layer.h"
+#include "Core/LayerType.h"
 #include <vector>
 #include <string>
 #include <chrono>
@@ -24,7 +24,7 @@ struct Canvas {
     String cmykProfile;
 };
 
-// LayerType, BlendMode, and Layer class are now defined in Core/Layer.h and Core/BlendMode.h
+// LayerType is defined in Core/LayerType.h, BlendMode in Core/BlendMode.h, Layer in Core/Layer.h
 
 struct ProjectMetadata {
     String name;

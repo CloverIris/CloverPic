@@ -1,6 +1,8 @@
 #include "Core/ProjectIO.h"
 #include "Core/LayerManager.h"
 #include "Core/Layer.h"
+#include "Core/RasterLayer.h"
+#include "Core/TextLayer.h"
 #include "Render/TilePool.h"
 #include "Render/RenderBackend.h"
 #include <fstream>
@@ -10,8 +12,10 @@
 
 namespace VividPic {
 
-static constexpr char VVP_MAGIC[4] = {'V', 'V', 'P', '1'};
-static constexpr uint16_t VVP_VERSION = 1;
+static constexpr char VVP1_MAGIC[4] = {'V', 'V', 'P', '1'};
+static constexpr char VVP2_MAGIC[4] = {'V', 'V', 'P', '2'};
+static constexpr uint16_t VVP_VERSION = 2;
+static constexpr char VVP_EOF[4] = {'V', 'E', 'N', 'D'};
 
 static bool WriteU32(std::ostream& stream, uint32_t value) {
     stream.write(reinterpret_cast<const char*>(&value), sizeof(value));
@@ -95,7 +99,7 @@ bool ProjectSerializer::SaveProject(const String& filePath, Project* project, La
     }
 
     // Header
-    file.write(VVP_MAGIC, 4);
+    file.write(VVP2_MAGIC, 4);
     WriteU16(file, VVP_VERSION);
     WriteU16(file, 0); // reserved
 
@@ -146,14 +150,16 @@ Ref<Project> ProjectSerializer::LoadProject(const String& filePath, LayerManager
     // Magic
     char magic[4];
     file.read(magic, 4);
-    if (std::memcmp(magic, VVP_MAGIC, 4) != 0) {
+    bool isV1 = (std::memcmp(magic, VVP1_MAGIC, 4) == 0);
+    bool isV2 = (std::memcmp(magic, VVP2_MAGIC, 4) == 0);
+    if (!isV1 && !isV2) {
         std::cerr << "[ProjectIO] Invalid file magic" << std::endl;
         return nullptr;
     }
 
     uint16_t version = 0;
     ReadU16(file, version);
-    if (version != VVP_VERSION) {
+    if ((isV1 && version != 1) || (isV2 && version != 2)) {
         std::cerr << "[ProjectIO] Unsupported version: " << version << std::endl;
         return nullptr;
     }
@@ -180,34 +186,15 @@ Ref<Project> ProjectSerializer::LoadProject(const String& filePath, LayerManager
     if (!ReadU32(file, layerCount)) return nullptr;
 
     for (uint32_t i = 0; i < layerCount; ++i) {
-        auto layer = ReadLayer(file, canvasW, canvasH);
+        auto layer = isV2 ? ReadLayerV2(file, canvasW, canvasH) : ReadLayerV1(file, canvasW, canvasH);
         if (!layer) {
             std::cerr << "[ProjectIO] Failed to read layer " << i << std::endl;
             return nullptr;
         }
-        // Insert at bottom (file stores bottom-to-top)
-        // But LayerManager stores top-to-bottom in vector? Let's check.
-        // Looking at CompositeToBuffer: for (auto& layer : m_layers) bottom-to-top
-        // And AddLayer pushes to back and sets active to back.
-        // So m_layers[0] is bottom, back is top.
-        // We read in that order, so just add.
-        // However, we need to bypass AddLayer's auto-active behavior.
-        // For now, use AddLayer and fix active index at the end.
-        auto added = layerManager->AddLayer(layer->GetName(), layer->GetType());
-        if (!added) return nullptr;
-        added->SetBlendMode(layer->GetBlendMode());
-        added->SetOpacity(layer->GetOpacity());
-        added->SetVisible(layer->IsVisible());
-        added->SetLocked(layer->IsLocked());
-        added->SetProtectAlpha(layer->IsProtectAlpha());
-        // Copy tiles directly
-        for (uint32_t gy = 0; gy < layer->GetGridHeight(); ++gy) {
-            for (uint32_t gx = 0; gx < layer->GetGridWidth(); ++gx) {
-                Render::Tile* srcTile = layer->GetTile(gx, gy);
-                if (!srcTile) continue;
-                added->ImportTile(gx, gy, srcTile->data);
-            }
-        }
+        // Insert deserialized layer directly.
+        // File stores bottom-to-top; LayerManager::m_layers[0] is bottom, back is top.
+        // AddLayer(Ref<Layer>) pushes to back and sets active to back.
+        layerManager->AddLayer(layer);
     }
 
     if (activeLayer < layerManager->GetLayerCount()) {
@@ -376,10 +363,29 @@ bool ProjectSerializer::WriteLayer(std::ostream& stream, Layer* layer) {
         }
     }
 
+    // VVP v2: payload for text/vector layers
+    auto payload = layer->SerializePayload();
+    uint8_t payloadType = static_cast<uint8_t>(layer->GetType());
+    if (!WriteU8(stream, payloadType)) return false;
+    if (!WriteU32(stream, static_cast<uint32_t>(payload.size()))) return false;
+    if (!payload.empty()) {
+        stream.write(reinterpret_cast<const char*>(payload.data()), payload.size());
+        if (!stream.good()) return false;
+    }
+
     return true;
 }
 
-Ref<Layer> ProjectSerializer::ReadLayer(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight) {
+static Ref<Layer> CreateLayerFromType(const String& name, LayerType type, uint32_t canvasWidth, uint32_t canvasHeight) {
+    switch (type) {
+        case LayerType::Text:
+            return MakeRef<TextLayer>(name, canvasWidth, canvasHeight);
+        default:
+            return MakeRef<RasterLayer>(name, type, canvasWidth, canvasHeight);
+    }
+}
+
+Ref<Layer> ProjectSerializer::ReadLayerV1(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight) {
     String name;
     if (!ReadString(stream, name)) return nullptr;
 
@@ -396,7 +402,7 @@ Ref<Layer> ProjectSerializer::ReadLayer(std::istream& stream, uint32_t canvasWid
     if (!ReadU32(stream, gridH)) return nullptr;
     if (!ReadU32(stream, tileCount)) return nullptr;
 
-    auto layer = MakeRef<Layer>(name, static_cast<LayerType>(typeVal), canvasWidth, canvasHeight);
+    auto layer = CreateLayerFromType(name, static_cast<LayerType>(typeVal), canvasWidth, canvasHeight);
     layer->SetBlendMode(static_cast<BlendMode>(blendVal));
     layer->SetOpacity(opacity);
     layer->SetVisible(visible != 0);
@@ -412,7 +418,56 @@ Ref<Layer> ProjectSerializer::ReadLayer(std::istream& stream, uint32_t canvasWid
         stream.read(reinterpret_cast<char*>(tmpTile.data), Render::TILE_BYTES);
         if (!stream.good()) return nullptr;
         layer->ImportTile(gx, gy, tmpTile.data);
+    }
+
+    return layer;
+}
+
+Ref<Layer> ProjectSerializer::ReadLayerV2(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight) {
+    String name;
+    if (!ReadString(stream, name)) return nullptr;
+
+    uint8_t typeVal = 0, blendVal = 0, opacity = 255, visible = 1, locked = 0, protectAlpha = 0;
+    if (!ReadU8(stream, typeVal)) return nullptr;
+    if (!ReadU8(stream, blendVal)) return nullptr;
+    if (!ReadU8(stream, opacity)) return nullptr;
+    if (!ReadU8(stream, visible)) return nullptr;
+    if (!ReadU8(stream, locked)) return nullptr;
+    if (!ReadU8(stream, protectAlpha)) return nullptr;
+
+    uint32_t gridW = 0, gridH = 0, tileCount = 0;
+    if (!ReadU32(stream, gridW)) return nullptr;
+    if (!ReadU32(stream, gridH)) return nullptr;
+    if (!ReadU32(stream, tileCount)) return nullptr;
+
+    auto layer = CreateLayerFromType(name, static_cast<LayerType>(typeVal), canvasWidth, canvasHeight);
+    layer->SetBlendMode(static_cast<BlendMode>(blendVal));
+    layer->SetOpacity(opacity);
+    layer->SetVisible(visible != 0);
+    layer->SetLocked(locked != 0);
+    layer->SetProtectAlpha(protectAlpha != 0);
+
+    for (uint32_t i = 0; i < tileCount; ++i) {
+        uint32_t gx = 0, gy = 0;
+        if (!ReadU32(stream, gx)) return nullptr;
+        if (!ReadU32(stream, gy)) return nullptr;
+
+        Render::Tile tmpTile;
+        stream.read(reinterpret_cast<char*>(tmpTile.data), Render::TILE_BYTES);
         if (!stream.good()) return nullptr;
+        layer->ImportTile(gx, gy, tmpTile.data);
+    }
+
+    // VVP v2: read payload
+    uint8_t payloadType = 0;
+    if (!ReadU8(stream, payloadType)) return nullptr;
+    uint32_t payloadLen = 0;
+    if (!ReadU32(stream, payloadLen)) return nullptr;
+    if (payloadLen > 0) {
+        std::vector<uint8_t> payload(payloadLen);
+        stream.read(reinterpret_cast<char*>(payload.data()), payloadLen);
+        if (!stream.good()) return nullptr;
+        layer->DeserializePayload(payload.data(), payloadLen);
     }
 
     return layer;

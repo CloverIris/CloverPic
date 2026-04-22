@@ -4,6 +4,7 @@
 #include "App/Application.h"
 #include "Core/ProjectIO.h"
 #include "Core/LayerManager.h"
+#include "Core/RecentFilesManager.h"
 #include <windowsx.h>
 #include <shellapi.h>
 #include <commdlg.h>
@@ -89,10 +90,37 @@ void HomeScreen::CreateButtonGroups() {
     btnOpenFolder->SetCallback([this]() { OnOpenFolder(); });
     drawGroup.buttons.push_back(btnOpenFolder);
     
-    auto btnRecent = MakeRef<Button>();
-    btnRecent->SetText(L"最近使用的文件夹");
-    btnRecent->SetCallback([this]() { OnRecentFolders(); });
-    drawGroup.buttons.push_back(btnRecent);
+    // Recent files group
+    auto& recentMgr = RecentFilesManager::GetInstance();
+    const auto& recentFiles = recentMgr.GetRecentFiles();
+    if (!recentFiles.empty()) {
+        ButtonGroup recentGroup;
+        recentGroup.title = L"最近使用";
+        for (const auto& path : recentFiles) {
+            auto btn = MakeRef<Button>();
+            // Extract filename from path
+            size_t pos = path.find_last_of(L"\\/");
+            String filename = (pos != String::npos) ? path.substr(pos + 1) : path;
+            if (filename.length() > 24) {
+                filename = filename.substr(0, 21) + L"...";
+            }
+            btn->SetText(filename);
+            btn->SetCallback([path]() {
+                auto& lm = LayerManager::GetInstance();
+                auto loadedProject = ProjectSerializer::LoadProject(path, &lm);
+                if (loadedProject) {
+                    auto workspace = MakeScope<Workspace>();
+                    if (workspace->Initialize(loadedProject)) {
+                        workspace->SetProject(loadedProject);
+                        workspace->Invalidate();
+                        workspace.release();
+                    }
+                }
+            });
+            recentGroup.buttons.push_back(btn);
+        }
+        m_groups.push_back(recentGroup);
+    }
     
     auto btnCloud = MakeRef<Button>();
     btnCloud->SetText(L"从云端打开");
@@ -389,6 +417,7 @@ void HomeScreen::OnOpenFolder() {
         auto& lm = LayerManager::GetInstance();
         auto loadedProject = ProjectSerializer::LoadProject(filePath, &lm);
         if (loadedProject) {
+            RecentFilesManager::GetInstance().AddRecentFile(filePath);
             SetVisible(false);
             auto workspace = MakeScope<Workspace>();
             if (workspace->Initialize(loadedProject)) {
@@ -403,8 +432,7 @@ void HomeScreen::OnOpenFolder() {
 }
 
 void HomeScreen::OnRecentFolders() {
-    MessageBoxW(m_hwnd, L"最近使用的项目路径列表\nRecent Projects List", 
-                L"最近使用的文件夹", MB_OK | MB_ICONINFORMATION);
+    // Recent files are now displayed as buttons in the home screen
 }
 
 void HomeScreen::OnOpenFromCloud() {

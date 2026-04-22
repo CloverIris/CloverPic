@@ -55,6 +55,12 @@ bool Workspace::OnCreate() {
         m_saveStatusTime = GetTickCount64();
         RefreshStatusBar();
     });
+    m_toolBar->SetOnToolChanged([this](ToolType tool) {
+        if (m_canvasView) {
+            m_canvasView->SetCurrentTool(tool);
+            m_canvasView->InvalidateCanvas();
+        }
+    });
     
     // Create CanvasView
     m_canvasView = MakeScope<CanvasView>();
@@ -64,6 +70,9 @@ bool Workspace::OnCreate() {
     int contentBottom = 900 - Theme::GetSize(StatusBarHeight);
     Rect canvasRect(canvasLeft, contentTop, canvasRight, contentBottom);
     m_canvasView->Create(L"", canvasRect, this);
+    m_canvasView->SetOnToolChanged([this](ToolType tool) {
+        if (m_toolBar) m_toolBar->SetCurrentTool(tool);
+    });
     
     // Create left panels
     int leftPanelX = Theme::GetSize(ToolBarWidth);

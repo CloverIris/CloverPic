@@ -39,7 +39,7 @@ private:
     static constexpr int DropdownHeight = 22;
 
     int HitTestLayer(const Point& pos) const;
-    int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock, 2=protectAlpha
+    int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock, 2=protectAlpha, 3=solo
     bool HitTestBlendDropdown(const Point& pos) const;
     int HitTestBlendItem(const Point& pos) const;
     int HitTestOpacitySlider(const Point& pos) const; // returns 0 if on track

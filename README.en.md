@@ -14,17 +14,23 @@
 
 VividPic is a pure C++ native Windows painting application for illustrators and comic artists. Built on a custom lightweight UI framework and rendering pipeline, it aims to deliver low-latency, high-fidelity drawing experiences on Windows 10/11.
 
-The project is actively under development. Core canvas engine, layer system, brush engine, and dual-stack tablet support are already in place.
+The project is actively under development. Core canvas engine, full layer system (including text layers), brush engine, dual-stack tablet support, selection tools, transform tool, shape tool, text tool, filter system, and file I/O are already implemented.
 
 ## Key Features
 
 - **Pure Native Implementation**: Built on Win32 API and Direct2D. No Qt, Electron, or other external UI frameworks.
 - **Custom Rendering Pipeline**: CPU soft-compositing + D2D display blit. 256×256 TileGrid chunked memory management with Copy-on-Write.
-- **Professional Layer System**: 8 blend modes (Normal, Multiply, Screen, Overlay, Difference, Add, Subtract, Darken, Lighten) with opacity and visibility controls.
+- **Professional Layer System**: 18 blend modes with opacity, visibility, locking, protect-alpha, and Solo mode.
+- **Layer Polymorphism**: `RasterLayer` (pixel painting) + `TextLayer` (editable text with DirectWrite rasterization cache).
 - **Brush Engine**: 5 tip types (RoundHard, RoundSoft, Flat, Bristle, Texture) supporting flow, wetMix, spacing, and pressure mapping.
+- **Full Tool Set**: Brush, Eraser, Eyedropper, Fill, Gradient, Move, Lasso/Rect/Ellipse/MagicWand Select, Transform, Text, Shape.
 - **Dual-Stack Tablet Support**: Windows Ink API (primary) → WinTab API (fallback) → Mouse. Full pressure, tilt, and rotation support.
+- **Filter System**: 6 destructive filters (Brightness/Contrast, Hue/Saturation, Gaussian Blur, Sharpen, Invert, Threshold) + FilterDialog parameter dialog.
+- **File I/O**: `.vvp` custom binary format (VVP v1/v2 backward compatible) + WIC PNG export.
+- **Undo/Redo**: `HistoryManager` + `StrokeUndoItem` dual-snapshot mechanism with 50-step limit.
 - **Memory Awareness**: Automatic safe-memory-budget calculation before canvas creation, with green/yellow/red dashboard indicators.
 - **Dark Theme UI**: DPI-aware scaling (`Theme::Scale`), supporting 100%–200% DPI settings.
+- **Recent Files**: `RecentFilesManager` automatically tracks the last 10 opened files.
 - **Dockable Panel Layout**: Workspace supports floating and docking of left/right panels.
 
 ## Tech Stack
@@ -36,6 +42,7 @@ The project is actively under development. Core canvas engine, layer system, bru
 | Compiler | MinGW-w64 GCC 13.1.0 |
 | Build System | CMake 3.25+ / Ninja |
 | Rendering | Direct2D / WIC / GDI+ |
+| Text | DirectWrite (system font enumeration + text rasterization) |
 | Input | Windows Ink API / WinTab |
 | Standard Library | STL / `std::filesystem` |
 
@@ -69,13 +76,14 @@ cmake --build cmake-build-debug
 VividPic/
 ├── src/
 │   ├── App/          # Application singleton, message pump, lifecycle
-│   ├── Core/         # Project, Layer, LayerManager, BlendMode, MemoryAdvisor
-│   ├── Render/       # RenderBackend, D2DCanvas, TilePool, BrushEngine, BrushPreset
+│   ├── Core/         # Project, Layer(base), RasterLayer, TextLayer, LayerManager, BlendMode, MemoryAdvisor, SelectionMask, Filters, History, ProjectIO, RecentFilesManager
+│   ├── Render/       # RenderBackend, D2DCanvas, TilePool, BrushEngine, BrushPreset, FontManager
 │   ├── Tablet/       # TabletInput (WindowsInkDriver + WinTabDriver + TabletManager)
 │   ├── UI/
-│   │   ├── Core/     # Window, Theme, message routing base
+│   │   ├── Core/     # Window, Theme, ToolType, message routing base
 │   │   ├── Widgets/  # Button, Panel, EditBox, ComboBox, CanvasView
-│   │   ├── Panels/   # BrushPanel, ColorsPanel, LayersPanel, NavigatorPanel
+│   │   ├── Panels/   # BrushPanel, BrushSizePanel, ColorsPanel, LayersPanel, NavigatorPanel, ToolBar
+│   │   ├── Dialogs/  # TextInputDialog, FilterDialog
 │   │   └── Screens/  # HomeScreen, NewCanvasDialog, Workspace
 │   └── Utils/        # Types (String, Point, Rect, Size, Color, etc.)
 ├── assets/           # Runtime assets
@@ -90,10 +98,10 @@ VividPic/
 |-----------|--------|---------|
 | M1 | ✅ | Foundation, HomeScreen, Window/Theme system |
 | M2 | ✅ | Canvas engine, Direct2D rendering, Workspace, basic brush |
-| M3 | ✅ | TileGrid layer system, 8 blend modes, panels, shortcuts |
+| M3 | ✅ | TileGrid layer system, 18 blend modes, panels, shortcuts |
 | M4 | ✅ | Full brush engine, 5 tips, BrushPanel, WinTab support |
-| M5 | 🚧 | Selection tools, transform, fill, text tool, navigator |
-| M6 | ⏳ | File I/O (.vvp / PNG / PSD), history/undo, filters |
+| M5 | ✅ | Selection tools, transform, fill, gradient, text tool, navigator, Solo mode, ToolBar sync |
+| M6 | 🚧 | File I/O (.vvp v1/v2 / PNG), history/undo, filters, text layer save/load |
 | M7 | ⏳ | Cloud sync, timelapse, export |
 | M8 | ⏳ | Internationalization, settings panel, performance tuning |
 

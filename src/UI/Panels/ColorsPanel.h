@@ -23,10 +23,9 @@ protected:
     DWORD GetDefaultStyle() const override { return WS_CHILD | WS_VISIBLE; }
     
 private:
-    void DrawSaturationValueSquare(HDC hdc);
-    void DrawHueBar(HDC hdc);
     void DrawColorHistory(HDC hdc);
     void DrawCurrentColor(HDC hdc);
+    void DrawColorInfo(HDC hdc);
     void UpdateColorFromPosition(const Point& pos);
     
     void RebuildSVBitmap();
@@ -42,7 +41,7 @@ private:
     float m_value = 0.0f;      // 0-1
     
     static constexpr int SVSquareSize = 140;
-    static constexpr int HueBarHeight = 16;
+    static constexpr int HueBarWidth = 16;
     static constexpr int CurrentColorSize = 32;
     static constexpr int HistoryCount = 16;
     static constexpr int HistoryItemSize = 16;

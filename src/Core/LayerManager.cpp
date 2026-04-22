@@ -1,4 +1,6 @@
 #include "Core/LayerManager.h"
+#include "Core/RasterLayer.h"
+#include "Core/TextLayer.h"
 #include "Render/TilePool.h"
 #include <algorithm>
 
@@ -13,6 +15,7 @@ void LayerManager::Initialize(uint32_t canvasWidth, uint32_t canvasHeight) {
     Shutdown();
     m_canvasWidth = canvasWidth;
     m_canvasHeight = canvasHeight;
+    m_soloLayerIndex = static_cast<size_t>(-1);
     m_compositeDirty = true;
     
     // Ensure tile pool is ready
@@ -25,17 +28,30 @@ void LayerManager::Initialize(uint32_t canvasWidth, uint32_t canvasHeight) {
 void LayerManager::Shutdown() {
     m_layers.clear();
     m_activeLayerIndex = 0;
+    m_soloLayerIndex = static_cast<size_t>(-1);
     m_canvasWidth = 0;
     m_canvasHeight = 0;
     m_compositeDirty = true;
 }
 
 Ref<Layer> LayerManager::AddLayer(const String& name, LayerType type) {
-    auto layer = MakeRef<Layer>(name, type, m_canvasWidth, m_canvasHeight);
+    Ref<Layer> layer;
+    if (type == LayerType::Text) {
+        layer = MakeRef<TextLayer>(name, m_canvasWidth, m_canvasHeight);
+    } else {
+        layer = MakeRef<RasterLayer>(name, type, m_canvasWidth, m_canvasHeight);
+    }
     m_layers.push_back(layer);
     m_activeLayerIndex = m_layers.size() - 1;
     m_compositeDirty = true;
     return layer;
+}
+
+void LayerManager::AddLayer(Ref<Layer> layer) {
+    if (!layer) return;
+    m_layers.push_back(layer);
+    m_activeLayerIndex = m_layers.size() - 1;
+    m_compositeDirty = true;
 }
 
 void LayerManager::DeleteLayer(size_t index) {
@@ -146,6 +162,16 @@ void LayerManager::ToggleLayerLock(size_t index) {
     }
 }
 
+void LayerManager::ToggleSolo(size_t index) {
+    if (index >= m_layers.size()) return;
+    if (m_soloLayerIndex == index) {
+        m_soloLayerIndex = static_cast<size_t>(-1);
+    } else {
+        m_soloLayerIndex = index;
+    }
+    m_compositeDirty = true;
+}
+
 bool LayerManager::NeedsComposite() const {
     if (m_compositeDirty) return true;
     for (const auto& layer : m_layers) {
@@ -162,8 +188,10 @@ void LayerManager::CompositeToBuffer(uint8_t* outBuffer, uint32_t width, uint32_
     std::fill(outBuffer, outBuffer + totalPixels, 0);
     
     // Composite each visible layer (bottom to top)
-    for (auto& layer : m_layers) {
+    for (size_t li = 0; li < m_layers.size(); ++li) {
+        auto& layer = m_layers[li];
         if (!layer->IsVisible()) continue;
+        if (m_soloLayerIndex != static_cast<size_t>(-1) && li != m_soloLayerIndex) continue;
         
         float opacity = layer->GetOpacity() / 255.0f;
         BlendMode mode = layer->GetBlendMode();

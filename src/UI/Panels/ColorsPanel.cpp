@@ -1,8 +1,9 @@
-﻿#include "UI/Panels/ColorsPanel.h"
+#include "UI/Panels/ColorsPanel.h"
 #include "UI/Core/Theme.h"
 #include <cmath>
 #include <algorithm>
 #include <sstream>
+#include <iomanip>
 
 namespace VividPic {
 namespace UI {
@@ -44,7 +45,11 @@ void ColorsPanel::RebuildSVBitmap() {
     m_svBitmapSize = size;
     m_lastHue = m_hue;
 
-    if (m_svDC) CleanupBitmaps();
+    if (m_svDC) {
+        if (m_svOldBitmap) SelectObject(m_svDC, m_svOldBitmap);
+        if (m_svBitmap) DeleteObject(m_svBitmap);
+        DeleteDC(m_svDC);
+    }
 
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -70,8 +75,8 @@ void ColorsPanel::RebuildSVBitmap() {
 }
 
 void ColorsPanel::RebuildHueBitmap() {
-    int width = Theme::GetSize(SVSquareSize);
-    int height = Theme::GetSize(HueBarHeight);
+    int width = Theme::GetSize(HueBarWidth);
+    int height = Theme::GetSize(SVSquareSize);
     if (m_hueBitmapWidth == width && m_hueBitmapHeight == height && m_hueDC) return;
     m_hueBitmapWidth = width;
     m_hueBitmapHeight = height;
@@ -89,7 +94,7 @@ void ColorsPanel::RebuildHueBitmap() {
     BITMAPINFO bmi = {};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = width;
-    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biHeight = -height; // top-down
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
@@ -98,11 +103,11 @@ void ColorsPanel::RebuildHueBitmap() {
     m_hueBitmap = CreateDIBSection(m_hueDC, &bmi, DIB_RGB_COLORS, reinterpret_cast<void**>(&m_huePixels), nullptr, 0);
     m_hueOldBitmap = static_cast<HBITMAP>(SelectObject(m_hueDC, m_hueBitmap));
 
-    for (int px = 0; px < width; ++px) {
-        float h = static_cast<float>(px) / width * 360.0f;
+    for (int py = 0; py < height; ++py) {
+        float h = static_cast<float>(py) / height * 360.0f;
         Color c = HsvToRgb(h, 1.0f, 1.0f);
         uint32_t color = RGB(c.b, c.g, c.r);
-        for (int py = 0; py < height; ++py) {
+        for (int px = 0; px < width; ++px) {
             m_huePixels[py * width + px] = color;
         }
     }
@@ -123,7 +128,8 @@ void ColorsPanel::OnPaint(HDC hdc, const Rect& clip) {
     int pad = Theme::GetSize(8);
     int titleH = Theme::GetSize(22);
     int svSize = Theme::GetSize(SVSquareSize);
-    int hueH = Theme::GetSize(HueBarHeight);
+    int hueW = Theme::GetSize(HueBarWidth);
+    int gap = Theme::GetSize(4);
     int colorSize = Theme::GetSize(CurrentColorSize);
     int histSize = Theme::GetSize(HistoryItemSize);
 
@@ -156,9 +162,13 @@ void ColorsPanel::OnPaint(HDC hdc, const Rect& clip) {
     RebuildSVBitmap();
     RebuildHueBitmap();
 
-    // Blit SV square
+    // Layout: SV square left, vertical hue bar right
     int svX = pad;
     int svY = titleH + 6;
+    int hueX = svX + svSize + gap;
+    int hueY = svY;
+
+    // Blit SV square
     BitBlt(hdc, svX, svY, svSize, svSize, m_svDC, 0, 0, SRCCOPY);
 
     // SV cursor
@@ -173,52 +183,35 @@ void ColorsPanel::OnPaint(HDC hdc, const Rect& clip) {
     SelectObject(hdc, oldPen);
     DeleteObject(cursorPen);
 
-    // Blit hue bar
-    int hueX = pad;
-    int hueY = svY + svSize + Theme::GetSize(4);
-    BitBlt(hdc, hueX, hueY, m_hueBitmapWidth, m_hueBitmapHeight, m_hueDC, 0, 0, SRCCOPY);
+    // Blit vertical hue bar
+    BitBlt(hdc, hueX, hueY, hueW, svSize, m_hueDC, 0, 0, SRCCOPY);
 
-    // Hue cursor
-    int hcx = hueX + static_cast<int>(m_hue / 360.0f * m_hueBitmapWidth);
+    // Hue cursor (horizontal line on vertical bar)
+    int hcy = hueY + static_cast<int>(m_hue / 360.0f * svSize);
     HPEN hcursorPen = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
     oldPen = static_cast<HPEN>(SelectObject(hdc, hcursorPen));
-    MoveToEx(hdc, hcx, hueY - 2, nullptr);
-    LineTo(hdc, hcx, hueY + m_hueBitmapHeight + 2);
+    MoveToEx(hdc, hueX - 2, hcy, nullptr);
+    LineTo(hdc, hueX + hueW + 2, hcy);
     SelectObject(hdc, oldPen);
     DeleteObject(hcursorPen);
 
+    // Current color + history
     DrawCurrentColor(hdc);
     DrawColorHistory(hdc);
 
-    // RGB values
-    SetTextColor(hdc, Theme::TextPrimary);
-    HFONT valFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
-
-    std::wostringstream oss;
-    oss << L"R: " << static_cast<int>(m_currentColor.r)
-        << L"  G: " << static_cast<int>(m_currentColor.g)
-        << L"  B: " << static_cast<int>(m_currentColor.b);
-    int rgbY = svY + svSize + hueH + colorSize + histSize + Theme::GetSize(16);
-    RECT valRc = { pad, rgbY, client.Width() - pad, client.Height() - pad };
-    DrawTextW(hdc, oss.str().c_str(), -1, &valRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-
-    SelectObject(hdc, oldFont);
-    DeleteObject(valFont);
+    // HSV / Hex / RGB info
+    DrawColorInfo(hdc);
 }
 
 void ColorsPanel::DrawCurrentColor(HDC hdc) {
     int pad = Theme::GetSize(8);
     int svSize = Theme::GetSize(SVSquareSize);
-    int hueH = Theme::GetSize(HueBarHeight);
     int colorSize = Theme::GetSize(CurrentColorSize);
     int titleH = Theme::GetSize(22);
     int svY = titleH + 6;
 
     int x = pad;
-    int y = svY + svSize + hueH + Theme::GetSize(8);
+    int y = svY + svSize + Theme::GetSize(8);
 
     HBRUSH colorBrush = CreateSolidBrush(RGB(m_currentColor.r, m_currentColor.g, m_currentColor.b));
     RECT rc = { x, y, x + colorSize, y + colorSize };
@@ -238,14 +231,13 @@ void ColorsPanel::DrawCurrentColor(HDC hdc) {
 void ColorsPanel::DrawColorHistory(HDC hdc) {
     int pad = Theme::GetSize(8);
     int svSize = Theme::GetSize(SVSquareSize);
-    int hueH = Theme::GetSize(HueBarHeight);
     int colorSize = Theme::GetSize(CurrentColorSize);
     int histSize = Theme::GetSize(HistoryItemSize);
     int titleH = Theme::GetSize(22);
     int svY = titleH + 6;
 
     int x = pad + colorSize + pad;
-    int y = svY + svSize + hueH + Theme::GetSize(8);
+    int y = svY + svSize + Theme::GetSize(8);
 
     for (int i = 0; i < m_historyCount && i < HistoryCount; ++i) {
         int hx = x + (i % 8) * (histSize + Theme::GetSize(2));
@@ -267,13 +259,64 @@ void ColorsPanel::DrawColorHistory(HDC hdc) {
     }
 }
 
+void ColorsPanel::DrawColorInfo(HDC hdc) {
+    int pad = Theme::GetSize(8);
+    int svSize = Theme::GetSize(SVSquareSize);
+    int colorSize = Theme::GetSize(CurrentColorSize);
+    int histSize = Theme::GetSize(HistoryItemSize);
+    int titleH = Theme::GetSize(22);
+    int svY = titleH + 6;
+
+    int y = svY + svSize + colorSize + Theme::GetSize(12);
+    int x = pad;
+    int w = GetClientBounds().Width() - pad * 2;
+
+    SetBkMode(hdc, TRANSPARENT);
+    HFONT valFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
+
+    // HSV line
+    SetTextColor(hdc, Theme::TextPrimary);
+    std::wostringstream oss;
+    oss << L"H:" << static_cast<int>(m_hue) << L"° "
+        << L"S:" << static_cast<int>(m_saturation * 100) << L"% "
+        << L"V:" << static_cast<int>(m_value * 100) << L"%";
+    RECT hsvRc = { x, y, x + w, y + Theme::GetSize(16) };
+    DrawTextW(hdc, oss.str().c_str(), -1, &hsvRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    // Hex line
+    y += Theme::GetSize(16);
+    std::wostringstream hexOss;
+    hexOss << L"#" << std::uppercase << std::hex << std::setfill(L'0')
+           << std::setw(2) << static_cast<int>(m_currentColor.r)
+           << std::setw(2) << static_cast<int>(m_currentColor.g)
+           << std::setw(2) << static_cast<int>(m_currentColor.b);
+    RECT hexRc = { x, y, x + w, y + Theme::GetSize(16) };
+    DrawTextW(hdc, hexOss.str().c_str(), -1, &hexRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    // RGB line
+    y += Theme::GetSize(16);
+    std::wostringstream rgbOss;
+    rgbOss << L"R:" << static_cast<int>(m_currentColor.r) << L" "
+           << L"G:" << static_cast<int>(m_currentColor.g) << L" "
+           << L"B:" << static_cast<int>(m_currentColor.b);
+    RECT rgbRc = { x, y, x + w, y + Theme::GetSize(16) };
+    DrawTextW(hdc, rgbOss.str().c_str(), -1, &rgbRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    SelectObject(hdc, oldFont);
+    DeleteObject(valFont);
+}
+
 void ColorsPanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
 
     int pad = Theme::GetSize(8);
     int titleH = Theme::GetSize(22);
     int svSize = Theme::GetSize(SVSquareSize);
-    int hueH = Theme::GetSize(HueBarHeight);
+    int hueW = Theme::GetSize(HueBarWidth);
+    int gap = Theme::GetSize(4);
     int colorSize = Theme::GetSize(CurrentColorSize);
     int histSize = Theme::GetSize(HistoryItemSize);
     int svY = titleH + 6;
@@ -285,11 +328,11 @@ void ColorsPanel::OnMouseDown(const Point& pos, MouseButton button) {
         return;
     }
 
-    int hueX = pad;
-    int hueY = svY + svSize + Theme::GetSize(4);
-    if (pos.x >= hueX && pos.x < hueX + svSize && pos.y >= hueY && pos.y < hueY + hueH) {
+    int hueX = svX + svSize + gap;
+    int hueY = svY;
+    if (pos.x >= hueX && pos.x < hueX + hueW && pos.y >= hueY && pos.y < hueY + svSize) {
         m_draggingHue = true;
-        m_hue = static_cast<float>(pos.x - hueX) / svSize * 360.0f;
+        m_hue = static_cast<float>(pos.y - hueY) / svSize * 360.0f;
         m_hue = std::clamp(m_hue, 0.0f, 360.0f);
         m_currentColor = HsvToRgb(m_hue, m_saturation, m_value);
         RebuildSVBitmap();
@@ -301,7 +344,7 @@ void ColorsPanel::OnMouseDown(const Point& pos, MouseButton button) {
 
     // History click
     int histX = pad + colorSize + pad;
-    int histY = svY + svSize + hueH + Theme::GetSize(8);
+    int histY = svY + svSize + Theme::GetSize(8);
     for (int i = 0; i < m_historyCount && i < HistoryCount; ++i) {
         int hx = histX + (i % 8) * (histSize + Theme::GetSize(2));
         int hy = histY + (i / 8) * (histSize + Theme::GetSize(2));
@@ -321,8 +364,8 @@ void ColorsPanel::OnMouseMove(const Point& pos) {
         UpdateColorFromPosition(pos);
     } else if (m_draggingHue) {
         int svSize = Theme::GetSize(SVSquareSize);
-        int hueX = Theme::GetSize(8);
-        m_hue = static_cast<float>(pos.x - hueX) / svSize * 360.0f;
+        int hueY = Theme::GetSize(22) + 6;
+        m_hue = static_cast<float>(pos.y - hueY) / svSize * 360.0f;
         m_hue = std::clamp(m_hue, 0.0f, 360.0f);
         m_currentColor = HsvToRgb(m_hue, m_saturation, m_value);
         RebuildSVBitmap();

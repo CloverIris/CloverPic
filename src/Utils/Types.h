@@ -36,6 +36,14 @@ struct Point {
     Point(int32_t x_, int32_t y_) : x(x_), y(y_) {}
 };
 
+struct PointF {
+    float x = 0.0f;
+    float y = 0.0f;
+    
+    PointF() = default;
+    PointF(float x_, float y_) : x(x_), y(y_) {}
+};
+
 struct Size {
     int32_t width = 0;
     int32_t height = 0;
@@ -88,6 +96,22 @@ struct Color {
             static_cast<uint8_t>((hex >> 8) & 0xFF),
             static_cast<uint8_t>(hex & 0xFF),
             alpha
+        );
+    }
+    
+    uint32_t ToRGBA() const {
+        return (static_cast<uint32_t>(r) << 24) |
+               (static_cast<uint32_t>(g) << 16) |
+               (static_cast<uint32_t>(b) << 8) |
+               static_cast<uint32_t>(a);
+    }
+    
+    static Color FromRGBA(uint32_t rgba) {
+        return Color(
+            static_cast<uint8_t>((rgba >> 24) & 0xFF),
+            static_cast<uint8_t>((rgba >> 16) & 0xFF),
+            static_cast<uint8_t>((rgba >> 8) & 0xFF),
+            static_cast<uint8_t>(rgba & 0xFF)
         );
     }
     

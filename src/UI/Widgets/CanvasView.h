@@ -41,6 +41,10 @@ public:
     Color PickColor(int x, int y);
     void ApplyFill(float x, float y);
     void ApplyGradient(float x1, float y1, float x2, float y2);
+    void ApplyTextTool(float x, float y);
+    void ApplyShape();
+    void StartTransform(float x, float y);
+    void ApplyTransform();
     
     // Layer access
     LayerManager* GetLayerManager() const { return m_layerManager; }
@@ -52,6 +56,7 @@ public:
     // Current tool
     void SetCurrentTool(ToolType tool);
     ToolType GetCurrentTool() const { return m_currentTool; }
+    void SetOnToolChanged(std::function<void(ToolType)> callback) { m_onToolChanged = std::move(callback); }
     
     // Selection
     SelectionMask* GetSelection() const { return m_selection.get(); }
@@ -143,6 +148,7 @@ private:
     // Tool
     ToolType m_currentTool = ToolType::Brush;
     ToolType m_previousTool = ToolType::Brush; // For eyedropper restore
+    std::function<void(ToolType)> m_onToolChanged;
     
     // Selection
     std::unique_ptr<SelectionMask> m_selection;

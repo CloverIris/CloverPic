@@ -5,7 +5,7 @@
 #include "UI/Widgets/EditBox.h"
 #include "UI/Widgets/ComboBox.h"
 #include "Core/Project.h"
-#include "Core/Layer.h"
+#include "Core/LayerType.h"
 #include "Core/MemoryAdvisor.h"
 #include <functional>
 

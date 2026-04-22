@@ -44,9 +44,9 @@ private:
         { ToolType::RectSelect,    L'\uE7A8', L"矩形选择 (M)",      'M', true  },
         { ToolType::EllipseSelect, L'\uE915', L"椭圆选择",           0,  true  },
         { ToolType::MagicWand,     L'\uE7B3', L"魔棒选择 (W)",      'W', true  },
-        { ToolType::Transform,     L'\uE7AD', L"变换 (Ctrl+T)",     0,  false },
-        { ToolType::Text,          L'\uE8D2', L"文字 (T)",          'T', false },
-        { ToolType::Shape,         L'\uE710', L"形状",              0,  false },
+        { ToolType::Transform,     L'\uE7AD', L"变换 (Ctrl+T)",     0,  true  },
+        { ToolType::Text,          L'\uE8D2', L"文字 (T)",          'T', true  },
+        { ToolType::Shape,         L'\uE710', L"形状",              0,  true  },
     };
     static constexpr int ToolCount = 13;
     static constexpr int IconSize = 28;

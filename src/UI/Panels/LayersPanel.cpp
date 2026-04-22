@@ -167,9 +167,20 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
         RECT lockRc = { client.Width() - Theme::GetSize(26), y + Theme::GetSize(4), client.Width() - Theme::GetSize(6), y + Theme::GetSize(20) };
         DrawTextW(hdc, layer->IsLocked() ? L"🔒" : L"○", -1, &lockRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
+        // Solo button
+        bool isSolo = m_layerManager->IsSoloActive() && m_layerManager->GetSoloLayerIndex() == static_cast<size_t>(i);
+        SetTextColor(hdc, isSolo ? Theme::HighlightBlue : Theme::TextDisabled);
+        RECT soloRc = { client.Width() - Theme::GetSize(96), y + Theme::GetSize(4), client.Width() - Theme::GetSize(76), y + Theme::GetSize(20) };
+        DrawTextW(hdc, L"S", -1, &soloRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+
+        // Protect alpha checkbox
+        Rect paRc(client.Width() - Theme::GetSize(72), y + Theme::GetSize(4),
+                  client.Width() - Theme::GetSize(52), y + Theme::GetSize(20));
+        Theme::DrawCheckBox(hdc, paRc, layer->IsProtectAlpha(), false, nullptr);
+
         // Name
         SetTextColor(hdc, isActive ? Theme::TextInverse : Theme::TextPrimary);
-        RECT nameRc = { Theme::GetSize(8) + ThumbSize + Theme::GetSize(8), y + Theme::GetSize(4), client.Width() - Theme::GetSize(52), y + Theme::GetSize(20) };
+        RECT nameRc = { Theme::GetSize(8) + ThumbSize + Theme::GetSize(8), y + Theme::GetSize(4), client.Width() - Theme::GetSize(100), y + Theme::GetSize(20) };
         DrawTextW(hdc, layer->GetName().c_str(), -1, &nameRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
 
         // Opacity + Blend mode text
@@ -370,6 +381,17 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
             m_layerManager->ToggleLayerLock(layerIdx);
             Invalidate();
             return;
+        } else if (btn == 2) {
+            auto layer = m_layerManager->GetLayer(layerIdx);
+            if (layer) {
+                layer->SetProtectAlpha(!layer->IsProtectAlpha());
+                Invalidate();
+            }
+            return;
+        } else if (btn == 3) {
+            m_layerManager->ToggleSolo(layerIdx);
+            Invalidate();
+            return;
         }
         
         m_layerManager->SetActiveLayer(layerIdx);
@@ -415,6 +437,8 @@ int LayersPanel::HitTestButton(const Point& pos, int layerIndex) const {
     for (int i = static_cast<int>(count) - 1; i >= 0; --i) {
         if (i == layerIndex) {
             if (pos.y >= y && pos.y < y + ItemHeight) {
+                if (pos.x >= client.Width() - Theme::GetSize(96) && pos.x < client.Width() - Theme::GetSize(76)) return 3; // solo
+                if (pos.x >= client.Width() - Theme::GetSize(72) && pos.x < client.Width() - Theme::GetSize(52)) return 2; // protectAlpha
                 if (pos.x >= client.Width() - 48 && pos.x < client.Width() - 28) return 0; // visibility
                 if (pos.x >= client.Width() - 26 && pos.x < client.Width() - 6) return 1; // lock
             }

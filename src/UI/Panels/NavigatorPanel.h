@@ -10,6 +10,7 @@ namespace UI {
 class NavigatorPanel : public Window {
 public:
     NavigatorPanel();
+    ~NavigatorPanel();
     
     void SetLayerManager(LayerManager* manager) { m_layerManager = manager; }
     void SetCanvasViewTransform(float zoom, float panX, float panY, float rotation = 0.0f);
@@ -54,6 +55,18 @@ private:
     
     void UpdateThumbnail();
     float GetThumbScale(int availWidth, int availHeight) const;
+    void CleanupThumbnail();
+    void GetThumbRect(int& outX, int& outY, int& outW, int& outH) const;
+    
+    // DIBSection cache for fast thumbnail blitting
+    HDC m_thumbDC = nullptr;
+    HBITMAP m_thumbBitmap = nullptr;
+    HBITMAP m_thumbOldBitmap = nullptr;
+    uint32_t* m_thumbPixels = nullptr;
+    int m_cachedThumbW = 0;
+    int m_cachedThumbH = 0;
+    int m_cachedThumbX = 0;
+    int m_cachedThumbY = 0;
 };
 
 } // namespace UI

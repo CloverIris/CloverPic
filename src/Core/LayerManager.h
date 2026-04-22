@@ -21,6 +21,7 @@ public:
     
     // Layer operations
     Ref<Layer> AddLayer(const String& name, LayerType type);
+    void AddLayer(Ref<Layer> layer);
     void DeleteLayer(size_t index);
     void DuplicateLayer(size_t index);
     void MergeDown(size_t index);
@@ -36,6 +37,11 @@ public:
     // Visibility / locking helpers
     void ToggleLayerVisibility(size_t index);
     void ToggleLayerLock(size_t index);
+    
+    // Solo mode: isolate a single layer's visibility
+    void ToggleSolo(size_t index);
+    bool IsSoloActive() const { return m_soloLayerIndex != static_cast<size_t>(-1); }
+    size_t GetSoloLayerIndex() const { return m_soloLayerIndex; }
     
     // Compositing
     // Composites all visible layers into a flat RGBA buffer
@@ -54,6 +60,7 @@ private:
     uint32_t m_canvasHeight = 0;
     std::vector<Ref<Layer>> m_layers;
     size_t m_activeLayerIndex = 0;
+    size_t m_soloLayerIndex = static_cast<size_t>(-1);
     bool m_compositeDirty = true;
     
     void CompositeTile(Render::Tile* outTile, uint32_t gridX, uint32_t gridY);

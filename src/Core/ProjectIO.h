@@ -53,7 +53,8 @@ public:
 
 private:
     static bool WriteLayer(std::ostream& stream, Layer* layer);
-    static Ref<Layer> ReadLayer(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight);
+    static Ref<Layer> ReadLayerV1(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight);
+    static Ref<Layer> ReadLayerV2(std::istream& stream, uint32_t canvasWidth, uint32_t canvasHeight);
 };
 
 } // namespace VividPic

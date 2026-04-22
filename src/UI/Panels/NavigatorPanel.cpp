@@ -1,4 +1,4 @@
-﻿#include "UI/Panels/NavigatorPanel.h"
+#include "UI/Panels/NavigatorPanel.h"
 #include "UI/Core/Theme.h"
 #include <algorithm>
 #include <sstream>
@@ -7,6 +7,22 @@ namespace VividPic {
 namespace UI {
 
 NavigatorPanel::NavigatorPanel() = default;
+
+NavigatorPanel::~NavigatorPanel() {
+    CleanupThumbnail();
+}
+
+void NavigatorPanel::CleanupThumbnail() {
+    if (m_thumbDC) {
+        if (m_thumbOldBitmap) SelectObject(m_thumbDC, m_thumbOldBitmap);
+        if (m_thumbBitmap) DeleteObject(m_thumbBitmap);
+        DeleteDC(m_thumbDC);
+        m_thumbDC = nullptr;
+        m_thumbBitmap = nullptr;
+        m_thumbOldBitmap = nullptr;
+        m_thumbPixels = nullptr;
+    }
+}
 
 void NavigatorPanel::SetCanvasViewTransform(float zoom, float panX, float panY, float rotation) {
     m_zoom = zoom;
@@ -26,6 +42,18 @@ void NavigatorPanel::SetCanvasSize(uint32_t width, uint32_t height) {
 void NavigatorPanel::Refresh() {
     m_thumbnailDirty = true;
     Invalidate();
+}
+
+void NavigatorPanel::GetThumbRect(int& outX, int& outY, int& outW, int& outH) const {
+    Rect client = GetClientBounds();
+    int availW = client.Width() - ThumbMargin * 2;
+    int availH = client.Height() - Theme::GetSize(80);
+    
+    float scale = GetThumbScale(availW, availH);
+    outW = static_cast<int>(m_canvasWidth * scale);
+    outH = static_cast<int>(m_canvasHeight * scale);
+    outX = ThumbMargin + (availW - outW) / 2;
+    outY = 28 + (availH - outH) / 2;
 }
 
 void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
@@ -54,6 +82,10 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     LineTo(hdc, client.Width() - 8, 22);
     SelectObject(hdc, oldPen);
     DeleteObject(sepPen);
+    
+    if (m_thumbnailDirty) {
+        UpdateThumbnail();
+    }
     
     DrawThumbnail(hdc);
     DrawViewRect(hdc);
@@ -107,68 +139,97 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(valFont);
 }
 
-void NavigatorPanel::DrawThumbnail(HDC hdc) {
+void NavigatorPanel::UpdateThumbnail() {
+    m_thumbnailDirty = false;
+    
     if (m_canvasWidth == 0 || m_canvasHeight == 0) return;
     
-    Rect client = GetClientBounds();
-    int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - Theme::GetSize(80); // Leave room for title, buttons, and zoom text
+    int thumbX, thumbY, thumbW, thumbH;
+    GetThumbRect(thumbX, thumbY, thumbW, thumbH);
     
-    float scale = GetThumbScale(availW, availH);
-    int thumbW = static_cast<int>(m_canvasWidth * scale);
-    int thumbH = static_cast<int>(m_canvasHeight * scale);
-    int thumbX = ThumbMargin + (availW - thumbW) / 2;
-    int thumbY = 28 + (availH - thumbH) / 2;
+    m_cachedThumbX = thumbX;
+    m_cachedThumbY = thumbY;
+    m_cachedThumbW = thumbW;
+    m_cachedThumbH = thumbH;
     
-    // Background
-    HBRUSH bgBrush = CreateSolidBrush(RGB(0x40, 0x40, 0x40));
-    RECT bgRc = { thumbX, thumbY, thumbX + thumbW, thumbY + thumbH };
-    FillRect(hdc, &bgRc, bgBrush);
-    DeleteObject(bgBrush);
+    // Recreate DIBSection if size changed
+    if (!m_thumbDC || m_cachedThumbW != thumbW || m_cachedThumbH != thumbH) {
+        CleanupThumbnail();
+        
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = thumbW;
+        bmi.bmiHeader.biHeight = -thumbH; // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        
+        m_thumbDC = CreateCompatibleDC(nullptr);
+        m_thumbBitmap = CreateDIBSection(m_thumbDC, &bmi, DIB_RGB_COLORS,
+                                         reinterpret_cast<void**>(&m_thumbPixels), nullptr, 0);
+        m_thumbOldBitmap = static_cast<HBITMAP>(SelectObject(m_thumbDC, m_thumbBitmap));
+    }
     
-    // Checkerboard for transparent areas
+    // Checkerboard background
     const int checkSize = 4;
-    for (int y = 0; y < thumbH; y += checkSize) {
-        for (int x = 0; x < thumbW; x += checkSize) {
-            COLORREF c = ((x / checkSize + y / checkSize) % 2 == 0) ? RGB(0x50, 0x50, 0x50) : RGB(0x40, 0x40, 0x40);
-            HBRUSH checkBrush = CreateSolidBrush(c);
-            RECT cr = { thumbX + x, thumbY + y, thumbX + std::min(x + checkSize, thumbW), thumbY + std::min(y + checkSize, thumbH) };
-            FillRect(hdc, &cr, checkBrush);
-            DeleteObject(checkBrush);
+    for (int y = 0; y < thumbH; ++y) {
+        for (int x = 0; x < thumbW; ++x) {
+            bool dark = ((x / checkSize + y / checkSize) % 2 == 0);
+            uint8_t c = dark ? 0x50 : 0x40;
+            m_thumbPixels[y * thumbW + x] = RGB(c, c, c);
         }
     }
     
-    // Draw simple representation from layer manager
+    // Composite visible layers
     if (m_layerManager) {
-        // For M3, draw a gradient representing the canvas
+        float scaleX = static_cast<float>(m_canvasWidth) / thumbW;
+        float scaleY = static_cast<float>(m_canvasHeight) / thumbH;
+        
         for (int y = 0; y < thumbH; ++y) {
             for (int x = 0; x < thumbW; ++x) {
-                uint32_t cx = static_cast<uint32_t>(x / scale);
-                uint32_t cy = static_cast<uint32_t>(y / scale);
-                Color c = Color(200, 200, 200, 255); // Placeholder
+                uint32_t cx = static_cast<uint32_t>(x * scaleX);
+                uint32_t cy = static_cast<uint32_t>(y * scaleY);
+                if (cx >= m_canvasWidth) cx = m_canvasWidth - 1;
+                if (cy >= m_canvasHeight) cy = m_canvasHeight - 1;
                 
-                // Sample from top visible layer that has a pixel
-                for (int i = static_cast<int>(m_layerManager->GetLayerCount()) - 1; i >= 0; --i) {
+                Color c(0, 0, 0, 0);
+                // Bottom-up blend of all visible layers
+                for (size_t i = 0; i < m_layerManager->GetLayerCount(); ++i) {
                     auto layer = m_layerManager->GetLayer(i);
                     if (!layer || !layer->IsVisible()) continue;
                     Color pc = layer->GetPixel(cx, cy);
                     if (pc.a > 0) {
-                        c = BlendOperations::AlphaBlend(pc, c, 1.0f);
-                        break;
+                        c = BlendOperations::BlendPixel(pc, c, layer->GetBlendMode(), layer->GetOpacity() / 255.0f);
                     }
                 }
                 
-                SetPixel(hdc, thumbX + x, thumbY + y, RGB(c.r, c.g, c.b));
+                if (c.a > 0) {
+                    // Alpha blend over checkerboard bg
+                    uint8_t bg = (((x / checkSize + y / checkSize) % 2 == 0) ? 0x50 : 0x40);
+                    uint8_t r = static_cast<uint8_t>(c.r * c.a / 255.0f + bg * (255 - c.a) / 255.0f);
+                    uint8_t g = static_cast<uint8_t>(c.g * c.a / 255.0f + bg * (255 - c.a) / 255.0f);
+                    uint8_t b = static_cast<uint8_t>(c.b * c.a / 255.0f + bg * (255 - c.a) / 255.0f);
+                    m_thumbPixels[y * thumbW + x] = RGB(b, g, r); // BGR for DIB
+                }
             }
         }
     }
+}
+
+void NavigatorPanel::DrawThumbnail(HDC hdc) {
+    if (m_canvasWidth == 0 || m_canvasHeight == 0) return;
+    if (!m_thumbDC || !m_thumbBitmap) return;
+    
+    BitBlt(hdc, m_cachedThumbX, m_cachedThumbY, m_cachedThumbW, m_cachedThumbH,
+           m_thumbDC, 0, 0, SRCCOPY);
     
     // Border
     HPEN borderPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, borderPen));
     HBRUSH nullBrush = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
     HBRUSH oldBrush = static_cast<HBRUSH>(SelectObject(hdc, nullBrush));
-    Rectangle(hdc, thumbX, thumbY, thumbX + thumbW, thumbY + thumbH);
+    Rectangle(hdc, m_cachedThumbX, m_cachedThumbY,
+              m_cachedThumbX + m_cachedThumbW, m_cachedThumbY + m_cachedThumbH);
     SelectObject(hdc, oldPen);
     SelectObject(hdc, oldBrush);
     DeleteObject(borderPen);
@@ -177,19 +238,16 @@ void NavigatorPanel::DrawThumbnail(HDC hdc) {
 void NavigatorPanel::DrawViewRect(HDC hdc) {
     if (m_canvasWidth == 0 || m_canvasHeight == 0) return;
     
-    Rect client = GetClientBounds();
-    int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - Theme::GetSize(80);
+    int thumbX = m_cachedThumbX;
+    int thumbY = m_cachedThumbY;
+    int thumbW = m_cachedThumbW;
+    int thumbH = m_cachedThumbH;
     
-    float scale = GetThumbScale(availW, availH);
-    int thumbW = static_cast<int>(m_canvasWidth * scale);
-    int thumbH = static_cast<int>(m_canvasHeight * scale);
-    int thumbX = ThumbMargin + (availW - thumbW) / 2;
-    int thumbY = 28 + (availH - thumbH) / 2;
+    if (thumbW <= 0 || thumbH <= 0) return;
+    
+    float scale = static_cast<float>(thumbW) / m_canvasWidth;
     
     // Calculate view rectangle in thumbnail space
-    // The view shows the client area of CanvasView
-    // We need the parent Window's client size to know the view size
     Window* parent = GetParent();
     Size parentSize = parent ? parent->GetClientBounds().GetSize() : Size(800, 600);
     
@@ -236,18 +294,14 @@ void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
         return;
     }
     
-    int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - Theme::GetSize(80);
-    
-    float scale = GetThumbScale(availW, availH);
-    int thumbW = static_cast<int>(m_canvasWidth * scale);
-    int thumbH = static_cast<int>(m_canvasHeight * scale);
-    int thumbX = ThumbMargin + (availW - thumbW) / 2;
-    int thumbY = 28 + (availH - thumbH) / 2;
+    int thumbX = m_cachedThumbX;
+    int thumbY = m_cachedThumbY;
+    int thumbW = m_cachedThumbW;
+    int thumbH = m_cachedThumbH;
     
     if (pos.x >= thumbX && pos.x < thumbX + thumbW && pos.y >= thumbY && pos.y < thumbY + thumbH) {
         m_draggingView = true;
-        // Calculate new pan based on click position
+        float scale = static_cast<float>(thumbW) / m_canvasWidth;
         float canvasX = (pos.x - thumbX) / scale;
         float canvasY = (pos.y - thumbY) / scale;
         
@@ -266,16 +320,14 @@ void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
 void NavigatorPanel::OnMouseMove(const Point& pos) {
     if (!m_draggingView) return;
     
-    Rect client = GetClientBounds();
-    int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - Theme::GetSize(80);
+    int thumbX = m_cachedThumbX;
+    int thumbY = m_cachedThumbY;
+    int thumbW = m_cachedThumbW;
+    int thumbH = m_cachedThumbH;
     
-    float scale = GetThumbScale(availW, availH);
-    int thumbW = static_cast<int>(m_canvasWidth * scale);
-    int thumbH = static_cast<int>(m_canvasHeight * scale);
-    int thumbX = ThumbMargin + (availW - thumbW) / 2;
-    int thumbY = 28 + (availH - thumbH) / 2;
+    if (thumbW <= 0) return;
     
+    float scale = static_cast<float>(thumbW) / m_canvasWidth;
     float canvasX = (pos.x - thumbX) / scale;
     float canvasY = (pos.y - thumbY) / scale;
     
@@ -299,10 +351,6 @@ float NavigatorPanel::GetThumbScale(int availWidth, int availHeight) const {
     float sx = static_cast<float>(availWidth) / m_canvasWidth;
     float sy = static_cast<float>(availHeight) / m_canvasHeight;
     return std::min(sx, sy);
-}
-
-void NavigatorPanel::UpdateThumbnail() {
-    m_thumbnailDirty = false;
 }
 
 } // namespace UI

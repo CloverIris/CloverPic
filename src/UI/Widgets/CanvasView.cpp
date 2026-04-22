@@ -1,6 +1,8 @@
 #include "UI/Widgets/CanvasView.h"
 #include "Render/RenderBackend.h"
 #include "App/Application.h"
+#include "UI/Dialogs/TextInputDialog.h"
+#include "Core/TextLayer.h"
 #include <windowsx.h>
 #include <algorithm>
 #include <iostream>
@@ -215,6 +217,7 @@ void CanvasView::SetCurrentTool(ToolType tool) {
         m_previousTool = m_currentTool;
     }
     m_currentTool = tool;
+    if (m_onToolChanged) m_onToolChanged(tool);
     Invalidate();
 }
 
@@ -314,6 +317,33 @@ void CanvasView::CompositeAndRender() {
                             D2D1::Point2F(m_dragStartX, m_dragStartY),
                             D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
                             previewBrush, 1.0f);
+                        break;
+                    }
+                    case ToolType::Shape: {
+                        float x1 = std::min(m_dragStartX, m_dragCurrentX);
+                        float y1 = std::min(m_dragStartY, m_dragCurrentY);
+                        float x2 = std::max(m_dragStartX, m_dragCurrentX);
+                        float y2 = std::max(m_dragStartY, m_dragCurrentY);
+                        D2D1_RECT_F rc = D2D1::RectF(x1, y1, x2, y2);
+                        ID2D1SolidColorBrush* fillBrush = nullptr;
+                        m_renderTarget->CreateSolidColorBrush(
+                            D2D1::ColorF(m_brushColor.r/255.0f, m_brushColor.g/255.0f, m_brushColor.b/255.0f, m_brushColor.a/255.0f * 0.4f),
+                            &fillBrush);
+                        if (fillBrush) {
+                            m_renderTarget->FillRectangle(rc, fillBrush);
+                            fillBrush->Release();
+                        }
+                        m_renderTarget->DrawRectangle(rc, previewBrush, 1.0f);
+                        break;
+                    }
+                    case ToolType::Transform: {
+                        // Draw transform pivot and scale indicator
+                        m_renderTarget->DrawLine(
+                            D2D1::Point2F(m_dragStartX, m_dragStartY),
+                            D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
+                            previewBrush, 1.0f);
+                        D2D1_ELLIPSE pivot = D2D1::Ellipse(D2D1::Point2F(m_dragStartX, m_dragStartY), 4.0f, 4.0f);
+                        m_renderTarget->DrawEllipse(pivot, previewBrush, 1.0f);
                         break;
                     }
                     default:
@@ -668,11 +698,21 @@ void CanvasView::OnMouseDown(const Point& pos, MouseButton button) {
                 }
                 break;
             }
-            case ToolType::Transform:
-            case ToolType::Text:
+            case ToolType::Transform: {
+                StartTransform(canvasX, canvasY);
+                m_isDragging = true;
+                break;
+            }
             case ToolType::Shape: {
-                // Stub: show a brief status or just invalidate
-                Invalidate();
+                m_dragStartX = canvasX;
+                m_dragStartY = canvasY;
+                m_dragCurrentX = canvasX;
+                m_dragCurrentY = canvasY;
+                m_isDragging = true;
+                break;
+            }
+            case ToolType::Text: {
+                ApplyTextTool(canvasX, canvasY);
                 break;
             }
             default:
@@ -709,6 +749,12 @@ void CanvasView::OnMouseUp(const Point& pos, MouseButton button) {
                     break;
                 case ToolType::Gradient:
                     FinishGradient();
+                    break;
+                case ToolType::Shape:
+                    ApplyShape();
+                    break;
+                case ToolType::Transform:
+                    ApplyTransform();
                     break;
                 default:
                     break;
@@ -1271,6 +1317,158 @@ void CanvasView::DrawSelectionOutline(ID2D1RenderTarget* rt) {
     }
     
     brush->Release();
+}
+
+// -------------------------------------------------------------------------
+// Text tool
+// -------------------------------------------------------------------------
+void CanvasView::ApplyTextTool(float canvasX, float canvasY) {
+    if (!m_layerManager) return;
+    
+    TextInputDialog dialog;
+    dialog.Initialize();
+    
+    UI::TextProperties initial;
+    initial.text = L"新建文本";
+    initial.fontFamily = L"Segoe UI";
+    initial.fontSize = 24.0f;
+    initial.color = m_brushColor;
+    
+    if (dialog.ShowModal(this, initial)) {
+        auto props = dialog.GetProperties();
+        
+        auto textLayer = MakeRef<TextLayer>(props.text, m_canvasWidth, m_canvasHeight);
+        textLayer->SetText(props.text);
+        textLayer->SetFontFamily(props.fontFamily);
+        textLayer->SetFontSize(props.fontSize);
+        textLayer->SetTextColor(props.color);
+        textLayer->SetPosition(Point(static_cast<int32_t>(canvasX), static_cast<int32_t>(canvasY)));
+        textLayer->RasterizeIfNeeded();
+        
+        m_layerManager->AddLayer(textLayer);
+        m_layerManager->MarkCompositeDirty();
+        Invalidate();
+    }
+}
+
+// -------------------------------------------------------------------------
+// Shape tool
+// -------------------------------------------------------------------------
+void CanvasView::ApplyShape() {
+    if (!m_layerManager) return;
+    auto layer = m_layerManager->GetActiveLayer();
+    if (!layer || layer->IsLocked()) return;
+    
+    int x1 = static_cast<int>(std::floor(std::min(m_dragStartX, m_dragCurrentX)));
+    int y1 = static_cast<int>(std::floor(std::min(m_dragStartY, m_dragCurrentY)));
+    int x2 = static_cast<int>(std::ceil(std::max(m_dragStartX, m_dragCurrentX)));
+    int y2 = static_cast<int>(std::ceil(std::max(m_dragStartY, m_dragCurrentY)));
+    
+    if (x1 < 0) x1 = 0;
+    if (y1 < 0) y1 = 0;
+    if (x2 >= static_cast<int>(m_canvasWidth)) x2 = static_cast<int>(m_canvasWidth) - 1;
+    if (y2 >= static_cast<int>(m_canvasHeight)) y2 = static_cast<int>(m_canvasHeight) - 1;
+    
+    if (x1 > x2 || y1 > y2) return;
+    
+    for (int y = y1; y <= y2; ++y) {
+        for (int x = x1; x <= x2; ++x) {
+            layer->SetPixel(static_cast<uint32_t>(x), static_cast<uint32_t>(y), m_brushColor);
+        }
+    }
+    
+    m_layerManager->MarkCompositeDirty();
+    Invalidate();
+}
+
+// -------------------------------------------------------------------------
+// Transform tool (simplified: drag to scale active layer from center)
+// -------------------------------------------------------------------------
+void CanvasView::StartTransform(float x, float y) {
+    m_dragStartX = x;
+    m_dragStartY = y;
+    m_dragCurrentX = x;
+    m_dragCurrentY = y;
+}
+
+void CanvasView::ApplyTransform() {
+    if (!m_layerManager) return;
+    auto layer = m_layerManager->GetActiveLayer();
+    if (!layer || layer->IsLocked()) return;
+    
+    // Compute scale from drag distance
+    float dx = m_dragCurrentX - m_dragStartX;
+    float scale = 1.0f + dx / 200.0f; // 200px drag = 2x scale
+    if (scale < 0.1f) scale = 0.1f;
+    if (scale > 5.0f) scale = 5.0f;
+    
+    // Capture current layer pixels
+    std::vector<uint8_t> src(static_cast<size_t>(m_canvasWidth) * m_canvasHeight * 4);
+    for (uint32_t y = 0; y < m_canvasHeight; ++y) {
+        for (uint32_t x = 0; x < m_canvasWidth; ++x) {
+            Color c = layer->GetPixel(x, y);
+            size_t idx = (y * m_canvasWidth + x) * 4;
+            src[idx + 0] = c.b;
+            src[idx + 1] = c.g;
+            src[idx + 2] = c.r;
+            src[idx + 3] = c.a;
+        }
+    }
+    
+    layer->Clear();
+    
+    float centerX = m_canvasWidth * 0.5f;
+    float centerY = m_canvasHeight * 0.5f;
+    
+    // Bilinear resample
+    for (uint32_t y = 0; y < m_canvasHeight; ++y) {
+        for (uint32_t x = 0; x < m_canvasWidth; ++x) {
+            float srcX = (x - centerX) / scale + centerX;
+            float srcY = (y - centerY) / scale + centerY;
+            
+            if (srcX < 0.0f || srcX >= static_cast<float>(m_canvasWidth - 1) ||
+                srcY < 0.0f || srcY >= static_cast<float>(m_canvasHeight - 1)) {
+                continue;
+            }
+            
+            int x0 = static_cast<int>(srcX);
+            int y0 = static_cast<int>(srcY);
+            int x1 = std::min(x0 + 1, static_cast<int>(m_canvasWidth) - 1);
+            int y1 = std::min(y0 + 1, static_cast<int>(m_canvasHeight) - 1);
+            float fx = srcX - x0;
+            float fy = srcY - y0;
+            
+            auto sample = [&](int sx, int sy) -> std::array<float, 4> {
+                size_t idx = (static_cast<uint32_t>(sy) * m_canvasWidth + static_cast<uint32_t>(sx)) * 4;
+                return { static_cast<float>(src[idx]), static_cast<float>(src[idx + 1]),
+                         static_cast<float>(src[idx + 2]), static_cast<float>(src[idx + 3]) };
+            };
+            
+            auto s00 = sample(x0, y0);
+            auto s10 = sample(x1, y0);
+            auto s01 = sample(x0, y1);
+            auto s11 = sample(x1, y1);
+            
+            std::array<float, 4> out;
+            for (int i = 0; i < 4; ++i) {
+                out[i] = s00[i] * (1.0f - fx) * (1.0f - fy)
+                       + s10[i] * fx * (1.0f - fy)
+                       + s01[i] * (1.0f - fx) * fy
+                       + s11[i] * fx * fy;
+            }
+            
+            layer->SetPixel(x, y, Color(
+                static_cast<uint8_t>(std::clamp(out[2], 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out[1], 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out[0], 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(out[3], 0.0f, 255.0f))
+            ));
+        }
+    }
+    
+    layer->MarkDirty();
+    m_layerManager->MarkCompositeDirty();
+    Invalidate();
 }
 
 } // namespace UI

@@ -277,7 +277,7 @@ namespace TabletInput {
 
 ### M3 ✅ 图层系统与持久绘制（已落地）
 - `Layer` / `LayerManager` TileGrid（256x256，COW）
-- 8 种 blend mode（Normal, Multiply, Screen, Overlay, Difference, Add, Subtract, Darken, Lighten）
+- 18 种 blend mode（Normal, Multiply, Screen, Overlay, Difference, Add, Subtract, Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Exclusion, Hue, Saturation, Color, Luminosity）
 - 4 面板（Layers / Navigator / Colors / Brush）
 - 快捷键系统（Workspace::OnKeyDown）
 - 持久绘制（非预览模式，直接写入 tile）
@@ -295,10 +295,19 @@ namespace TabletInput {
 ### M5 ✅ 选择工具、Undo/Redo 与面板完善（已落地）
 - `SelectionMask`（矩形/椭圆/套索/魔棒选区 + 反选/清除/边界检测）
 - `CanvasView` 选区交互（拖拽创建、移动工具、选区约束绘制）
+- `Layer` 多态重构：`RasterLayer`（像素/COW/笔刷）+ `TextLayer`（可编辑属性 + DirectWrite 栅格化缓存）
+- `FontManager`：DirectWrite 系统字体枚举
+- `TextInputDialog`：文字图层创建对话框（文本/字体/字号/颜色）
 - `HistoryManager` + `StrokeUndoItem` 双快照 Undo/Redo（50 步上限）
-- `LayersPanel` 底部工具栏（新建/复制/合并/删除）+ 不透明度滑条
-- `NavigatorPanel` 实时缩略图 + 视图框 + 点击平移
-- `Workspace` 工具栏（撤销/重做/笔刷切换按钮）
+- `SelectionMask`（矩形/椭圆/套索/魔棒选区 + 反选/清除/边界检测）
+- `CanvasView` 选区交互 + 移动工具 + 渐变工具 + 形状工具（填充矩形）+ 变换工具（缩放）
+- `LayersPanel` 底部工具栏（新建/复制/合并/删除）+ 不透明度滑条 + protectAlpha 复选框 + Solo 模式
+- `NavigatorPanel` 实时缩略图（DIBSection 缓存）+ 视图框 + 点击平移
+- `ColorsPanel` 垂直 Hue 条 + HSV/Hex/RGB 数值显示
+- `ToolBar` 双向同步（点击切工具 ↔ 键盘快捷键同步高亮）
+- `RecentFilesManager`：MRU 最近文件持久化（`%AppData%/VividPic/recent.txt`）
+- `ProjectIO` VVP v2 TextLayer 完整往返修复（直接插入反序列化 layer）
+- `Workspace` 顶部工具栏（撤销/重做/笔刷切换按钮）
 - 菜单栏交互（Undo/Redo 已连接，其余为占位符）
 
 ### Bugfix 记录
@@ -318,6 +327,12 @@ namespace TabletInput {
 | `51681db` | 鼠标输入被错误处理为过期笔状态 | `TabletManager` 中隔离 mouse 与 pen 状态机 |
 | `136fb57` | 控制台崩溃 | `AllocConsole` + `freopen` 顺序修复，降低日志频率 |
 | `f69273e` | README 多语言与 logo | 中/英/日 README + logo.svg |
+| `图层多态` | Layer 抽象基类 + RasterLayer/TextLayer | 提取 Layer 抽象接口，VVP v2 payload chunk 支持 TextLayer 往返 |
+| `文字系统` | FontManager + TextInputDialog + TextTool | DirectWrite 系统字体枚举，文字图层创建与栅格化 |
+| `变换形状` | TransformTool + ShapeTool | 拖拽缩放图层（bilinear resampling），拖拽绘制填充矩形 |
+| `HomeScreen MRU` | RecentFilesManager | `%AppData%/VividPic/recent.txt` 持久化，HomeScreen 动态最近文件按钮 |
+| `面板完善` | ColorsPanel + NavigatorPanel + LayersPanel | 垂直 Hue 条 + HSV/Hex、DIBSection 缩略图缓存、protectAlpha 复选框 + Solo 模式 |
+| `ToolBar 修复` | ToolBar ↔ CanvasView 双向同步 | 补全 `SetOnToolChanged` 连接，修正 Transform/Text/Shape 的 `implemented=false` 标记 |
 
 ### Active Issues / 待办
 
@@ -329,6 +344,8 @@ namespace TabletInput {
 - [ ] **纹理导入**：`Texture` brush tip 目前使用 64x64 过程噪声，需支持外部图片
 - [ ] **抗锯齿**：笔刷 stamp 边缘在高 zoom 下可见像素颗粒
 - [x] **滤镜系统**：6 个破坏性滤镜（亮度/对比度、色相/饱和度、高斯模糊、锐化、反相、阈值）+ FilterDialog 参数对话框 + Undo 集成（M6 已完成）
-- [ ] **变换工具**：自由变换、扭曲、透视（M5 未完成部分）
-- [ ] **填充/渐变/文字工具**：PRD 4.7 中定义，部分为 stub
+- [ ] **变换工具增强**：自由变换、扭曲、透视（当前仅实现缩放）
+- [ ] **形状工具增强**：椭圆、直线、多边形、矢量形状（当前仅实现填充矩形）
 - [ ] **设置面板**：首选项对话框、快捷键自定义
+- [ ] **图层分组/剪贴蒙版**：LayersPanel 缺少新建组、蒙版按钮（Solo 模式 ✅ 已完成）
+- [x] **VVP v2 TextLayer 完整往返**：`LoadProject` 改用 `AddLayer(Ref<Layer>)` 直接插入反序列化对象，避免工厂重建导致 payload 丢失
