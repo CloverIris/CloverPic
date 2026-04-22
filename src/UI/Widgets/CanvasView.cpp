@@ -35,8 +35,21 @@ void CanvasView::OnDestroy() {
     }
 }
 
-bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent, LayerType initialLayer) {
-    ShutdownCanvas();
+bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent, LayerType initialLayer, bool resetLayers) {
+    // Release render resources
+    if (m_compositeBitmap) {
+        m_compositeBitmap->Release();
+        m_compositeBitmap = nullptr;
+    }
+    if (m_renderTarget) {
+        m_renderTarget->Release();
+        m_renderTarget = nullptr;
+    }
+    m_compositeBuffer.clear();
+    if (resetLayers && m_layerManager) {
+        m_layerManager->Shutdown();
+        m_layerManager = nullptr;
+    }
     
     m_canvasWidth = width;
     m_canvasHeight = height;
@@ -49,17 +62,19 @@ bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& 
         return false;
     }
     
-    // Initialize layer manager
-    m_layerManager = &LayerManager::GetInstance();
-    m_layerManager->Initialize(width, height);
-    
-    // Create initial layer
-    auto layer = m_layerManager->AddLayer(L"图层 1", initialLayer);
-    if (layer && !m_transparentBg && initialLayer != LayerType::Transparent) {
-        // Fill with background color
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
-                layer->SetPixel(x, y, m_bgColor);
+    if (resetLayers) {
+        // Initialize layer manager
+        m_layerManager = &LayerManager::GetInstance();
+        m_layerManager->Initialize(width, height);
+        
+        // Create initial layer
+        auto layer = m_layerManager->AddLayer(L"图层 1", initialLayer);
+        if (layer && !m_transparentBg && initialLayer != LayerType::Transparent) {
+            // Fill with background color
+            for (uint32_t y = 0; y < height; ++y) {
+                for (uint32_t x = 0; x < width; ++x) {
+                    layer->SetPixel(x, y, m_bgColor);
+                }
             }
         }
     }

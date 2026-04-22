@@ -8,7 +8,10 @@ namespace UI {
 
 const BlendMode LayersPanel::BlendModes[BlendModeCount] = {
     BlendMode::Normal, BlendMode::Multiply, BlendMode::Screen, BlendMode::Overlay,
-    BlendMode::Difference, BlendMode::Add, BlendMode::Subtract, BlendMode::Darken
+    BlendMode::Difference, BlendMode::Add, BlendMode::Subtract, BlendMode::Darken,
+    BlendMode::Lighten, BlendMode::ColorDodge, BlendMode::ColorBurn, BlendMode::HardLight,
+    BlendMode::SoftLight, BlendMode::Exclusion, BlendMode::Hue, BlendMode::Saturation,
+    BlendMode::Color, BlendMode::Luminosity
 };
 
 LayersPanel::LayersPanel() = default;
@@ -27,6 +30,16 @@ const wchar_t* LayersPanel::GetBlendModeName(BlendMode mode) {
         case BlendMode::Add: return L"相加";
         case BlendMode::Subtract: return L"减去";
         case BlendMode::Darken: return L"变暗";
+        case BlendMode::Lighten: return L"变亮";
+        case BlendMode::ColorDodge: return L"颜色减淡";
+        case BlendMode::ColorBurn: return L"颜色加深";
+        case BlendMode::HardLight: return L"强光";
+        case BlendMode::SoftLight: return L"柔光";
+        case BlendMode::Exclusion: return L"排除";
+        case BlendMode::Hue: return L"色相";
+        case BlendMode::Saturation: return L"饱和度";
+        case BlendMode::Color: return L"颜色";
+        case BlendMode::Luminosity: return L"明度";
         default: return L"正常";
     }
 }
@@ -35,7 +48,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
 
     // Background
-    HBRUSH bgBrush = CreateSolidBrush(RGB(0x3C, 0x3C, 0x3C));
+    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
     DeleteObject(bgBrush);
@@ -45,10 +58,8 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     SetBkMode(hdc, TRANSPARENT);
 
     // Title
-    SetTextColor(hdc, RGB(0xA0, 0xA0, 0xA0));
-    HFONT titleFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    SetTextColor(hdc, Theme::TextSecondary);
+    HFONT titleFont = Theme::GetFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
     RECT titleRc = { 8, 4, client.Width() - 8, 20 };
     DrawTextW(hdc, L"图层", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
@@ -56,10 +67,11 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(titleFont);
 
     // Separator
-    HPEN sepPen = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));
+    HPEN sepPen = Theme::Pen(Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
-    MoveToEx(hdc, 8, 22, nullptr);
-    LineTo(hdc, client.Width() - 8, 22);
+    int sepY = Theme::GetSize(22);
+    MoveToEx(hdc, Theme::GetSize(8), sepY, nullptr);
+    LineTo(hdc, client.Width() - Theme::GetSize(8), sepY);
     SelectObject(hdc, oldPen);
     DeleteObject(sepPen);
 
@@ -97,7 +109,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
         // Drag insertion line
         if (m_draggingLayer && m_dragTargetIndex >= 0 && m_dragTargetIndex != m_dragLayerIndex && i == m_dragTargetIndex) {
-            HPEN linePen = CreatePen(PS_SOLID, Theme::GetSize(2), RGB(0x00, 0x78, 0xD7));
+            HPEN linePen = CreatePen(PS_SOLID, Theme::GetSize(2), Theme::HighlightBlue);
             HPEN oldLinePen = static_cast<HPEN>(SelectObject(hdc, linePen));
             MoveToEx(hdc, 0, y, nullptr);
             LineTo(hdc, client.Width(), y);
@@ -107,7 +119,7 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
         // Dragged item highlight
         if (m_draggingLayer && i == m_dragLayerIndex) {
-            HPEN dragPen = CreatePen(PS_DOT, 1, RGB(0x00, 0x78, 0xD7));
+            HPEN dragPen = CreatePen(PS_DOT, 1, Theme::HighlightBlue);
             HPEN oldDragPen = static_cast<HPEN>(SelectObject(hdc, dragPen));
             HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
             HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
@@ -119,8 +131,8 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
         // Background
         if (isActive) {
-            HBRUSH activeBrush = CreateSolidBrush(RGB(0x00, 0x78, 0xD7));
-            RECT itemBg = { 4, y, client.Width() - 4, y + ItemHeight };
+            HBRUSH activeBrush = Theme::SolidBrush(Theme::HighlightBlue);
+            RECT itemBg = { Theme::GetSize(4), y, client.Width() - Theme::GetSize(4), y + ItemHeight };
             FillRect(hdc, &itemBg, activeBrush);
             DeleteObject(activeBrush);
         }
@@ -139,30 +151,30 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
             StretchDIBits(hdc, Theme::GetSize(8), y + 4, ThumbSize, ThumbSize,
                           0, 0, 64, 64, thumbData.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
         } else {
-            HBRUSH thumbBrush = CreateSolidBrush(RGB(0x50, 0x50, 0x50));
-            RECT thumbRc = { Theme::GetSize(8), y + 4, Theme::GetSize(8) + ThumbSize, y + 4 + ThumbSize };
+            HBRUSH thumbBrush = Theme::SolidBrush(Theme::ButtonDefault);
+            RECT thumbRc = { Theme::GetSize(8), y + Theme::GetSize(4), Theme::GetSize(8) + ThumbSize, y + Theme::GetSize(4) + ThumbSize };
             FillRect(hdc, &thumbRc, thumbBrush);
             DeleteObject(thumbBrush);
         }
 
         // Visibility icon (eye)
-        SetTextColor(hdc, layer->IsVisible() ? RGB(0xE0, 0xE0, 0xE0) : RGB(0x60, 0x60, 0x60));
-        RECT eyeRc = { client.Width() - 48, y + 4, client.Width() - 28, y + 20 };
+        SetTextColor(hdc, layer->IsVisible() ? Theme::TextPrimary : Theme::TextDisabled);
+        RECT eyeRc = { client.Width() - Theme::GetSize(48), y + Theme::GetSize(4), client.Width() - Theme::GetSize(28), y + Theme::GetSize(20) };
         DrawTextW(hdc, layer->IsVisible() ? L"👁" : L"⊘", -1, &eyeRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
         // Lock icon
-        SetTextColor(hdc, layer->IsLocked() ? RGB(0xE0, 0xE0, 0xE0) : RGB(0x60, 0x60, 0x60));
-        RECT lockRc = { client.Width() - 26, y + 4, client.Width() - 6, y + 20 };
+        SetTextColor(hdc, layer->IsLocked() ? Theme::TextPrimary : Theme::TextDisabled);
+        RECT lockRc = { client.Width() - Theme::GetSize(26), y + Theme::GetSize(4), client.Width() - Theme::GetSize(6), y + Theme::GetSize(20) };
         DrawTextW(hdc, layer->IsLocked() ? L"🔒" : L"○", -1, &lockRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
         // Name
-        SetTextColor(hdc, isActive ? RGB(0xFF, 0xFF, 0xFF) : RGB(0xE0, 0xE0, 0xE0));
-        RECT nameRc = { 8 + ThumbSize + 8, y + 4, client.Width() - 52, y + 20 };
+        SetTextColor(hdc, isActive ? Theme::TextInverse : Theme::TextPrimary);
+        RECT nameRc = { Theme::GetSize(8) + ThumbSize + Theme::GetSize(8), y + Theme::GetSize(4), client.Width() - Theme::GetSize(52), y + Theme::GetSize(20) };
         DrawTextW(hdc, layer->GetName().c_str(), -1, &nameRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
 
         // Opacity + Blend mode text
-        SetTextColor(hdc, RGB(0xA0, 0xA0, 0xA0));
-        RECT opRc = { 8 + ThumbSize + 8, y + 24, client.Width() - 52, y + ItemHeight - 2 };
+        SetTextColor(hdc, Theme::TextSecondary);
+        RECT opRc = { Theme::GetSize(8) + ThumbSize + Theme::GetSize(8), y + Theme::GetSize(24), client.Width() - Theme::GetSize(52), y + ItemHeight - Theme::GetSize(2) };
         std::wostringstream oss;
         oss << GetBlendModeName(layer->GetBlendMode()) << L" | "
             << static_cast<int>(layer->GetOpacity() * 100 / 255) << L"%";
@@ -176,12 +188,12 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
     // Bottom toolbar area
     int toolbarY = client.Height() - Theme::GetSize(32);
-    HBRUSH toolbarBrush = CreateSolidBrush(RGB(0x2B, 0x2B, 0x2B));
+    HBRUSH toolbarBrush = Theme::SolidBrush(Theme::BackgroundDark);
     RECT toolbarRc = { 0, toolbarY, client.Width(), client.Height() };
     FillRect(hdc, &toolbarRc, toolbarBrush);
     DeleteObject(toolbarBrush);
 
-    HPEN topLine = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));
+    HPEN topLine = Theme::Pen(Theme::BorderLight);
     oldPen = static_cast<HPEN>(SelectObject(hdc, topLine));
     MoveToEx(hdc, 0, toolbarY, nullptr);
     LineTo(hdc, client.Width(), toolbarY);
@@ -192,11 +204,9 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     int btnCount = 4;
     int btnWidth = client.Width() / btnCount;
     const wchar_t* btnLabels[4] = { L"+", L"⧉", L"↓", L"🗑" };
-    HFONT btnFont = CreateFontW(Theme::GetFontSize(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT btnFont = Theme::GetFont(Theme::FontID::Button);
     HFONT oldBtnFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
-    SetTextColor(hdc, RGB(0xE0, 0xE0, 0xE0));
+    SetTextColor(hdc, Theme::TextPrimary);
     for (int i = 0; i < btnCount; ++i) {
         int bx = i * btnWidth;
         RECT btnRc = { bx, toolbarY, bx + btnWidth, client.Height() };
@@ -251,15 +261,13 @@ void LayersPanel::DrawBlendDropdownList(HDC hdc, int x, int y, int width) {
         int iy = y + i * DropdownHeight;
         bool hovered = (i == m_blendHoverIndex);
 
-        HBRUSH bg = Theme::SolidBrush(hovered ? RGB(0x00, 0x78, 0xD7) : Theme::PanelBackground);
+        HBRUSH bg = Theme::SolidBrush(hovered ? Theme::HighlightBlue : Theme::PanelBackground);
         RECT rc = { x, iy, x + width, iy + DropdownHeight };
         FillRect(hdc, &rc, bg);
         DeleteObject(bg);
 
-        SetTextColor(hdc, hovered ? RGB(0xFF, 0xFF, 0xFF) : Theme::TextPrimary);
-        HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        SetTextColor(hdc, hovered ? Theme::TextInverse : Theme::TextPrimary);
+        HFONT font = Theme::GetFont(Theme::FontID::Label);
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
         RECT textRc = { x + 6, iy, x + width - 6, iy + DropdownHeight };
         DrawTextW(hdc, GetBlendModeName(BlendModes[i]), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
@@ -444,9 +452,7 @@ void LayersPanel::DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t op
     // Label
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT font = Theme::GetFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     std::wostringstream oss;
     oss << L"不透明度: " << (opacity * 100 / 255) << L"%";
@@ -456,25 +462,9 @@ void LayersPanel::DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t op
     // Track
     int trackY = y + Theme::GetSize(16);
     int trackHeight = Theme::GetSize(4);
-    HBRUSH trackBrush = CreateSolidBrush(RGB(0x55, 0x55, 0x55));
-    RECT trackRc = { x, trackY, x + width, trackY + trackHeight };
-    FillRect(hdc, &trackRc, trackBrush);
-    DeleteObject(trackBrush);
-
-    // Filled portion
-    int thumbX = x + (opacity * width / 255);
-    HBRUSH fillBrush = CreateSolidBrush(RGB(0x00, 0x78, 0xD7));
-    RECT fillRc = { x, trackY, thumbX, trackY + trackHeight };
-    FillRect(hdc, &fillRc, fillBrush);
-    DeleteObject(fillBrush);
-
-    // Thumb
-    int thumbRadius = Theme::GetSize(4);
-    HBRUSH thumbBrush = CreateSolidBrush(RGB(0xE0, 0xE0, 0xE0));
-    RECT thumbRc = { thumbX - thumbRadius, trackY - thumbRadius + trackHeight / 2,
-                     thumbX + thumbRadius, trackY + thumbRadius + trackHeight / 2 };
-    FillRect(hdc, &thumbRc, thumbBrush);
-    DeleteObject(thumbBrush);
+    Rect sliderRc(x, trackY, x + width, trackY + trackHeight);
+    float value01 = opacity / 255.0f;
+    Theme::DrawSlider(hdc, sliderRc, value01, false);
 
     SelectObject(hdc, oldFont);
     DeleteObject(font);

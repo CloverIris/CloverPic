@@ -97,6 +97,10 @@ bool Workspace::OnCreate() {
         Render::BrushEngine::GetInstance().SetSpacing(spacing);
         RefreshStatusBar();
     });
+    m_brushPanel->SetOnWetMixChanged([this](float wetMix) {
+        Render::BrushEngine::GetInstance().SetWetMix(wetMix);
+        RefreshStatusBar();
+    });
     m_brushPanel->SetOnTipTypeChanged([this](Render::BrushTipType type) {
         Render::BrushEngine::GetInstance().SetTipType(type);
         RefreshStatusBar();
@@ -109,7 +113,9 @@ bool Workspace::OnCreate() {
         m_brushPanel->SetBrushOpacity(engine.GetOpacity());
         m_brushPanel->SetBrushFlow(engine.GetFlow());
         m_brushPanel->SetBrushSpacing(engine.GetSpacing());
+        m_brushPanel->SetBrushWetMix(engine.GetWetMix());
         m_brushPanel->SetTipType(engine.GetTipType());
+        m_brushPanel->SetActivePreset(index);
         RefreshStatusBar();
     });
     
@@ -353,7 +359,7 @@ void Workspace::OnMenuItemClicked(int menuIndex, int itemIndex) {
                 m_currentFilePath = filePath;
                 const auto& canvas = m_project->GetCanvas();
                 Color bgColor = Color::FromHex(0xFFFFFF);
-                m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
+                m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType, false);
                 if (m_navigatorPanel) {
                     m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
                 }
@@ -987,7 +993,7 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
                         m_currentFilePath = filePath;
                         const auto& canvas = m_project->GetCanvas();
                         Color bgColor = Color::FromHex(0xFFFFFF);
-                        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
+                        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType, false);
                         if (m_navigatorPanel) {
                             m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
                         }

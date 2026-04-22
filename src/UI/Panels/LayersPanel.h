@@ -39,7 +39,7 @@ private:
     static constexpr int DropdownHeight = 22;
 
     int HitTestLayer(const Point& pos) const;
-    int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock
+    int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock, 2=protectAlpha
     bool HitTestBlendDropdown(const Point& pos) const;
     int HitTestBlendItem(const Point& pos) const;
     int HitTestOpacitySlider(const Point& pos) const; // returns 0 if on track
@@ -61,7 +61,7 @@ private:
     int m_dragTargetIndex = -1;
     int m_dragStartY = 0;
 
-    static constexpr int BlendModeCount = 8;
+    static constexpr int BlendModeCount = 18;
     static const BlendMode BlendModes[BlendModeCount];
 };
 

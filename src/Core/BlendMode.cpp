@@ -3,6 +3,9 @@
 
 namespace VividPic {
 
+static void RGBToHSL(float r, float g, float b, float& h, float& s, float& l);
+static void HSLToRGB(float h, float s, float l, float& r, float& g, float& b);
+
 Color BlendOperations::BlendPixel(const Color& src, const Color& dst, BlendMode mode, float opacity) {
     if (opacity <= 0.0f) return dst;
     if (mode == BlendMode::Normal && opacity >= 1.0f && src.a == 255) return src;
@@ -101,10 +104,103 @@ void BlendOperations::BlendFormula(float sr, float sg, float sb,
             bg = std::max(sg, dg);
             bb = std::max(sb, db);
             break;
+        case BlendMode::ColorDodge:
+            br = (sr >= 1.0f) ? 1.0f : std::min(dr / (1.0f - sr), 1.0f);
+            bg = (sg >= 1.0f) ? 1.0f : std::min(dg / (1.0f - sg), 1.0f);
+            bb = (sb >= 1.0f) ? 1.0f : std::min(db / (1.0f - sb), 1.0f);
+            break;
+        case BlendMode::ColorBurn:
+            br = (sr <= 0.0f) ? 0.0f : 1.0f - std::min((1.0f - dr) / sr, 1.0f);
+            bg = (sg <= 0.0f) ? 0.0f : 1.0f - std::min((1.0f - dg) / sg, 1.0f);
+            bb = (sb <= 0.0f) ? 0.0f : 1.0f - std::min((1.0f - db) / sb, 1.0f);
+            break;
+        case BlendMode::HardLight: {
+            auto hardlight = [](float s, float d) {
+                return s < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
+            };
+            br = hardlight(sr, dr);
+            bg = hardlight(sg, dg);
+            bb = hardlight(sb, db);
+            break;
+        }
+        case BlendMode::SoftLight: {
+            auto softlight = [](float s, float d) {
+                if (s < 0.5f) {
+                    return d - (1.0f - 2.0f * s) * d * (1.0f - d);
+                } else {
+                    float d_sqrt = std::sqrt(d);
+                    return d + (2.0f * s - 1.0f) * (d_sqrt - d);
+                }
+            };
+            br = softlight(sr, dr);
+            bg = softlight(sg, dg);
+            bb = softlight(sb, db);
+            break;
+        }
+        case BlendMode::Exclusion:
+            br = dr + sr - 2.0f * dr * sr;
+            bg = dg + sg - 2.0f * dg * sg;
+            bb = db + sb - 2.0f * db * sb;
+            break;
+        case BlendMode::Hue:
+        case BlendMode::Saturation:
+        case BlendMode::Color:
+        case BlendMode::Luminosity: {
+            // Convert to HSL
+            float sH, sS, sL, dH, dS, dL;
+            RGBToHSL(sr, sg, sb, sH, sS, sL);
+            RGBToHSL(dr, dg, db, dH, dS, dL);
+            float rH, rS, rL;
+            switch (mode) {
+                case BlendMode::Hue:       rH = sH; rS = dS; rL = dL; break;
+                case BlendMode::Saturation:rH = dH; rS = sS; rL = dL; break;
+                case BlendMode::Color:     rH = sH; rS = sS; rL = dL; break;
+                case BlendMode::Luminosity:rH = dH; rS = dS; rL = sL; break;
+                default:                   rH = dH; rS = dS; rL = dL; break;
+            }
+            HSLToRGB(rH, rS, rL, br, bg, bb);
+            break;
+        }
         default:
             br = sr; bg = sg; bb = sb;
             break;
     }
+}
+
+static void RGBToHSL(float r, float g, float b, float& h, float& s, float& l) {
+    float maxVal = std::max({r, g, b});
+    float minVal = std::min({r, g, b});
+    l = (maxVal + minVal) * 0.5f;
+    if (maxVal == minVal) {
+        h = s = 0.0f;
+        return;
+    }
+    float d = maxVal - minVal;
+    s = l > 0.5f ? d / (2.0f - maxVal - minVal) : d / (maxVal + minVal);
+    if (maxVal == r) h = (g - b) / d + (g < b ? 6.0f : 0.0f);
+    else if (maxVal == g) h = (b - r) / d + 2.0f;
+    else h = (r - g) / d + 4.0f;
+    h /= 6.0f;
+}
+
+static void HSLToRGB(float h, float s, float l, float& r, float& g, float& b) {
+    auto hue2rgb = [](float p, float q, float t) {
+        if (t < 0.0f) t += 1.0f;
+        if (t > 1.0f) t -= 1.0f;
+        if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+        if (t < 1.0f / 2.0f) return q;
+        if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+        return p;
+    };
+    if (s == 0.0f) {
+        r = g = b = l;
+        return;
+    }
+    float q = l < 0.5f ? l * (1.0f + s) : l + s - l * s;
+    float p = 2.0f * l - q;
+    r = hue2rgb(p, q, h + 1.0f / 3.0f);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1.0f / 3.0f);
 }
 
 void BlendOperations::Over(float bsr, float bsg, float bsb, float sa,

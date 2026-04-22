@@ -17,7 +17,7 @@ public:
     CanvasView();
     ~CanvasView() override;
     
-    bool InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent = false, LayerType initialLayer = LayerType::Color);
+    bool InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent = false, LayerType initialLayer = LayerType::Color, bool resetLayers = true);
     void ShutdownCanvas();
     
     // View transform
