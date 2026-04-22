@@ -42,6 +42,7 @@ public:
     void ApplyFill(float x, float y);
     void ApplyGradient(float x1, float y1, float x2, float y2);
     void ApplyTextTool(float x, float y);
+    void EditTextLayer(size_t layerIndex);
     void ApplyShape();
     void StartTransform(float x, float y);
     void ApplyTransform();
@@ -69,7 +70,7 @@ protected:
     void OnMouseMove(const Point& pos) override;
     void OnMouseDown(const Point& pos, MouseButton button) override;
     void OnMouseUp(const Point& pos, MouseButton button) override;
-    void OnMouseDoubleClick(const Point& pos, MouseButton button) override {}
+    void OnMouseDoubleClick(const Point& pos, MouseButton button) override;
     void OnKeyDown(uint32_t keyCode) override;
     void OnKeyUp(uint32_t keyCode) override;
     
@@ -149,6 +150,9 @@ private:
     ToolType m_currentTool = ToolType::Brush;
     ToolType m_previousTool = ToolType::Brush; // For eyedropper restore
     std::function<void(ToolType)> m_onToolChanged;
+    
+    // Persistent flood-fill visited buffer (avoids per-click allocation)
+    std::vector<uint8_t> m_fillVisited;
     
     // Selection
     std::unique_ptr<SelectionMask> m_selection;

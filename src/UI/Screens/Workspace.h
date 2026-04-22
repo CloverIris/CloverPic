@@ -63,6 +63,7 @@ private:
         std::vector<String> items;
     };
     std::vector<MenuItem> m_menus;
+    std::vector<Rect> m_menuItemRects; // Cached bounds for alignment
     
     void BuildMenus();
     void OnMenuItemClicked(int menuIndex, int itemIndex);

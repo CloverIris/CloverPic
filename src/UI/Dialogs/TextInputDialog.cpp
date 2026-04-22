@@ -129,11 +129,13 @@ void TextInputDialog::CreateControls() {
     
     // Confirm / Cancel
     m_confirmButton = MakeRef<Button>();
-    m_confirmButton->Create(L"确定", Rect(0, 0, 1, 1), this);
+    m_confirmButton->Create(L"", Rect(0, 0, 1, 1), this);
+    m_confirmButton->SetText(L"确定");
     m_confirmButton->SetCallback([this]() { OnConfirmClicked(); });
     
     m_cancelButton = MakeRef<Button>();
-    m_cancelButton->Create(L"取消", Rect(0, 0, 1, 1), this);
+    m_cancelButton->Create(L"", Rect(0, 0, 1, 1), this);
+    m_cancelButton->SetText(L"取消");
     m_cancelButton->SetCallback([this]() { OnCancelClicked(); });
 }
 

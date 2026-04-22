@@ -37,7 +37,12 @@ private:
     static constexpr int ItemHeight = 48;
     static constexpr int ThumbSize = 32;
     static constexpr int DropdownHeight = 22;
+    static constexpr int BtnWidth = 20;
+    static constexpr int BtnGap = 4;
 
+    int GetLayerListY() const;
+    Rect GetLayerItemRect(int layerIndex) const;
+    void GetLayerItemButtonRects(int layerIndex, Rect& outSolo, Rect& outPA, Rect& outEye, Rect& outLock) const;
     int HitTestLayer(const Point& pos) const;
     int HitTestButton(const Point& pos, int layerIndex) const; // 0=visibility, 1=lock, 2=protectAlpha, 3=solo
     bool HitTestBlendDropdown(const Point& pos) const;

@@ -270,9 +270,9 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
             DeleteObject(font);
             ReleaseDC(m_hwnd, memdc);
             
-            POINT pt = { x, Theme::GetSize(MenuBarHeight) };
+            POINT pt = { m_menuItemRects[m_openMenuIndex].left, Theme::GetSize(MenuBarHeight) };
             ClientToScreen(m_hwnd, &pt);
-            ShowMenuDropdown(m_openMenuIndex, pt.x, pt.y, ts.cx + Theme::GetSize(12));
+            ShowMenuDropdown(m_openMenuIndex, pt.x, pt.y, m_menuItemRects[m_openMenuIndex].Width());
         }
     } else if (m_openMenuIndex < 0 && m_dropdownWindow && m_dropdownWindow->IsVisible()) {
         HideMenuDropdown();
@@ -293,15 +293,19 @@ void Workspace::DrawMenuBar(HDC hdc) {
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
-    int x = 8;
+    int x = Theme::GetSize(8);
+    m_menuItemRects.clear();
+    m_menuItemRects.reserve(m_menus.size());
     for (const auto& menu : m_menus) {
         SetTextColor(hdc, Theme::TextPrimary);
         SIZE textSize;
         GetTextExtentPoint32W(hdc, menu.name.c_str(), static_cast<int>(menu.name.length()), &textSize);
+        int itemW = textSize.cx + Theme::GetSize(16);
         
-        RECT textRect = { x, 0, x + textSize.cx + 12, Theme::GetSize(MenuBarHeight) };
+        RECT textRect = { x, 0, x + itemW, Theme::GetSize(MenuBarHeight) };
         DrawTextW(hdc, menu.name.c_str(), -1, &textRect, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-        x += textSize.cx + 16;
+        m_menuItemRects.push_back(Rect(x, 0, x + itemW, Theme::GetSize(MenuBarHeight)));
+        x += itemW;
     }
     
     SelectObject(hdc, oldFont);
@@ -614,27 +618,11 @@ void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
 
 int Workspace::HitTestMenuItem(const Point& pos) const {
     if (pos.y >= Theme::GetSize(MenuBarHeight)) return -1;
-    int x = Theme::GetSize(8);
-    HDC hdc = GetDC(m_hwnd);
-    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
-    HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
-    for (size_t i = 0; i < m_menus.size(); ++i) {
-        SIZE ts;
-        GetTextExtentPoint32W(hdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
-        int itemW = ts.cx + Theme::GetSize(16);
-        if (pos.x >= x && pos.x < x + itemW) {
-            SelectObject(hdc, old);
-            DeleteObject(font);
-            ReleaseDC(m_hwnd, hdc);
+    for (size_t i = 0; i < m_menuItemRects.size(); ++i) {
+        if (m_menuItemRects[i].Contains(pos)) {
             return static_cast<int>(i);
         }
-        x += itemW;
     }
-    SelectObject(hdc, old);
-    DeleteObject(font);
-    ReleaseDC(m_hwnd, hdc);
     return -1;
 }
 

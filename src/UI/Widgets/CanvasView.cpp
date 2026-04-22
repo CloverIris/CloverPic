@@ -217,6 +217,18 @@ void CanvasView::SetCurrentTool(ToolType tool) {
         m_previousTool = m_currentTool;
     }
     m_currentTool = tool;
+    
+    // Reset all interaction states when switching tools to prevent stale state
+    if (m_isDrawing) {
+        m_isDrawing = false;
+        auto layer = m_layerManager ? m_layerManager->GetActiveLayer() : nullptr;
+        if (layer) layer->EndStroke();
+    }
+    m_isDragging = false;
+    m_isPanning = false;
+    m_dragStartX = m_dragStartY = 0;
+    m_dragCurrentX = m_dragCurrentY = 0;
+    
     if (m_onToolChanged) m_onToolChanged(tool);
     Invalidate();
 }
@@ -858,13 +870,8 @@ void CanvasView::ApplyFill(float x, float y) {
     int iy = static_cast<int>(y);
     if (ix < 0 || iy < 0 || ix >= static_cast<int>(m_canvasWidth) || iy >= static_cast<int>(m_canvasHeight)) return;
     
-    // Simple flood fill with tolerance
     Color target = layer->GetPixel(static_cast<uint32_t>(ix), static_cast<uint32_t>(iy));
-    if (target.r == m_brushColor.r && target.g == m_brushColor.g && target.b == m_brushColor.b && target.a == m_brushColor.a) return; // Already target color
-    
-    std::vector<std::pair<int,int>> stack;
-    stack.reserve(1024);
-    stack.push_back({ix, iy});
+    if (target.r == m_brushColor.r && target.g == m_brushColor.g && target.b == m_brushColor.b && target.a == m_brushColor.a) return;
     
     const int tolerance = 32;
     auto match = [&](const Color& c) -> bool {
@@ -874,30 +881,78 @@ void CanvasView::ApplyFill(float x, float y) {
                std::abs(static_cast<int>(c.a) - static_cast<int>(target.a)) <= tolerance;
     };
     
-    // Use a simple visited grid (could be optimized with bitset)
-    std::vector<bool> visited(m_canvasWidth * m_canvasHeight, false);
-    auto idx = [&](int x, int y) { return y * m_canvasWidth + x; };
+    // Reuse persistent visited buffer to avoid per-click allocation
+    size_t visitSize = static_cast<size_t>(m_canvasWidth) * m_canvasHeight;
+    if (m_fillVisited.size() < visitSize) {
+        m_fillVisited.resize(visitSize);
+    }
+    std::fill(m_fillVisited.begin(), m_fillVisited.begin() + visitSize, 0);
+    auto visitIdx = [&](int vx, int vy) -> size_t { return static_cast<size_t>(vy) * m_canvasWidth + static_cast<size_t>(vx); };
     
-    while (!stack.empty()) {
-        auto [cx, cy] = stack.back();
-        stack.pop_back();
+    // Scanline flood fill: much faster than pixel-by-pixel stack
+    std::vector<std::pair<int,int>> scanStack;
+    scanStack.reserve(256);
+    scanStack.push_back({ix, iy});
+    
+    while (!scanStack.empty()) {
+        auto [cx, cy] = scanStack.back();
+        scanStack.pop_back();
         
-        if (cx < 0 || cy < 0 || cx >= static_cast<int>(m_canvasWidth) || cy >= static_cast<int>(m_canvasHeight)) continue;
-        size_t i = idx(cx, cy);
-        if (visited[i]) continue;
+        if (cy < 0 || cy >= static_cast<int>(m_canvasHeight)) continue;
         
-        Color c = layer->GetPixel(static_cast<uint32_t>(cx), static_cast<uint32_t>(cy));
-        if (!match(c)) continue;
-        
-        visited[i] = true;
-        if (!HasSelection() || m_selection->GetPixel(static_cast<uint32_t>(cx), static_cast<uint32_t>(cy)) > 0) {
-            layer->SetPixel(static_cast<uint32_t>(cx), static_cast<uint32_t>(cy), m_brushColor);
+        // Find left boundary
+        int left = cx;
+        while (left > 0) {
+            size_t vi = visitIdx(left - 1, cy);
+            if (m_fillVisited[vi]) break;
+            Color c = layer->GetPixel(static_cast<uint32_t>(left - 1), static_cast<uint32_t>(cy));
+            if (!match(c)) break;
+            --left;
         }
         
-        stack.push_back({cx + 1, cy});
-        stack.push_back({cx - 1, cy});
-        stack.push_back({cx, cy + 1});
-        stack.push_back({cx, cy - 1});
+        // Find right boundary and fill the scanline
+        int right = cx;
+        while (right < static_cast<int>(m_canvasWidth)) {
+            size_t vi = visitIdx(right, cy);
+            if (m_fillVisited[vi]) break;
+            Color c = layer->GetPixel(static_cast<uint32_t>(right), static_cast<uint32_t>(cy));
+            if (!match(c)) break;
+            m_fillVisited[vi] = 1;
+            if (!HasSelection() || m_selection->GetPixel(static_cast<uint32_t>(right), static_cast<uint32_t>(cy)) > 0) {
+                layer->SetPixel(static_cast<uint32_t>(right), static_cast<uint32_t>(cy), m_brushColor);
+            }
+            ++right;
+        }
+        
+        if (left >= right) continue;
+        
+        // Scan the line above and below for new segments
+        for (int dy : {-1, 1}) {
+            int ny = cy + dy;
+            if (ny < 0 || ny >= static_cast<int>(m_canvasHeight)) continue;
+            int nx = left;
+            while (nx < right) {
+                // Skip already visited or non-matching pixels
+                while (nx < right) {
+                    size_t vi = visitIdx(nx, ny);
+                    if (!m_fillVisited[vi]) {
+                        Color c = layer->GetPixel(static_cast<uint32_t>(nx), static_cast<uint32_t>(ny));
+                        if (match(c)) break;
+                    }
+                    ++nx;
+                }
+                if (nx >= right) break;
+                scanStack.push_back({nx, ny});
+                // Skip the rest of this contiguous segment
+                while (nx < right) {
+                    size_t vi = visitIdx(nx, ny);
+                    if (m_fillVisited[vi]) break;
+                    Color c = layer->GetPixel(static_cast<uint32_t>(nx), static_cast<uint32_t>(ny));
+                    if (!match(c)) break;
+                    ++nx;
+                }
+            }
+        }
     }
     
     m_layerManager->MarkCompositeDirty();
@@ -1322,6 +1377,55 @@ void CanvasView::DrawSelectionOutline(ID2D1RenderTarget* rt) {
 // -------------------------------------------------------------------------
 // Text tool
 // -------------------------------------------------------------------------
+void CanvasView::OnMouseDoubleClick(const Point& pos, MouseButton button) {
+    (void)button;
+    if (m_currentTool != ToolType::Text || !m_layerManager) return;
+    
+    float canvasX, canvasY;
+    ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
+    int ix = static_cast<int>(canvasX);
+    int iy = static_cast<int>(canvasY);
+    if (ix < 0 || iy < 0 || ix >= static_cast<int>(m_canvasWidth) || iy >= static_cast<int>(m_canvasHeight)) return;
+    
+    // Search top-to-bottom for a TextLayer under the cursor
+    for (int i = static_cast<int>(m_layerManager->GetLayerCount()) - 1; i >= 0; --i) {
+        auto layer = m_layerManager->GetLayer(i);
+        if (!layer || layer->GetType() != LayerType::Text) continue;
+        Color c = layer->GetPixel(static_cast<uint32_t>(ix), static_cast<uint32_t>(iy));
+        if (c.a > 0) {
+            EditTextLayer(i);
+            return;
+        }
+    }
+}
+
+void CanvasView::EditTextLayer(size_t layerIndex) {
+    auto layer = m_layerManager->GetLayer(layerIndex);
+    if (!layer || layer->GetType() != LayerType::Text) return;
+    
+    TextLayer* tl = static_cast<TextLayer*>(layer.get());
+    
+    TextInputDialog dialog;
+    dialog.Initialize();
+    
+    UI::TextProperties initial;
+    initial.text = tl->GetText();
+    initial.fontFamily = tl->GetFontFamily();
+    initial.fontSize = tl->GetFontSize();
+    initial.color = tl->GetTextColor();
+    
+    if (dialog.ShowModal(this, initial)) {
+        auto props = dialog.GetProperties();
+        tl->SetText(props.text);
+        tl->SetFontFamily(props.fontFamily);
+        tl->SetFontSize(props.fontSize);
+        tl->SetTextColor(props.color);
+        tl->RasterizeIfNeeded();
+        m_layerManager->MarkCompositeDirty();
+        Invalidate();
+    }
+}
+
 void CanvasView::ApplyTextTool(float canvasX, float canvasY) {
     if (!m_layerManager) return;
     
