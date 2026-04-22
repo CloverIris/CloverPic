@@ -36,10 +36,8 @@ bool NewCanvasDialog::ShowModal(Window* parent) {
     // Local message loop for true modal behavior
     MSG msg;
     while (IsVisible() && GetMessage(&msg, nullptr, 0, 0)) {
-        if (!IsDialogMessage(m_hwnd, &msg)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
     }
     
     if (parent) {
@@ -137,26 +135,29 @@ void NewCanvasDialog::CreateControls() {
     m_presetCombo->SetOnSelectionChanged([this](int idx) { OnPresetChanged(idx); });
     
     m_bgColorCombo = MakeRef<ComboBox>();
-    m_bgColorCombo->AddItem(L"白色");
     m_bgColorCombo->AddItem(L"透明");
+    m_bgColorCombo->AddItem(L"白色");
     m_bgColorCombo->AddItem(L"黑色");
+    m_bgColorCombo->SetSelectedIndex(0);
     m_bgColorCombo->SetOnSelectionChanged([this](int idx) {
         switch (idx) {
-            case 0: m_settings.bgColor = Color::FromHex(0xFFFFFF); m_settings.transparent = false; break;
-            case 1: m_settings.transparent = true; break;
+            case 0: m_settings.transparent = true; break;
+            case 1: m_settings.bgColor = Color::FromHex(0xFFFFFF); m_settings.transparent = false; break;
             case 2: m_settings.bgColor = Color::FromHex(0x000000); m_settings.transparent = false; break;
         }
     });
     
     m_layerCombo = MakeRef<ComboBox>();
+    m_layerCombo->AddItem(L"透明图层");
     m_layerCombo->AddItem(L"彩色图层");
     m_layerCombo->AddItem(L"灰度图层");
+    m_layerCombo->SetSelectedIndex(0);
     m_layerCombo->AddItem(L"透明图层");
     m_layerCombo->SetOnSelectionChanged([this](int idx) {
         switch (idx) {
-            case 0: m_settings.initialLayer = LayerType::Color; break;
-            case 1: m_settings.initialLayer = LayerType::Grayscale; break;
-            case 2: m_settings.initialLayer = LayerType::Transparent; break;
+            case 0: m_settings.initialLayer = LayerType::Transparent; break;
+            case 1: m_settings.initialLayer = LayerType::Color; break;
+            case 2: m_settings.initialLayer = LayerType::Grayscale; break;
         }
     });
     

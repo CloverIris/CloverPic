@@ -288,6 +288,9 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_LBUTTONDOWN: {
+            if (GetFocus() != m_hwnd) {
+                ::SetFocus(m_hwnd);
+            }
             Point pos(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             OnMouseDown(pos, MouseButton::Left);
             return 0;

@@ -4,6 +4,9 @@
 #include "Render/BrushPresetManager.h"
 #include "UI/Core/Theme.h"
 #include "Core/History.h"
+#include "Core/ProjectIO.h"
+#include "Core/Filters.h"
+#include "UI/Dialogs/FilterDialog.h"
 #include <sstream>
 
 namespace VividPic {
@@ -24,8 +27,8 @@ void Workspace::SetProject(Ref<Project> project) {
     m_project = project;
     if (m_canvasView && m_project) {
         const auto& canvas = m_project->GetCanvas();
-        Color bgColor = Color::FromHex(0xFFFFFF);
-        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor);
+        Color bgColor = canvas.transparent ? Color::FromHex(0xFFFFFF) : Color::FromHex(0xFFFFFF);
+        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
         
         if (m_navigatorPanel) {
             m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
@@ -125,11 +128,20 @@ bool Workspace::OnCreate() {
             m_canvasView->InvalidateCanvas();
         }
     });
+    m_navigatorPanel->SetOnZoomChanged([this](float zoom) {
+        if (!m_canvasView) return;
+        if (zoom < 0) {
+            m_canvasView->FitToWindow();
+        } else {
+            m_canvasView->SetZoom(zoom);
+        }
+        m_canvasView->InvalidateCanvas();
+    });
     
     if (m_project) {
         const auto& canvas = m_project->GetCanvas();
         Color bgColor = Color::FromHex(0xFFFFFF);
-        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor);
+        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
         
         if (m_navigatorPanel) {
             m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
@@ -208,8 +220,34 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
     
     DrawMenuBar(hdc);
     DrawToolbar(hdc);
-    DrawMenuDropdown(hdc);
     DrawStatusBar(hdc);
+    
+    // Dropdown is rendered in a popup window to avoid child-window occlusion
+    if (m_openMenuIndex >= 0 && !m_dropdownWindow) {
+        // Calculate position
+        int x = Theme::GetSize(8);
+        HDC memdc = GetDC(m_hwnd);
+        HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        HFONT old = static_cast<HFONT>(SelectObject(memdc, font));
+        for (int i = 0; i < m_openMenuIndex; ++i) {
+            SIZE ts;
+            GetTextExtentPoint32W(memdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
+            x += ts.cx + Theme::GetSize(16);
+        }
+        SIZE ts;
+        GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
+        SelectObject(memdc, old);
+        DeleteObject(font);
+        ReleaseDC(m_hwnd, memdc);
+        
+        POINT pt = { x, Theme::GetSize(MenuBarHeight) };
+        ClientToScreen(m_hwnd, &pt);
+        ShowMenuDropdown(m_openMenuIndex, pt.x, pt.y, ts.cx + Theme::GetSize(12));
+    } else if (m_openMenuIndex < 0 && m_dropdownWindow) {
+        HideMenuDropdown();
+    }
 }
 
 void Workspace::DrawMenuBar(HDC hdc) {
@@ -267,10 +305,10 @@ void Workspace::DrawToolbar(HDC hdc) {
 }
 
 void Workspace::BuildMenus() {
-    m_menus.push_back({ L"文件(F)", { L"新建窗口", L"保存", L"导出", L"退出" } });
+    m_menus.push_back({ L"文件(F)", { L"新建窗口", L"打开", L"保存", L"导出", L"退出" } });
     m_menus.push_back({ L"编辑(E)", { L"撤销", L"重做", L"首选项" } });
     m_menus.push_back({ L"图层(L)", { L"新建图层", L"删除图层", L"合并" } });
-    m_menus.push_back({ L"滤镜(R)", { L"高斯模糊", L"锐化" } });
+    m_menus.push_back({ L"滤镜(R)", { L"亮度/对比度", L"色相/饱和度", L"高斯模糊", L"锐化", L"反相", L"阈值" } });
     m_menus.push_back({ L"工具(T)", { L"笔刷", L"橡皮", L"吸管" } });
     m_menus.push_back({ L"窗口(W)", { L"初始化布局" } });
     m_menus.push_back({ L"Help", { L"关于" } });
@@ -283,18 +321,170 @@ void Workspace::OnMenuItemClicked(int menuIndex, int itemIndex) {
         if (appWindow) {
             appWindow->SetVisible(true);
         }
-    } else if (menuIndex == 0 && itemIndex == 1) { // File > Save
-        MessageBoxW(m_hwnd, L"保存功能将在 M6 实现", L"保存", MB_OK);
+    } else if (menuIndex == 0 && itemIndex == 1) { // File > Open
+        wchar_t filePath[MAX_PATH] = {0};
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = m_hwnd;
+        ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+        ofn.lpstrFile = filePath;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+        ofn.lpstrDefExt = L"vvp";
+        if (GetOpenFileNameW(&ofn)) {
+            auto& lm = LayerManager::GetInstance();
+            auto loadedProject = ProjectSerializer::LoadProject(filePath, &lm);
+            if (loadedProject) {
+                m_project = loadedProject;
+                m_currentFilePath = filePath;
+                const auto& canvas = m_project->GetCanvas();
+                Color bgColor = Color::FromHex(0xFFFFFF);
+                m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
+                if (m_navigatorPanel) {
+                    m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
+                }
+                if (m_layersPanel) {
+                    m_layersPanel->SetLayerManager(m_canvasView->GetLayerManager());
+                }
+                m_canvasView->InvalidateCanvas();
+            } else {
+                MessageBoxW(m_hwnd, L"无法打开项目文件", L"打开", MB_OK | MB_ICONERROR);
+            }
+        }
+    } else if (menuIndex == 0 && itemIndex == 2) { // File > Save
+        if (m_currentFilePath.empty()) {
+            wchar_t filePath[MAX_PATH] = {0};
+            OPENFILENAMEW ofn = {};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = m_hwnd;
+            ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+            ofn.lpstrFile = filePath;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.Flags = OFN_OVERWRITEPROMPT;
+            ofn.lpstrDefExt = L"vvp";
+            if (GetSaveFileNameW(&ofn)) {
+                m_currentFilePath = filePath;
+            }
+        }
+        if (!m_currentFilePath.empty()) {
+            if (ProjectSerializer::SaveProject(m_currentFilePath, m_project.get(), m_canvasView->GetLayerManager())) {
+                // success
+            } else {
+                MessageBoxW(m_hwnd, L"保存失败", L"保存", MB_OK | MB_ICONERROR);
+            }
+        }
+    } else if (menuIndex == 0 && itemIndex == 3) { // File > Export
+        wchar_t filePath[MAX_PATH] = {0};
+        OPENFILENAMEW ofn = {};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = m_hwnd;
+        ofn.lpstrFilter = L"PNG Image (*.png)\0*.png\0";
+        ofn.lpstrFile = filePath;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.Flags = OFN_OVERWRITEPROMPT;
+        ofn.lpstrDefExt = L"png";
+        if (GetSaveFileNameW(&ofn)) {
+            if (!ProjectSerializer::ExportPNG(filePath, m_canvasView->GetLayerManager())) {
+                MessageBoxW(m_hwnd, L"导出失败", L"导出", MB_OK | MB_ICONERROR);
+            }
+        }
     } else if (menuIndex == 1 && itemIndex == 0) { // Edit > Undo
         HistoryManager::GetInstance().Undo();
         if (m_canvasView) m_canvasView->InvalidateCanvas();
     } else if (menuIndex == 1 && itemIndex == 1) { // Edit > Redo
         HistoryManager::GetInstance().Redo();
         if (m_canvasView) m_canvasView->InvalidateCanvas();
+    } else if (menuIndex == 3) { // Filter menu
+        auto* layerManager = m_canvasView ? m_canvasView->GetLayerManager() : nullptr;
+        if (!layerManager) return;
+        auto layer = layerManager->GetActiveLayer();
+        if (!layer) {
+            MessageBoxW(m_hwnd, L"请先选择一个图层", L"滤镜", MB_OK | MB_ICONWARNING);
+            return;
+        }
+
+        if (itemIndex == 0) { // Brightness/Contrast
+            FilterDialog dialog;
+            std::vector<FilterParamDef> params = {
+                { L"亮度", -100, 100, 0, 0 },
+                { L"对比度", -100, 100, 0, 0 }
+            };
+            if (dialog.Initialize(L"亮度/对比度", params) && dialog.ShowModal(this)) {
+                auto values = dialog.GetValues();
+                CaptureLayerSnapshot(layer.get());
+                Filters::ApplyBrightnessContrast(layer.get(), values[0], values[1]);
+                m_canvasView->InvalidateCanvas();
+            }
+        } else if (itemIndex == 1) { // Hue/Saturation
+            FilterDialog dialog;
+            std::vector<FilterParamDef> params = {
+                { L"色相", -180, 180, 0, 0 },
+                { L"饱和度", 0, 200, 100, 100 }
+            };
+            if (dialog.Initialize(L"色相/饱和度", params) && dialog.ShowModal(this)) {
+                auto values = dialog.GetValues();
+                CaptureLayerSnapshot(layer.get());
+                Filters::ApplyHueSaturation(layer.get(), values[0], values[1]);
+                m_canvasView->InvalidateCanvas();
+            }
+        } else if (itemIndex == 2) { // Gaussian Blur
+            FilterDialog dialog;
+            std::vector<FilterParamDef> params = {
+                { L"半径", 1, 20, 3, 3 }
+            };
+            if (dialog.Initialize(L"高斯模糊", params) && dialog.ShowModal(this)) {
+                auto values = dialog.GetValues();
+                CaptureLayerSnapshot(layer.get());
+                Filters::ApplyGaussianBlur(layer.get(), values[0]);
+                m_canvasView->InvalidateCanvas();
+            }
+        } else if (itemIndex == 3) { // Sharpen
+            FilterDialog dialog;
+            std::vector<FilterParamDef> params = {
+                { L"强度", 0, 100, 50, 50 }
+            };
+            if (dialog.Initialize(L"锐化", params) && dialog.ShowModal(this)) {
+                auto values = dialog.GetValues();
+                CaptureLayerSnapshot(layer.get());
+                Filters::ApplySharpen(layer.get(), values[0]);
+                m_canvasView->InvalidateCanvas();
+            }
+        } else if (itemIndex == 4) { // Invert
+            CaptureLayerSnapshot(layer.get());
+            Filters::ApplyInvert(layer.get());
+            m_canvasView->InvalidateCanvas();
+        } else if (itemIndex == 5) { // Threshold
+            FilterDialog dialog;
+            std::vector<FilterParamDef> params = {
+                { L"阈值", 0, 255, 128, 128 }
+            };
+            if (dialog.Initialize(L"阈值", params) && dialog.ShowModal(this)) {
+                auto values = dialog.GetValues();
+                CaptureLayerSnapshot(layer.get());
+                Filters::ApplyThreshold(layer.get(), static_cast<uint8_t>(values[0]));
+                m_canvasView->InvalidateCanvas();
+            }
+        }
     } else {
         std::wstring msg = L"菜单: " + m_menus[menuIndex].name + L" > " + m_menus[menuIndex].items[itemIndex];
         MessageBoxW(m_hwnd, msg.c_str(), L"功能占位符", MB_OK);
     }
+}
+
+void Workspace::CaptureLayerSnapshot(Layer* layer) {
+    if (!layer) return;
+    auto undoItem = std::make_unique<StrokeUndoItem>(layer);
+    uint32_t gw = layer->GetGridWidth();
+    uint32_t gh = layer->GetGridHeight();
+    for (uint32_t gy = 0; gy < gh; ++gy) {
+        for (uint32_t gx = 0; gx < gw; ++gx) {
+            Render::Tile* tile = layer->GetTile(gx, gy);
+            if (!tile) continue;
+            undoItem->CaptureTile(gx, gy, tile->data, Render::TILE_BYTES);
+        }
+    }
+    undoItem->CaptureRedoTiles();
+    HistoryManager::GetInstance().Push(std::move(undoItem));
 }
 
 void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
@@ -318,45 +508,8 @@ void Workspace::OnMouseDown(const Point& pos, MouseButton button) {
         }
     }
     
-    // Check menu dropdown
+    // Click outside open menu closes it
     if (m_openMenuIndex >= 0) {
-        int x = Theme::GetSize(8);
-        for (int i = 0; i < m_openMenuIndex; ++i) {
-            SIZE ts;
-            HDC hdc = GetDC(m_hwnd);
-            HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                     DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
-            HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
-            GetTextExtentPoint32W(hdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
-            SelectObject(hdc, old);
-            DeleteObject(font);
-            ReleaseDC(m_hwnd, hdc);
-            x += ts.cx + Theme::GetSize(16);
-        }
-        SIZE ts;
-        HDC hdc = GetDC(m_hwnd);
-        HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
-        HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
-        GetTextExtentPoint32W(hdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
-        SelectObject(hdc, old);
-        DeleteObject(font);
-        ReleaseDC(m_hwnd, hdc);
-        
-        int dropdownY = Theme::GetSize(MenuBarHeight);
-        int itemHeight = Theme::GetSize(22);
-        int dropdownWidth = ts.cx + Theme::GetSize(12);
-        for (size_t j = 0; j < m_menus[m_openMenuIndex].items.size(); ++j) {
-            int iy = dropdownY + static_cast<int>(j) * itemHeight;
-            if (pos.x >= x && pos.x < x + dropdownWidth && pos.y >= iy && pos.y < iy + itemHeight) {
-                OnMenuItemClicked(m_openMenuIndex, static_cast<int>(j));
-                m_openMenuIndex = -1;
-                Invalidate();
-                return;
-            }
-        }
         m_openMenuIndex = -1;
         Invalidate();
         return;
@@ -487,35 +640,62 @@ void Workspace::DrawToolbarButtons(HDC hdc) {
     DeleteObject(border);
 }
 
-void Workspace::DrawMenuDropdown(HDC hdc) {
-    if (m_openMenuIndex < 0 || m_openMenuIndex >= static_cast<int>(m_menus.size())) return;
+void Workspace::ShowMenuDropdown(int menuIndex, int screenX, int screenY, int titleWidth) {
+    if (!m_dropdownWindow) {
+        m_dropdownWindow = MakeScope<MenuDropdownWindow>();
+    }
     
-    int x = Theme::GetSize(8);
-    HDC memdc = GetDC(m_hwnd);
+    const auto& menu = m_menus[menuIndex];
+    int itemHeight = Theme::GetSize(24);
+    int dropdownWidth = titleWidth + Theme::GetSize(12);
+    
+    // Measure widest item
+    HDC hdc = GetDC(m_hwnd);
     HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
-    HFONT old = static_cast<HFONT>(SelectObject(memdc, font));
-    for (int i = 0; i < m_openMenuIndex; ++i) {
+    HFONT old = static_cast<HFONT>(SelectObject(hdc, font));
+    for (const auto& item : menu.items) {
         SIZE ts;
-        GetTextExtentPoint32W(memdc, m_menus[i].name.c_str(), static_cast<int>(m_menus[i].name.length()), &ts);
-        x += ts.cx + Theme::GetSize(16);
+        GetTextExtentPoint32W(hdc, item.c_str(), static_cast<int>(item.length()), &ts);
+        if (ts.cx + Theme::GetSize(24) > dropdownWidth) {
+            dropdownWidth = ts.cx + Theme::GetSize(24);
+        }
     }
-    SIZE ts;
-    GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
-    SelectObject(memdc, old);
+    SelectObject(hdc, old);
     DeleteObject(font);
-    ReleaseDC(m_hwnd, memdc);
+    ReleaseDC(m_hwnd, hdc);
     
-    int dropdownY = Theme::GetSize(MenuBarHeight);
-    int itemHeight = Theme::GetSize(22);
-    int dropdownWidth = ts.cx + Theme::GetSize(12);
-    int dropdownHeight = static_cast<int>(m_menus[m_openMenuIndex].items.size()) * itemHeight;
+    int dropdownHeight = static_cast<int>(menu.items.size()) * itemHeight + 4;
+    
+    if (!m_dropdownWindow->GetHandle()) {
+        m_dropdownWindow->Create(L"", Rect(0, 0, dropdownWidth, dropdownHeight), nullptr);
+    } else {
+        m_dropdownWindow->SetBounds(Rect(screenX, screenY, screenX + dropdownWidth, screenY + dropdownHeight));
+    }
+    
+    m_dropdownWindow->SetItems(menu.items, menuIndex);
+    m_dropdownWindow->SetCallback([this](int menuIdx, int itemIdx) {
+        m_openMenuIndex = -1;
+        Invalidate();
+        OnMenuItemClicked(menuIdx, itemIdx);
+    });
+    SetWindowPos(m_dropdownWindow->GetHandle(), HWND_TOPMOST, screenX, screenY, dropdownWidth, dropdownHeight, SWP_SHOWWINDOW);
+}
+
+void Workspace::HideMenuDropdown() {
+    if (m_dropdownWindow) {
+        m_dropdownWindow->SetVisible(false);
+    }
+}
+
+void Workspace::MenuDropdownWindow::OnPaint(HDC hdc, const Rect& clip) {
+    Rect client = GetClientBounds();
     
     // Background
     HBRUSH bg = Theme::SolidBrush(Theme::PanelBackground);
-    RECT dropRc = { x, dropdownY, x + dropdownWidth, dropdownY + dropdownHeight };
-    FillRect(hdc, &dropRc, bg);
+    RECT rc = client.ToWin32Rect();
+    FillRect(hdc, &rc, bg);
     DeleteObject(bg);
     
     // Border
@@ -523,25 +703,69 @@ void Workspace::DrawMenuDropdown(HDC hdc) {
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
     HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
     HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-    Rectangle(hdc, x, dropdownY, x + dropdownWidth, dropdownY + dropdownHeight);
+    Rectangle(hdc, 0, 0, client.Width(), client.Height());
     SelectObject(hdc, oldPen);
     SelectObject(hdc, oldBr);
     DeleteObject(pen);
     
     // Items
+    int itemHeight = Theme::GetSize(24);
     HFONT itemFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, itemFont));
     SetBkMode(hdc, TRANSPARENT);
-    for (size_t j = 0; j < m_menus[m_openMenuIndex].items.size(); ++j) {
-        int iy = dropdownY + static_cast<int>(j) * itemHeight;
-        RECT itemRc = { x + Theme::GetSize(6), iy, x + dropdownWidth - Theme::GetSize(6), iy + itemHeight };
-        SetTextColor(hdc, Theme::TextPrimary);
-        DrawTextW(hdc, m_menus[m_openMenuIndex].items[j].c_str(), -1, &itemRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+    
+    for (size_t j = 0; j < m_items.size(); ++j) {
+        int iy = static_cast<int>(j) * itemHeight + 2;
+        
+        if (static_cast<int>(j) == m_hoverIndex) {
+            HBRUSH hoverBrush = Theme::SolidBrush(Theme::HighlightBlue);
+            RECT hoverRc = { 2, iy, client.Width() - 2, iy + itemHeight };
+            FillRect(hdc, &hoverRc, hoverBrush);
+            DeleteObject(hoverBrush);
+            SetTextColor(hdc, RGB(0xFF, 0xFF, 0xFF));
+        } else {
+            SetTextColor(hdc, Theme::TextPrimary);
+        }
+        
+        RECT itemRc = { Theme::GetSize(8), iy, client.Width() - Theme::GetSize(8), iy + itemHeight };
+        DrawTextW(hdc, m_items[j].c_str(), -1, &itemRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     }
+    
     SelectObject(hdc, oldFont);
     DeleteObject(itemFont);
+}
+
+void Workspace::MenuDropdownWindow::OnMouseDown(const Point& pos, MouseButton button) {
+    if (button == MouseButton::Left) {
+        int itemHeight = Theme::GetSize(24);
+        int index = (pos.y - 2) / itemHeight;
+        if (index >= 0 && index < static_cast<int>(m_items.size())) {
+            if (m_callback) {
+                m_callback(m_menuIndex, index);
+            }
+        } else {
+            // Click outside items: close menu
+            if (m_callback) {
+                m_callback(m_menuIndex, -1);
+            }
+        }
+    }
+}
+
+void Workspace::MenuDropdownWindow::OnMouseMove(const Point& pos) {
+    int itemHeight = Theme::GetSize(24);
+    int index = (pos.y - 2) / itemHeight;
+    if (index >= 0 && index < static_cast<int>(m_items.size())) {
+        SetHoverIndex(index);
+    } else {
+        SetHoverIndex(-1);
+    }
+}
+
+void Workspace::MenuDropdownWindow::OnMouseLeave() {
+    SetHoverIndex(-1);
 }
 
 void Workspace::DrawStatusBar(HDC hdc) {
@@ -600,10 +824,16 @@ void Workspace::DrawStatusBar(HDC hdc) {
 void Workspace::OnKeyDown(uint32_t keyCode) {
     switch (keyCode) {
         case 'B':
-            // Brush tool
+            if (m_canvasView) {
+                m_canvasView->SetCurrentTool(ToolType::Brush);
+                m_canvasView->InvalidateCanvas();
+            }
             break;
         case 'E':
-            // Eraser tool
+            if (m_canvasView) {
+                m_canvasView->SetCurrentTool(ToolType::Eraser);
+                m_canvasView->InvalidateCanvas();
+            }
             break;
         case VK_OEM_4: // '[' key
             Render::BrushEngine::GetInstance().SetSize(
@@ -629,7 +859,86 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
             break;
         case 'S':
             if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
-                MessageBoxW(m_hwnd, L"保存 (M6 实现)", L"文件", MB_OK);
+                if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) || m_currentFilePath.empty()) {
+                    // Save As
+                    wchar_t filePath[MAX_PATH] = {0};
+                    OPENFILENAMEW ofn = {};
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = m_hwnd;
+                    ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+                    ofn.lpstrFile = filePath;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.Flags = OFN_OVERWRITEPROMPT;
+                    ofn.lpstrDefExt = L"vvp";
+                    if (GetSaveFileNameW(&ofn)) {
+                        m_currentFilePath = filePath;
+                    }
+                }
+                if (!m_currentFilePath.empty() && m_canvasView) {
+                    ProjectSerializer::SaveProject(m_currentFilePath, m_project.get(), m_canvasView->GetLayerManager());
+                }
+            }
+            break;
+        case 'O':
+            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                wchar_t filePath[MAX_PATH] = {0};
+                OPENFILENAMEW ofn = {};
+                ofn.lStructSize = sizeof(ofn);
+                ofn.hwndOwner = m_hwnd;
+                ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+                ofn.lpstrFile = filePath;
+                ofn.nMaxFile = MAX_PATH;
+                ofn.Flags = OFN_FILEMUSTEXIST;
+                if (GetOpenFileNameW(&ofn)) {
+                    auto loadedProject = ProjectSerializer::LoadProject(filePath, m_canvasView->GetLayerManager());
+                    if (loadedProject && m_canvasView) {
+                        m_project = loadedProject;
+                        m_currentFilePath = filePath;
+                        const auto& canvas = m_project->GetCanvas();
+                        Color bgColor = Color::FromHex(0xFFFFFF);
+                        m_canvasView->InitializeCanvas(canvas.widthPx, canvas.heightPx, bgColor, canvas.transparent, canvas.initialLayerType);
+                        if (m_navigatorPanel) {
+                            m_navigatorPanel->SetCanvasSize(canvas.widthPx, canvas.heightPx);
+                        }
+                        if (m_layersPanel) {
+                            m_layersPanel->SetLayerManager(m_canvasView->GetLayerManager());
+                            m_layersPanel->Refresh();
+                        }
+                        if (m_canvasView) {
+                            m_canvasView->InvalidateCanvas();
+                        }
+                    }
+                }
+            }
+            break;
+        case VK_HOME:
+            if (m_canvasView) {
+                m_canvasView->ResetView();
+            }
+            break;
+        case '0':
+            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                if (m_canvasView) {
+                    m_canvasView->FitToWindow();
+                }
+            }
+            break;
+        case '1':
+            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) {
+                if (m_canvasView) {
+                    m_canvasView->SetZoom(1.0f);
+                    m_canvasView->InvalidateCanvas();
+                }
+            }
+            break;
+        case VK_DELETE:
+            if (m_canvasView) {
+                auto* lm = m_canvasView->GetLayerManager();
+                if (lm && lm->GetLayerCount() > 1) {
+                    lm->DeleteLayer(lm->GetActiveLayerIndex());
+                    m_canvasView->InvalidateCanvas();
+                    if (m_layersPanel) m_layersPanel->Refresh();
+                }
             }
             break;
     }
@@ -638,7 +947,7 @@ void Workspace::OnKeyDown(uint32_t keyCode) {
 void Workspace::SyncPanels() {
     if (m_navigatorPanel && m_canvasView) {
         auto pan = m_canvasView->GetPan();
-        m_navigatorPanel->SetCanvasViewTransform(m_canvasView->GetZoom(), pan.x, pan.y);
+        m_navigatorPanel->SetCanvasViewTransform(m_canvasView->GetZoom(), pan.x, pan.y, m_canvasView->GetRotation());
     }
     if (m_layersPanel) {
         m_layersPanel->Refresh();

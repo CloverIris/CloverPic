@@ -95,6 +95,28 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
         bool isActive = (static_cast<size_t>(i) == m_layerManager->GetActiveLayerIndex());
 
+        // Drag insertion line
+        if (m_draggingLayer && m_dragTargetIndex >= 0 && m_dragTargetIndex != m_dragLayerIndex && i == m_dragTargetIndex) {
+            HPEN linePen = CreatePen(PS_SOLID, Theme::GetSize(2), RGB(0x00, 0x78, 0xD7));
+            HPEN oldLinePen = static_cast<HPEN>(SelectObject(hdc, linePen));
+            MoveToEx(hdc, 0, y, nullptr);
+            LineTo(hdc, client.Width(), y);
+            SelectObject(hdc, oldLinePen);
+            DeleteObject(linePen);
+        }
+
+        // Dragged item highlight
+        if (m_draggingLayer && i == m_dragLayerIndex) {
+            HPEN dragPen = CreatePen(PS_DOT, 1, RGB(0x00, 0x78, 0xD7));
+            HPEN oldDragPen = static_cast<HPEN>(SelectObject(hdc, dragPen));
+            HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+            HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+            Rectangle(hdc, 2, y + 2, client.Width() - 2, y + ItemHeight - 2);
+            SelectObject(hdc, oldDragPen);
+            SelectObject(hdc, oldNullBr);
+            DeleteObject(dragPen);
+        }
+
         // Background
         if (isActive) {
             HBRUSH activeBrush = CreateSolidBrush(RGB(0x00, 0x78, 0xD7));
@@ -103,11 +125,25 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
             DeleteObject(activeBrush);
         }
 
-        // Thumbnail placeholder (colored square)
-        HBRUSH thumbBrush = CreateSolidBrush(RGB(0x50, 0x50, 0x50));
-        RECT thumbRc = { 8, y + 4, 8 + ThumbSize, y + 4 + ThumbSize };
-        FillRect(hdc, &thumbRc, thumbBrush);
-        DeleteObject(thumbBrush);
+        // Thumbnail (real layer content preview)
+        layer->UpdateThumbnail();
+        const auto& thumbData = layer->GetThumbnail();
+        if (!thumbData.empty()) {
+            BITMAPINFO bmi = {};
+            bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+            bmi.bmiHeader.biWidth = 64;
+            bmi.bmiHeader.biHeight = -64; // top-down
+            bmi.bmiHeader.biPlanes = 1;
+            bmi.bmiHeader.biBitCount = 32;
+            bmi.bmiHeader.biCompression = BI_RGB;
+            StretchDIBits(hdc, Theme::GetSize(8), y + 4, ThumbSize, ThumbSize,
+                          0, 0, 64, 64, thumbData.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+        } else {
+            HBRUSH thumbBrush = CreateSolidBrush(RGB(0x50, 0x50, 0x50));
+            RECT thumbRc = { Theme::GetSize(8), y + 4, Theme::GetSize(8) + ThumbSize, y + 4 + ThumbSize };
+            FillRect(hdc, &thumbRc, thumbBrush);
+            DeleteObject(thumbBrush);
+        }
 
         // Visibility icon (eye)
         SetTextColor(hdc, layer->IsVisible() ? RGB(0xE0, 0xE0, 0xE0) : RGB(0x60, 0x60, 0x60));
@@ -314,20 +350,26 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
         return;
     }
 
-    // Layer selection
+    // Layer selection / drag start
     int layerIdx = HitTestLayer(pos);
     if (layerIdx >= 0) {
+        int btn = HitTestButton(pos, layerIdx);
+        if (btn == 0) {
+            m_layerManager->ToggleLayerVisibility(layerIdx);
+            Invalidate();
+            return;
+        } else if (btn == 1) {
+            m_layerManager->ToggleLayerLock(layerIdx);
+            Invalidate();
+            return;
+        }
+        
         m_layerManager->SetActiveLayer(layerIdx);
-        Invalidate();
-    }
-
-    // Check for visibility/lock button clicks
-    int btn = HitTestButton(pos, layerIdx);
-    if (btn == 0) {
-        m_layerManager->ToggleLayerVisibility(layerIdx);
-        Invalidate();
-    } else if (btn == 1) {
-        m_layerManager->ToggleLayerLock(layerIdx);
+        m_draggingLayer = true;
+        m_dragLayerIndex = layerIdx;
+        m_dragTargetIndex = layerIdx;
+        m_dragStartY = pos.y;
+        SetCapture(m_hwnd);
         Invalidate();
     }
 }
@@ -335,8 +377,8 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
 int LayersPanel::HitTestLayer(const Point& pos) const {
     if (!m_layerManager) return -1;
 
-    int dropdownY = 26;
-    int y = dropdownY + DropdownHeight + 8;
+    int dropdownY = Theme::GetSize(26);
+    int y = dropdownY + DropdownHeight + Theme::GetSize(8);
     if (m_blendDropdownOpen) {
         y += BlendModeCount * DropdownHeight;
     }
@@ -355,8 +397,8 @@ int LayersPanel::HitTestButton(const Point& pos, int layerIndex) const {
     if (layerIndex < 0) return -1;
 
     Rect client = GetClientBounds();
-    int dropdownY = 26;
-    int y = dropdownY + DropdownHeight + 8;
+    int dropdownY = Theme::GetSize(26);
+    int y = dropdownY + DropdownHeight + Theme::GetSize(8);
     if (m_blendDropdownOpen) {
         y += BlendModeCount * DropdownHeight;
     }
@@ -377,17 +419,17 @@ int LayersPanel::HitTestButton(const Point& pos, int layerIndex) const {
 
 bool LayersPanel::HitTestBlendDropdown(const Point& pos) const {
     Rect client = GetClientBounds();
-    int x = 8;
-    int y = 26;
-    int width = client.Width() - 16;
+    int x = Theme::GetSize(8);
+    int y = Theme::GetSize(26);
+    int width = client.Width() - Theme::GetSize(16);
     return pos.x >= x && pos.x < x + width && pos.y >= y && pos.y < y + DropdownHeight;
 }
 
 int LayersPanel::HitTestBlendItem(const Point& pos) const {
     if (!m_blendDropdownOpen) return -1;
     Rect client = GetClientBounds();
-    int x = 8;
-    int y = 26 + DropdownHeight;
+    int x = Theme::GetSize(8);
+    int y = Theme::GetSize(26) + DropdownHeight;
     int width = client.Width() - 16;
     for (int i = 0; i < BlendModeCount; ++i) {
         int iy = y + i * DropdownHeight;
@@ -482,11 +524,30 @@ void LayersPanel::OnMouseMove(const Point& pos) {
         SetOpacityFromSliderPos(pos.x, Theme::GetSize(8), client.Width() - Theme::GetSize(16));
         Invalidate();
     }
+    
+    if (m_draggingLayer && m_layerManager) {
+        int target = HitTestLayer(pos);
+        if (target >= 0 && target != m_dragLayerIndex) {
+            m_dragTargetIndex = target;
+            Invalidate();
+        }
+    }
 }
 
 void LayersPanel::OnMouseUp(const Point& pos, MouseButton button) {
     if (button == MouseButton::Left) {
         m_opacityDragging = false;
+        
+        if (m_draggingLayer) {
+            m_draggingLayer = false;
+            ReleaseCapture();
+            if (m_dragTargetIndex >= 0 && m_dragTargetIndex != m_dragLayerIndex && m_layerManager) {
+                m_layerManager->MoveLayer(m_dragLayerIndex, m_dragTargetIndex);
+            }
+            m_dragLayerIndex = -1;
+            m_dragTargetIndex = -1;
+            Invalidate();
+        }
     }
 }
 

@@ -17,7 +17,7 @@ public:
     CanvasView();
     ~CanvasView() override;
     
-    bool InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor);
+    bool InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent = false, LayerType initialLayer = LayerType::Color);
     void ShutdownCanvas();
     
     // View transform
@@ -25,6 +25,12 @@ public:
     float GetZoom() const { return m_zoom; }
     void SetPan(float x, float y);
     Point GetPan() const { return Point(static_cast<int32_t>(m_panX), static_cast<int32_t>(m_panY)); }
+    void SetRotation(float degrees);
+    float GetRotation() const { return m_viewRotation; }
+    
+    // View navigation
+    void FitToWindow();
+    void ResetView();
     
     // Screen to canvas coordinates
     void ScreenToCanvas(float screenX, float screenY, float& canvasX, float& canvasY) const;
@@ -60,6 +66,7 @@ protected:
     void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnMouseDoubleClick(const Point& pos, MouseButton button) override {}
     void OnKeyDown(uint32_t keyCode) override;
+    void OnKeyUp(uint32_t keyCode) override;
     
     bool OnCreate() override;
     void OnDestroy() override;
@@ -110,6 +117,11 @@ private:
     float m_zoom = 1.0f;
     float m_panX = 0.0f;
     float m_panY = 0.0f;
+    float m_viewRotation = 0.0f; // degrees
+    
+    // Spacebar panning
+    bool m_spacePanning = false;
+    ToolType m_spaceRestoreTool = ToolType::Brush;
     
     // Input state
     bool m_isDrawing = false;

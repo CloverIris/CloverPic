@@ -18,8 +18,8 @@ struct CanvasSettings {
     float dpi = 350.0f;
     String unit = L"px";
     Color bgColor = Color::FromHex(0xFFFFFF);
-    bool transparent = false;
-    LayerType initialLayer = LayerType::Color;
+    bool transparent = true;
+    LayerType initialLayer = LayerType::Transparent;
 };
 
 class NewCanvasDialog : public Window {

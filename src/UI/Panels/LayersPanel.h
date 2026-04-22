@@ -54,6 +54,12 @@ private:
 
     // Opacity slider state
     bool m_opacityDragging = false;
+    
+    // Layer drag reorder state
+    bool m_draggingLayer = false;
+    int m_dragLayerIndex = -1;
+    int m_dragTargetIndex = -1;
+    int m_dragStartY = 0;
 
     static constexpr int BlendModeCount = 8;
     static const BlendMode BlendModes[BlendModeCount];

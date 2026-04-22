@@ -18,6 +18,8 @@ struct Canvas {
     uint32_t heightPx = 0;
     float dpi = 350.0f;
     ColorMode colorMode = ColorMode::RGB;
+    bool transparent = true;
+    LayerType initialLayerType = LayerType::Transparent;
     String rgbProfile;
     String cmykProfile;
 };

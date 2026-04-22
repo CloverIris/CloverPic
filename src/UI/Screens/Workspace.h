@@ -41,6 +41,7 @@ private:
     void SyncPanels();
     
     Ref<Project> m_project;
+    String m_currentFilePath;
     Scope<CanvasView> m_canvasView;
     Scope<LayersPanel> m_layersPanel;
     Scope<ColorsPanel> m_colorsPanel;
@@ -65,6 +66,7 @@ private:
     
     void BuildMenus();
     void OnMenuItemClicked(int menuIndex, int itemIndex);
+    void CaptureLayerSnapshot(class Layer* layer);
     
     int HitTestMenuItem(const Point& pos) const;
     int HitTestToolbarButton(const Point& pos) const;
@@ -73,6 +75,32 @@ private:
     
     int m_openMenuIndex = -1;
     int m_menuHoverItem = -1;
+    
+    // Popup dropdown window to avoid child-window occlusion
+    class MenuDropdownWindow : public Window {
+    public:
+        void SetItems(const std::vector<String>& items, int menuIndex) {
+            m_items = items;
+            m_menuIndex = menuIndex;
+        }
+        void SetCallback(std::function<void(int, int)> cb) { m_callback = cb; }
+        void SetHoverIndex(int idx) { m_hoverIndex = idx; Invalidate(); }
+    protected:
+        void OnPaint(HDC hdc, const Rect& clip) override;
+        void OnMouseDown(const Point& pos, MouseButton button) override;
+        void OnMouseMove(const Point& pos) override;
+        void OnMouseLeave() override;
+        DWORD GetDefaultStyle() const override { return WS_POPUP | WS_VISIBLE; }
+        DWORD GetDefaultExStyle() const override { return WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE; }
+    private:
+        std::vector<String> m_items;
+        std::function<void(int, int)> m_callback;
+        int m_menuIndex = -1;
+        int m_hoverIndex = -1;
+    };
+    Scope<MenuDropdownWindow> m_dropdownWindow;
+    void ShowMenuDropdown(int menuIndex, int x, int y, int width);
+    void HideMenuDropdown();
 };
 
 } // namespace UI

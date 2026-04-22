@@ -94,6 +94,9 @@ public:
     void UpdateThumbnail();
     const std::vector<uint8_t>& GetThumbnail() const { return m_thumbnail; }
     
+    // Direct tile import for deserialization (bypasses alpha blending)
+    void ImportTile(uint32_t gridX, uint32_t gridY, const uint8_t* srcData);
+    
 private:
     String m_name;
     LayerType m_type;

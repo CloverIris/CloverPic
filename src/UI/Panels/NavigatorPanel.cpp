@@ -8,10 +8,11 @@ namespace UI {
 
 NavigatorPanel::NavigatorPanel() = default;
 
-void NavigatorPanel::SetCanvasViewTransform(float zoom, float panX, float panY) {
+void NavigatorPanel::SetCanvasViewTransform(float zoom, float panX, float panY, float rotation) {
     m_zoom = zoom;
     m_panX = panX;
     m_panY = panY;
+    m_rotation = rotation;
     Invalidate();
 }
 
@@ -57,6 +58,36 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     DrawThumbnail(hdc);
     DrawViewRect(hdc);
     
+    // Zoom control buttons
+    int btnY = client.Height() - Theme::GetSize(52);
+    int btnCount = 4;
+    int btnWidth = (client.Width() - Theme::GetSize(16)) / btnCount;
+    const wchar_t* btnLabels[4] = { L"-", L"+", L"100%", L"Fit" };
+    HFONT btnFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    oldFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
+    SetTextColor(hdc, Theme::TextPrimary);
+    for (int i = 0; i < btnCount; ++i) {
+        int bx = Theme::GetSize(8) + i * btnWidth;
+        HBRUSH btnBg = CreateSolidBrush(Theme::ButtonDefault);
+        RECT btnRc = { bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24) };
+        FillRect(hdc, &btnRc, btnBg);
+        DeleteObject(btnBg);
+        HPEN btnBorder = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+        HPEN oldBtnPen = static_cast<HPEN>(SelectObject(hdc, btnBorder));
+        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+        HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+        Rectangle(hdc, bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24));
+        SelectObject(hdc, oldBtnPen);
+        SelectObject(hdc, oldNullBr);
+        DeleteObject(btnBorder);
+        RECT textRc = { bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24) };
+        DrawTextW(hdc, btnLabels[i], -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+    SelectObject(hdc, oldFont);
+    DeleteObject(btnFont);
+
     // Zoom text
     SetTextColor(hdc, Theme::TextPrimary);
     HFONT valFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -66,7 +97,10 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     
     std::wostringstream oss;
     oss << L"缩放: " << static_cast<int>(m_zoom * 100) << L"%";
-    RECT zoomRc = { 8, client.Height() - 24, client.Width() - 8, client.Height() - 4 };
+    if (std::abs(m_rotation) > 0.5f) {
+        oss << L" | 旋转: " << static_cast<int>(m_rotation) << L"°";
+    }
+    RECT zoomRc = { Theme::GetSize(8), client.Height() - Theme::GetSize(24), client.Width() - Theme::GetSize(8), client.Height() - Theme::GetSize(4) };
     DrawTextW(hdc, oss.str().c_str(), -1, &zoomRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     SelectObject(hdc, oldFont);
@@ -78,7 +112,7 @@ void NavigatorPanel::DrawThumbnail(HDC hdc) {
     
     Rect client = GetClientBounds();
     int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - 50; // Leave room for title and zoom text
+    int availH = client.Height() - Theme::GetSize(80); // Leave room for title, buttons, and zoom text
     
     float scale = GetThumbScale(availW, availH);
     int thumbW = static_cast<int>(m_canvasWidth * scale);
@@ -145,7 +179,7 @@ void NavigatorPanel::DrawViewRect(HDC hdc) {
     
     Rect client = GetClientBounds();
     int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - 50;
+    int availH = client.Height() - Theme::GetSize(80);
     
     float scale = GetThumbScale(availW, availH);
     int thumbW = static_cast<int>(m_canvasWidth * scale);
@@ -184,8 +218,26 @@ void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
     
     Rect client = GetClientBounds();
+    
+    // Check zoom buttons
+    int btnY = client.Height() - Theme::GetSize(52);
+    int btnCount = 4;
+    int btnWidth = (client.Width() - Theme::GetSize(16)) / btnCount;
+    if (pos.y >= btnY && pos.y < btnY + Theme::GetSize(24)) {
+        int btnIndex = (pos.x - Theme::GetSize(8)) / btnWidth;
+        if (btnIndex >= 0 && btnIndex < btnCount && m_onZoomChanged) {
+            switch (btnIndex) {
+                case 0: m_onZoomChanged(std::max(0.01f, m_zoom * 0.8f)); break;
+                case 1: m_onZoomChanged(std::min(16.0f, m_zoom * 1.25f)); break;
+                case 2: m_onZoomChanged(1.0f); break;
+                case 3: m_onZoomChanged(-1.0f); break; // Fit signal
+            }
+        }
+        return;
+    }
+    
     int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - 50;
+    int availH = client.Height() - Theme::GetSize(80);
     
     float scale = GetThumbScale(availW, availH);
     int thumbW = static_cast<int>(m_canvasWidth * scale);
@@ -216,7 +268,7 @@ void NavigatorPanel::OnMouseMove(const Point& pos) {
     
     Rect client = GetClientBounds();
     int availW = client.Width() - ThumbMargin * 2;
-    int availH = client.Height() - 50;
+    int availH = client.Height() - Theme::GetSize(80);
     
     float scale = GetThumbScale(availW, availH);
     int thumbW = static_cast<int>(m_canvasWidth * scale);

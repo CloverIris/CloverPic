@@ -23,8 +23,11 @@ public:
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
     void OnMouseDown(const Point& pos, MouseButton button) override;
+    void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnMouseMove(const Point& pos) override;
     void OnMouseLeave() override;
+    
+    LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
     
     DWORD GetDefaultStyle() const override { return WS_CHILD | WS_VISIBLE; }
     
@@ -34,9 +37,12 @@ private:
     bool m_dropdownOpen = false;
     bool m_hovered = false;
     int m_hoverIndex = -1;
+    int m_originalHeight = 0;
     CallbackInt m_onChanged;
     
     void DrawDropdown(HDC hdc);
+    void OpenDropdown();
+    void CloseDropdown();
     int HitTestItem(const Point& pos) const;
 };
 

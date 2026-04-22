@@ -78,7 +78,7 @@ VividPic/
 ├── assets/                 # 运行时资源（由 CMake POST_BUILD 复制）
 └── src/
     ├── App/                # Application 单例（消息泵、生命周期）
-    ├── Core/               # Project, Layer, LayerManager, BlendMode, MemoryAdvisor
+    ├── Core/               # Project, Layer, LayerManager, BlendMode, MemoryAdvisor, ProjectIO
     ├── Render/             # RenderBackend, D2DCanvas, TilePool, BrushEngine, BrushPreset
     ├── Tablet/             # TabletInput (WindowsInkDriver + WinTabDriver + TabletManager)
     ├── UI/
@@ -127,6 +127,7 @@ $objs = @(
   "CMakeFiles/VividPic.dir/src/Core/LayerManager.cpp.obj",
   "CMakeFiles/VividPic.dir/src/Core/MemoryAdvisor.cpp.obj",
   "CMakeFiles/VividPic.dir/src/Core/Project.cpp.obj",
+  "CMakeFiles/VividPic.dir/src/Core/ProjectIO.cpp.obj",
   "CMakeFiles/VividPic.dir/src/Render/BrushEngine.cpp.obj",
   "CMakeFiles/VividPic.dir/src/Render/BrushPresetManager.cpp.obj",
   "CMakeFiles/VividPic.dir/src/Render/D2DCanvas.cpp.obj",
@@ -185,6 +186,7 @@ $objs = @(
 - **C++/CLI 或 .NET**：严禁引入 CLR
 - **MSVC 特有扩展**：`#pragma comment`, `__declspec(uuid)`, COM 智能指针需确保 MinGW 兼容
 - **Vulkan / OpenGL**：当前无需，D2D 已满足需求
+- **第三方 JSON / ZIP 库**：nlohmann/json、miniz、libzip 等禁止引入；如需要序列化使用自定义二进制格式
 
 ### 4.3 渲染架构（已落地）
 
@@ -257,7 +259,7 @@ namespace TabletInput {
 ## 7. 项目进度（Milestone 追踪）
 
 ### M1 ✅ 基础框架（已落地）
-- HomeScreen（14 按钮分组布局）
+- HomeScreen（分组按钮布局）
 - `Window` 基类（HWND 封装、消息路由、DPI 感知）
 - `Theme` 暗色主题 + DPI 缩放（`Scale = 1.25f`）
 - `Button` / `Panel` 基础控件
@@ -290,6 +292,15 @@ namespace TabletInput {
 - `UI.md` 设计文档（HomeScreen/Workspace/4 面板规范）
 - HomeScreen DPI 缩放修复（所有硬编码偏移量统一 `Theme::GetSize()`）
 
+### M5 ✅ 选择工具、Undo/Redo 与面板完善（已落地）
+- `SelectionMask`（矩形/椭圆/套索/魔棒选区 + 反选/清除/边界检测）
+- `CanvasView` 选区交互（拖拽创建、移动工具、选区约束绘制）
+- `HistoryManager` + `StrokeUndoItem` 双快照 Undo/Redo（50 步上限）
+- `LayersPanel` 底部工具栏（新建/复制/合并/删除）+ 不透明度滑条
+- `NavigatorPanel` 实时缩略图 + 视图框 + 点击平移
+- `Workspace` 工具栏（撤销/重做/笔刷切换按钮）
+- 菜单栏交互（Undo/Redo 已连接，其余为占位符）
+
 ### Bugfix 记录
 
 | Commit | 问题 | 修复方案 |
@@ -299,17 +310,25 @@ namespace TabletInput {
 | `7e7e1df` | 新建画布对话框嵌套/无法点击 | `WS_OVERLAPPED` → `WS_POPUP`，延迟 `Create` 到 `ShowModal`，添加 `CenterOnParent` |
 | `3529299` | DPI 缩放、数位笔只能画一笔 | `SetProcessDpiAwarenessContext`，`GetDpiForWindow`，`Theme::Scale=1.25f`，WinTab → Windows Ink 优先级切换，`WM_POINTERUPDATE` 缺失 |
 | `ad890e6` | 笔光标偏移、鼠标/笔连线、系统光标干扰 | WindowsInkDriver/WinTabDriver `ScreenToClient`，`WM_POINTERUPDATE` 更新 cursor，`WM_SETCURSOR` 隐藏系统光标 |
+| `7f8bf09` | M5 Undo/Redo + 调试日志 | `HistoryManager`、`StrokeUndoItem` 双快照实现 |
+| `fefa3cc` | LayersPanel 复制/合并功能 | `DuplicateLayer`、`MergeDown` |
+| `2252884` | 选择工具与 UI 增强 | `SelectionMask`、`ToolType` 枚举、CanvasView 选区交互 |
+| `aef0a53` | 应用退出、HomeScreen 居中、ColorsPanel DIB | `AllocConsole`、`HomeScreen` 屏幕相对居中 |
+| `32bb5a0` | 笔悬停误设 isTouching=true | `WM_POINTERUPDATE` 中根据 `pointerInfo.pointerFlags` 正确判断 |
+| `51681db` | 鼠标输入被错误处理为过期笔状态 | `TabletManager` 中隔离 mouse 与 pen 状态机 |
+| `136fb57` | 控制台崩溃 | `AllocConsole` + `freopen` 顺序修复，降低日志频率 |
+| `f69273e` | README 多语言与 logo | 中/英/日 README + logo.svg |
 
 ### Active Issues / 待办
 
-- [ ] **Redo**：`StrokeUndoItem::Redo()` 为 stub，需双快照实现
-- [ ] **图层操作增强**：duplicate、merge down、不透明度滑条、底部工具栏按钮
-- [ ] **NavigatorPanel**：缩略图、视图框、点击平移
-- [ ] **Workspace 工具栏**：撤销/重做/笔刷切换按钮（当前仅背景）
-- [ ] **菜单栏交互**：菜单项点击处理与下拉命令列表
-- [ ] **Save/Export**：stub 状态，需实现 `.vvp` 格式序列化
+- [x] **Save/Export**：`.vvp` 自定义二进制格式序列化 + WIC PNG 导出（M6 已完成）
+- [x] **打开文件**：从 HomeScreen / Workspace 打开 `.vvp` 并重建 CanvasView
 - [ ] **采样率优化**：Windows Ink `WM_POINTERUPDATE` 受屏幕刷新率限制（60Hz），快速笔迹可能不够平滑。终极方案：`GetPointerPenInfoHistory()` 获取历史帧
 - [ ] **TilePool 真池化**：当前 `Layer` 使用 `new Tile`，真对象池分配 deferred
 - [ ] **D2D 批量 composite**：当前 `CompositeToBuffer` 是纯 CPU，可考虑 D2D 图层合成加速
 - [ ] **纹理导入**：`Texture` brush tip 目前使用 64x64 过程噪声，需支持外部图片
 - [ ] **抗锯齿**：笔刷 stamp 边缘在高 zoom 下可见像素颗粒
+- [x] **滤镜系统**：6 个破坏性滤镜（亮度/对比度、色相/饱和度、高斯模糊、锐化、反相、阈值）+ FilterDialog 参数对话框 + Undo 集成（M6 已完成）
+- [ ] **变换工具**：自由变换、扭曲、透视（M5 未完成部分）
+- [ ] **填充/渐变/文字工具**：PRD 4.7 中定义，部分为 stub
+- [ ] **设置面板**：首选项对话框、快捷键自定义

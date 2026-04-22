@@ -35,13 +35,13 @@ void CanvasView::OnDestroy() {
     }
 }
 
-bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor) {
+bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent, LayerType initialLayer) {
     ShutdownCanvas();
     
     m_canvasWidth = width;
     m_canvasHeight = height;
     m_bgColor = bgColor;
-    m_transparentBg = (bgColor.a == 0);
+    m_transparentBg = transparent;
     
     auto& backend = Render::RenderBackend::GetInstance();
     Rect client = GetClientBounds();
@@ -54,8 +54,8 @@ bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& 
     m_layerManager->Initialize(width, height);
     
     // Create initial layer
-    auto layer = m_layerManager->AddLayer(L"图层 1", LayerType::Color);
-    if (layer && !m_transparentBg) {
+    auto layer = m_layerManager->AddLayer(L"图层 1", initialLayer);
+    if (layer && !m_transparentBg && initialLayer != LayerType::Transparent) {
         // Fill with background color
         for (uint32_t y = 0; y < height; ++y) {
             for (uint32_t x = 0; x < width; ++x) {
@@ -124,9 +124,65 @@ void CanvasView::SetPan(float x, float y) {
     Invalidate();
 }
 
+void CanvasView::SetRotation(float degrees) {
+    m_viewRotation = degrees;
+    // Normalize to [-180, 180] for display sanity
+    while (m_viewRotation > 180.0f) m_viewRotation -= 360.0f;
+    while (m_viewRotation < -180.0f) m_viewRotation += 360.0f;
+    Invalidate();
+}
+
+void CanvasView::FitToWindow() {
+    if (!m_hwnd || m_canvasWidth == 0 || m_canvasHeight == 0) return;
+    
+    RECT rc;
+    GetClientRect(m_hwnd, &rc);
+    float viewW = static_cast<float>(rc.right - rc.left);
+    float viewH = static_cast<float>(rc.bottom - rc.top);
+    
+    float scaleX = viewW / m_canvasWidth;
+    float scaleY = viewH / m_canvasHeight;
+    m_zoom = std::min(scaleX, scaleY) * 0.95f;
+    m_zoom = std::clamp(m_zoom, 0.01f, 16.0f);
+    
+    m_panX = (viewW - m_canvasWidth * m_zoom) * 0.5f;
+    m_panY = (viewH - m_canvasHeight * m_zoom) * 0.5f;
+    
+    Invalidate();
+}
+
+void CanvasView::ResetView() {
+    m_zoom = 1.0f;
+    m_viewRotation = 0.0f;
+    if (m_hwnd && m_canvasWidth > 0 && m_canvasHeight > 0) {
+        RECT rc;
+        GetClientRect(m_hwnd, &rc);
+        float viewW = static_cast<float>(rc.right - rc.left);
+        float viewH = static_cast<float>(rc.bottom - rc.top);
+        m_panX = (viewW - m_canvasWidth) * 0.5f;
+        m_panY = (viewH - m_canvasHeight) * 0.5f;
+    } else {
+        m_panX = 0.0f;
+        m_panY = 0.0f;
+    }
+    Invalidate();
+}
+
 void CanvasView::ScreenToCanvas(float screenX, float screenY, float& canvasX, float& canvasY) const {
-    canvasX = (screenX - m_panX) / m_zoom;
-    canvasY = (screenY - m_panY) / m_zoom;
+    if (m_viewRotation == 0.0f) {
+        canvasX = (screenX - m_panX) / m_zoom;
+        canvasY = (screenY - m_panY) / m_zoom;
+        return;
+    }
+    float centerX = m_canvasWidth * 0.5f;
+    float centerY = m_canvasHeight * 0.5f;
+    float dx = (screenX - m_panX) / m_zoom - centerX;
+    float dy = (screenY - m_panY) / m_zoom - centerY;
+    float angleRad = -m_viewRotation * 3.14159265f / 180.0f;
+    float cosA = std::cos(angleRad);
+    float sinA = std::sin(angleRad);
+    canvasX = dx * cosA - dy * sinA + centerX;
+    canvasY = dx * sinA + dy * cosA + centerY;
 }
 
 void CanvasView::InvalidateCanvas() {
@@ -170,16 +226,18 @@ void CanvasView::CompositeAndRender() {
     m_renderTarget->Clear(Render::RenderBackend::ToD2DColor(Color::FromHex(Theme::CanvasOuter)));
     
     if (m_compositeBitmap) {
-        if (m_transparentBg) {
-            DrawCheckerboard(m_renderTarget);
-        }
-        
         D2D1_MATRIX_3X2_F oldTransform;
         m_renderTarget->GetTransform(&oldTransform);
         
-        D2D1_MATRIX_3X2_F transform = D2D1::Matrix3x2F::Scale(m_zoom, m_zoom) *
-                                       D2D1::Matrix3x2F::Translation(m_panX, m_panY);
+        D2D1_POINT_2F center = D2D1::Point2F(m_canvasWidth * 0.5f, m_canvasHeight * 0.5f);
+        D2D1_MATRIX_3X2_F transform = D2D1::Matrix3x2F::Translation(m_panX, m_panY) *
+                                       D2D1::Matrix3x2F::Scale(m_zoom, m_zoom) *
+                                       D2D1::Matrix3x2F::Rotation(m_viewRotation, center);
         m_renderTarget->SetTransform(transform);
+        
+        if (m_transparentBg) {
+            DrawCheckerboard(m_renderTarget);
+        }
         
         D2D1_RECT_F destRect = D2D1::RectF(0, 0, static_cast<float>(m_canvasWidth), static_cast<float>(m_canvasHeight));
         m_renderTarget->DrawBitmap(m_compositeBitmap, destRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
@@ -289,9 +347,9 @@ void CanvasView::UpdateCompositeBitmap() {
 void CanvasView::DrawCheckerboard(ID2D1RenderTarget* rt) {
     if (!rt) return;
     
-    const float checkSize = 8.0f * m_zoom;
-    const int checksX = static_cast<int>(m_canvasWidth / 8.0f) + 1;
-    const int checksY = static_cast<int>(m_canvasHeight / 8.0f) + 1;
+    const float checkSize = 8.0f;
+    const int checksX = static_cast<int>(m_canvasWidth / checkSize) + 1;
+    const int checksY = static_cast<int>(m_canvasHeight / checkSize) + 1;
     
     ID2D1SolidColorBrush* lightBrush = nullptr;
     ID2D1SolidColorBrush* darkBrush = nullptr;
@@ -301,9 +359,11 @@ void CanvasView::DrawCheckerboard(ID2D1RenderTarget* rt) {
     if (lightBrush && darkBrush) {
         for (int y = 0; y < checksY; ++y) {
             for (int x = 0; x < checksX; ++x) {
-                float px = m_panX + x * checkSize;
-                float py = m_panY + y * checkSize;
-                D2D1_RECT_F rect = D2D1::RectF(px, py, px + checkSize, py + checkSize);
+                float x0 = x * checkSize;
+                float y0 = y * checkSize;
+                float x1 = std::min(x0 + checkSize, static_cast<float>(m_canvasWidth));
+                float y1 = std::min(y0 + checkSize, static_cast<float>(m_canvasHeight));
+                D2D1_RECT_F rect = D2D1::RectF(x0, y0, x1, y1);
                 rt->FillRectangle(rect, ((x + y) % 2 == 0) ? lightBrush : darkBrush);
             }
         }
@@ -603,7 +663,7 @@ void CanvasView::OnMouseDown(const Point& pos, MouseButton button) {
             default:
                 break;
         }
-    } else if (button == MouseButton::Middle) {
+    } else if (button == MouseButton::Middle || (button == MouseButton::Left && m_spacePanning)) {
         m_isPanning = true;
         m_panStartPos = pos;
     }
@@ -640,13 +700,40 @@ void CanvasView::OnMouseUp(const Point& pos, MouseButton button) {
             }
             Invalidate();
         }
-    } else if (button == MouseButton::Middle) {
+    } else if (button == MouseButton::Middle || (button == MouseButton::Left && m_spacePanning)) {
         m_isPanning = false;
     }
 }
 
 void CanvasView::OnKeyDown(uint32_t keyCode) {
-    // Shortcuts handled at Workspace level
+    if (keyCode == VK_SPACE && !m_spacePanning) {
+        m_spacePanning = true;
+        m_spaceRestoreTool = m_currentTool;
+        SetCursor(LoadCursor(nullptr, IDC_SIZEALL));
+        return;
+    }
+    if (keyCode == 'R') {
+        SetRotation(0.0f);
+        return;
+    }
+    // Forward unhandled keys to parent (Workspace shortcuts like Ctrl+S, Ctrl+O, etc.)
+    Window* parent = GetParent();
+    if (parent) {
+        parent->OnKeyDown(keyCode);
+    }
+}
+
+void CanvasView::OnKeyUp(uint32_t keyCode) {
+    if (keyCode == VK_SPACE && m_spacePanning) {
+        m_spacePanning = false;
+        m_currentTool = m_spaceRestoreTool;
+        SetCursor(nullptr);
+        return;
+    }
+    Window* parent = GetParent();
+    if (parent) {
+        parent->OnKeyUp(keyCode);
+    }
 }
 
 void CanvasView::ApplyBrush(float x, float y, float pressure) {
@@ -820,8 +907,36 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             
         case WM_MOUSEWHEEL: {
             int delta = GET_WHEEL_DELTA_WPARAM(wParam);
-            float zoomFactor = (delta > 0) ? 1.1f : 0.9f;
-            SetZoom(m_zoom * zoomFactor);
+            bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            ScreenToClient(m_hwnd, &pt);
+            
+            if (shift) {
+                // Rotate around cursor
+                float rotDelta = (delta > 0) ? 15.0f : -15.0f;
+                float oldCanvasX, oldCanvasY;
+                ScreenToCanvas(static_cast<float>(pt.x), static_cast<float>(pt.y), oldCanvasX, oldCanvasY);
+                SetRotation(m_viewRotation + rotDelta);
+                // Adjust pan so the point under cursor stays fixed
+                float newCanvasX, newCanvasY;
+                ScreenToCanvas(static_cast<float>(pt.x), static_cast<float>(pt.y), newCanvasX, newCanvasY);
+                float dcx = newCanvasX - oldCanvasX;
+                float dcy = newCanvasY - oldCanvasY;
+                m_panX += dcx * m_zoom;
+                m_panY += dcy * m_zoom;
+                Invalidate();
+            } else {
+                // Zoom towards mouse cursor
+                float zoomFactor = (delta > 0) ? 1.1f : 0.9f;
+                float canvasX, canvasY;
+                ScreenToCanvas(static_cast<float>(pt.x), static_cast<float>(pt.y), canvasX, canvasY);
+                float newZoom = std::clamp(m_zoom * zoomFactor, 0.01f, 16.0f);
+                m_zoom = newZoom;
+                m_panX = pt.x - canvasX * m_zoom;
+                m_panY = pt.y - canvasY * m_zoom;
+                Invalidate();
+            }
             return 0;
         }
     }

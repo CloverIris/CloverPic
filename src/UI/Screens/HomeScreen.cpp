@@ -2,6 +2,8 @@
 #include "UI/Screens/NewCanvasDialog.h"
 #include "UI/Screens/Workspace.h"
 #include "App/Application.h"
+#include "Core/ProjectIO.h"
+#include "Core/LayerManager.h"
 #include <windowsx.h>
 #include <shellapi.h>
 #include <commdlg.h>
@@ -335,6 +337,10 @@ void HomeScreen::OnDrawIllustration() {
             project->GetCanvas().widthPx = settings.width;
             project->GetCanvas().heightPx = settings.height;
             project->GetCanvas().dpi = settings.dpi;
+            project->GetCanvas().transparent = settings.transparent;
+            project->GetCanvas().initialLayerType = settings.initialLayer;
+            project->GetCanvas().transparent = settings.transparent;
+            project->GetCanvas().initialLayerType = settings.initialLayer;
             
             SetVisible(false);
             
@@ -369,17 +375,30 @@ void HomeScreen::OnDrawComic() {
 }
 
 void HomeScreen::OnOpenFolder() {
-    BROWSEINFOW bi = {};
-    bi.lpszTitle = L"选择项目文件夹";
-    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    wchar_t filePath[MAX_PATH] = {0};
+    OPENFILENAMEW ofn = {};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = m_hwnd;
+    ofn.lpstrFilter = L"VividPic Project (*.vvp)\0*.vvp\0";
+    ofn.lpstrFile = filePath;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+    ofn.lpstrDefExt = L"vvp";
     
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (pidl) {
-        wchar_t path[MAX_PATH];
-        if (SHGetPathFromIDListW(pidl, path)) {
-            ShellExecuteW(nullptr, L"open", path, nullptr, nullptr, SW_SHOWNORMAL);
+    if (GetOpenFileNameW(&ofn)) {
+        auto& lm = LayerManager::GetInstance();
+        auto loadedProject = ProjectSerializer::LoadProject(filePath, &lm);
+        if (loadedProject) {
+            SetVisible(false);
+            auto workspace = MakeScope<Workspace>();
+            if (workspace->Initialize(loadedProject)) {
+                workspace->SetProject(loadedProject);
+                workspace->Invalidate();
+                workspace.release();
+            }
+        } else {
+            MessageBoxW(m_hwnd, L"无法打开项目文件", L"打开", MB_OK | MB_ICONERROR);
         }
-        CoTaskMemFree(pidl);
     }
 }
 

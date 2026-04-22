@@ -140,11 +140,46 @@ void ComboBox::OnMouseDown(const Point& pos, MouseButton button) {
                     m_onChanged(m_selectedIndex);
                 }
             }
-            m_dropdownOpen = false;
+            CloseDropdown();
         } else {
-            m_dropdownOpen = true;
+            OpenDropdown();
         }
         Invalidate();
+    }
+}
+
+void ComboBox::OnMouseUp(const Point& pos, MouseButton button) {
+    if (button == MouseButton::Left && m_dropdownOpen) {
+        int item = HitTestItem(pos);
+        if (item >= 0) {
+            m_selectedIndex = item;
+            if (m_onChanged) {
+                m_onChanged(m_selectedIndex);
+            }
+        }
+        CloseDropdown();
+        Invalidate();
+    }
+}
+
+void ComboBox::OpenDropdown() {
+    m_dropdownOpen = true;
+    Rect bounds = GetBounds();
+    m_originalHeight = bounds.Height();
+    int itemHeight = 24;
+    int listHeight = static_cast<int>(m_items.size()) * itemHeight;
+    SetWindowPos(m_hwnd, HWND_TOP, bounds.left, bounds.top, bounds.Width(), m_originalHeight + listHeight, SWP_SHOWWINDOW);
+    SetCapture(m_hwnd);
+}
+
+void ComboBox::CloseDropdown() {
+    m_dropdownOpen = false;
+    m_hoverIndex = -1;
+    ReleaseCapture();
+    if (m_originalHeight > 0) {
+        Rect bounds = GetBounds();
+        SetWindowPos(m_hwnd, nullptr, bounds.left, bounds.top, bounds.Width(), m_originalHeight, SWP_NOZORDER | SWP_SHOWWINDOW);
+        m_originalHeight = 0;
     }
 }
 
@@ -158,8 +193,10 @@ void ComboBox::OnMouseMove(const Point& pos) {
 
 void ComboBox::OnMouseLeave() {
     m_hovered = false;
-    m_hoverIndex = -1;
-    Invalidate();
+    if (!m_dropdownOpen) {
+        m_hoverIndex = -1;
+        Invalidate();
+    }
 }
 
 int ComboBox::HitTestItem(const Point& pos) const {
@@ -174,6 +211,17 @@ int ComboBox::HitTestItem(const Point& pos) const {
         return index;
     }
     return -1;
+}
+
+LRESULT ComboBox::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_CAPTURECHANGED) {
+        if (m_dropdownOpen && reinterpret_cast<HWND>(lParam) != m_hwnd) {
+            CloseDropdown();
+            Invalidate();
+        }
+        return 0;
+    }
+    return Window::HandleMessage(msg, wParam, lParam);
 }
 
 } // namespace UI

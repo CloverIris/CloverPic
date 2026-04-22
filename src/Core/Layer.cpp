@@ -363,6 +363,16 @@ Ref<Layer> Layer::Clone() const {
     return clone;
 }
 
+void Layer::ImportTile(uint32_t gridX, uint32_t gridY, const uint8_t* srcData) {
+    if (gridX >= m_gridWidth || gridY >= m_gridHeight) return;
+    DetachForWrite();
+    Render::Tile* tile = AcquireTile(gridX, gridY);
+    if (tile && srcData) {
+        std::memcpy(tile->data, srcData, Render::TILE_BYTES);
+        tile->inUse = true;
+    }
+}
+
 void Layer::UpdateThumbnail() {
     // M3: Simple 64x64 thumbnail from top-left of canvas
     constexpr uint32_t thumbSize = 64;
@@ -373,6 +383,7 @@ void Layer::UpdateThumbnail() {
     if (stepX == 0) stepX = 1;
     if (stepY == 0) stepY = 1;
     
+    bool hasVisible = false;
     for (uint32_t y = 0; y < thumbSize; ++y) {
         for (uint32_t x = 0; x < thumbSize; ++x) {
             Color c = GetPixel(x * stepX, y * stepY);
@@ -381,7 +392,12 @@ void Layer::UpdateThumbnail() {
             m_thumbnail[idx + 1] = c.g;
             m_thumbnail[idx + 2] = c.r;
             m_thumbnail[idx + 3] = c.a;
+            if (c.a > 0) hasVisible = true;
         }
+    }
+    
+    if (!hasVisible) {
+        m_thumbnail.clear();
     }
 }
 
