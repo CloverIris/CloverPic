@@ -18,10 +18,9 @@ void ToolBar::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
     // Background
-    HBRUSH bg = Theme::SolidBrush(Theme::BackgroundDark);
+    HBRUSH bg = Theme::CachedBrush(Theme::BackgroundDark);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bg);
-    DeleteObject(bg);
     
     // Right border
     HPEN pen = Theme::Pen(Theme::BorderDark);
@@ -48,10 +47,9 @@ void ToolBar::OnPaint(HDC hdc, const Rect& clip) {
 void ToolBar::DrawToolIcon(HDC hdc, int index, const Rect& rc, bool active, bool hovered) {
     // Background
     uint32_t bgColor = active ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::BackgroundDark);
-    HBRUSH brush = Theme::SolidBrush(bgColor);
+    HBRUSH brush = Theme::CachedBrush(bgColor);
     RECT fillRc = rc.ToWin32Rect();
     FillRect(hdc, &fillRc, brush);
-    DeleteObject(brush);
     
     // Border
     if (active || hovered) {
@@ -68,7 +66,7 @@ void ToolBar::DrawToolIcon(HDC hdc, int index, const Rect& rc, bool active, bool
     // Icon (single MDL2 character) — precisely centered by glyph metrics
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, active ? Theme::TextInverse : Theme::TextPrimary);
-    HFONT font = Theme::GetFont(Theme::FontID::Toolbar);
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Toolbar);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     wchar_t iconStr[2] = { Tools[index].icon, L'\0' };
     SIZE iconSize;
@@ -77,7 +75,6 @@ void ToolBar::DrawToolIcon(HDC hdc, int index, const Rect& rc, bool active, bool
     int iconY = rc.top + (rc.Height() - iconSize.cy) / 2;
     TextOutW(hdc, iconX, iconY, iconStr, 1);
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 }
 
 void ToolBar::OnMouseDown(const Point& pos, MouseButton button) {
@@ -97,6 +94,11 @@ void ToolBar::OnMouseMove(const Point& pos) {
         m_hoverIndex = idx;
         Invalidate();
     }
+    if (idx >= 0 && Tools[idx].tooltip) {
+        SetTooltip(Tools[idx].tooltip);
+    } else {
+        SetTooltip(L"");
+    }
 }
 
 void ToolBar::OnMouseLeave() {
@@ -104,6 +106,7 @@ void ToolBar::OnMouseLeave() {
         m_hoverIndex = -1;
         Invalidate();
     }
+    SetTooltip(L"");
 }
 
 int ToolBar::HitTest(const Point& pos) const {

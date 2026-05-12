@@ -83,7 +83,17 @@ struct Theme {
         Button       // 12pt Normal - Button text
     };
     
+    // Legacy font factory (creates new HFONT each time; caller must DeleteObject)
     static HFONT GetFont(FontID id);
+    
+    // Cached font (returns shared HFONT; caller must NOT DeleteObject)
+    static HFONT GetCachedFont(FontID id);
+    
+    // Cached brush (returns shared HBRUSH; caller must NOT DeleteObject)
+    static HBRUSH CachedBrush(uint32_t hex);
+    
+    // Release all cached GDI objects (call before app shutdown)
+    static void ShutdownCache();
     
     // -----------------------------------------------------------------
     // Drawing helpers (all operate in pixel coordinates, NOT scaled)

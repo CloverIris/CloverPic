@@ -133,22 +133,25 @@ void ColorsPanel::OnPaint(HDC hdc, const Rect& clip) {
     int colorSize = Theme::GetSize(CurrentColorSize);
     int histSize = Theme::GetSize(HistoryItemSize);
 
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
 
-    RECT titleRc = { pad, 4, client.Width() - pad, titleH };
+    RECT titleRc = { pad, 4, client.Width() - pad - Theme::GetSize(20), titleH };
     DrawTextW(hdc, L"颜色", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    if (IsCollapsible()) {
+        SetTextColor(hdc, Theme::TextSecondary);
+        RECT arrowRc = { client.Width() - pad - Theme::GetSize(18), 4, client.Width() - pad, titleH };
+        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 
     // Separator
     HPEN sepPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
@@ -272,9 +275,7 @@ void ColorsPanel::DrawColorInfo(HDC hdc) {
     int w = GetClientBounds().Width() - pad * 2;
 
     SetBkMode(hdc, TRANSPARENT);
-    HFONT valFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT valFont = Theme::GetCachedFont(Theme::FontID::Small);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
 
     // HSV line
@@ -306,11 +307,15 @@ void ColorsPanel::DrawColorInfo(HDC hdc) {
     DrawTextW(hdc, rgbOss.str().c_str(), -1, &rgbRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
 
     SelectObject(hdc, oldFont);
-    DeleteObject(valFont);
 }
 
 void ColorsPanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
+
+    if (IsCollapsible() && pos.y < Theme::GetSize(26)) {
+        ToggleCollapsed();
+        return;
+    }
 
     int pad = Theme::GetSize(8);
     int titleH = Theme::GetSize(22);

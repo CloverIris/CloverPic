@@ -253,16 +253,13 @@ void HomeScreen::OnPaint(HDC hdc, const Rect& clip) {
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, Theme::TextPrimary);
         
-        HFONT titleFont = CreateFontW(Theme::GetFontSize(16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                       DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                       DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        HFONT titleFont = Theme::GetCachedFont(Theme::FontID::PanelTitle);
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
         
         RECT titleRect = { currentX, currentY, currentX + Theme::GetSize(ButtonWidth), currentY + Theme::GetSize(24) };
         DrawTextW(hdc, group.title.c_str(), -1, &titleRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
         
         SelectObject(hdc, oldFont);
-        DeleteObject(titleFont);
         
         currentY += groupHeight + Theme::GetSize(GroupSpacing);
     }
@@ -272,28 +269,24 @@ void HomeScreen::OnPaint(HDC hdc, const Rect& clip) {
 
 void HomeScreen::DrawBackground(HDC hdc) {
     Rect client = GetClientBounds();
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::BackgroundDark);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::BackgroundDark);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
 }
 
 void HomeScreen::DrawTitle(HDC hdc) {
     Rect client = GetClientBounds();
     
     // Title background
-    HBRUSH titleBrush = Theme::SolidBrush(Theme::BackgroundDark);
+    HBRUSH titleBrush = Theme::CachedBrush(Theme::BackgroundDark);
     RECT titleRect = { 0, 0, client.Width(), Theme::GetSize(TitleHeight) };
     FillRect(hdc, &titleRect, titleBrush);
-    DeleteObject(titleBrush);
     
     // Title text
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
     
-    HFONT titleFont = CreateFontW(Theme::GetFontSize(28), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT titleFont = Theme::GetCachedFont(Theme::FontID::Title);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
     
     RECT textRect = { Theme::GetSize(LeftMargin), Theme::GetSize(10), client.Width() - Theme::GetSize(LeftMargin), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
@@ -301,16 +294,12 @@ void HomeScreen::DrawTitle(HDC hdc) {
     
     // Version
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT verFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT verFont = Theme::GetCachedFont(Theme::FontID::Value);
     SelectObject(hdc, verFont);
     RECT verRect = { Theme::GetSize(LeftMargin) + Theme::GetSize(140), Theme::GetSize(20), Theme::GetSize(LeftMargin) + Theme::GetSize(240), Theme::GetSize(TitleHeight) - Theme::GetSize(10) };
     DrawTextW(hdc, L"v1.0.0", -1, &verRect, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     SelectObject(hdc, oldFont);
-    DeleteObject(titleFont);
-    DeleteObject(verFont);
     
     // Separator line
     HPEN linePen = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));
@@ -326,10 +315,9 @@ void HomeScreen::DrawStatusBar(HDC hdc) {
     m_statusBarRect = Rect(0, client.Height() - Theme::GetSize(StatusBarHeight), client.Width(), client.Height());
     
     // Status bar background
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT sbRc = m_statusBarRect.ToWin32Rect();
     FillRect(hdc, &sbRc, bgBrush);
-    DeleteObject(bgBrush);
     
     // Top border
     HPEN linePen = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));
@@ -343,16 +331,13 @@ void HomeScreen::DrawStatusBar(HDC hdc) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
     
-    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     RECT langRect = { client.Width() - Theme::GetSize(200), m_statusBarRect.top + Theme::GetSize(4), client.Width() - Theme::GetSize(20), m_statusBarRect.bottom - Theme::GetSize(4) };
     DrawTextW(hdc, m_languageText.c_str(), -1, &langRect, DT_SINGLELINE | DT_VCENTER | DT_RIGHT);
     
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 }
 
 // Button callbacks
@@ -370,6 +355,7 @@ void HomeScreen::OnDrawIllustration() {
             project->GetCanvas().transparent = settings.transparent;
             project->GetCanvas().initialLayerType = settings.initialLayer;
             
+            AnimateWindow(m_hwnd, 150, AW_HIDE | AW_BLEND);
             SetVisible(false);
             
             auto workspace = MakeScope<Workspace>();
@@ -391,6 +377,7 @@ void HomeScreen::OnDrawComic() {
             project->GetCanvas().heightPx = settings.height;
             project->GetCanvas().dpi = settings.dpi;
             
+            AnimateWindow(m_hwnd, 150, AW_HIDE | AW_BLEND);
             SetVisible(false);
             
             auto workspace = MakeScope<Workspace>();
@@ -418,6 +405,7 @@ void HomeScreen::OnOpenFolder() {
         auto loadedProject = ProjectSerializer::LoadProject(filePath, &lm);
         if (loadedProject) {
             RecentFilesManager::GetInstance().AddRecentFile(filePath);
+            AnimateWindow(m_hwnd, 150, AW_HIDE | AW_BLEND);
             SetVisible(false);
             auto workspace = MakeScope<Workspace>();
             if (workspace->Initialize(loadedProject)) {

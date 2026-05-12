@@ -7,6 +7,7 @@
 #include "Core/LayerManager.h"
 #include "Core/SelectionMask.h"
 #include "UI/Core/Theme.h"
+#include "UI/Widgets/ContextMenu.h"
 #include <d2d1.h>
 
 namespace VividPic {
@@ -63,6 +64,8 @@ public:
     SelectionMask* GetSelection() const { return m_selection.get(); }
     void ClearSelection();
     bool HasSelection() const;
+    void SelectAll();
+    void InvertSelection();
     
 protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
@@ -174,6 +177,14 @@ private:
         bool hasSelection = false;
     };
     MoveState m_moveState;
+    
+    // Marching ants animation
+    static constexpr uint32_t TIMER_MARCHING_ANTS = 2001;
+    int m_marchingAntsOffset = 0;
+    
+    // Context menu
+    Scope<ContextMenu> m_contextMenu;
+    void ShowContextMenu(const Point& screenPos);
     
     // Tablet
     TabletInput::TabletManager* m_tablet = nullptr;

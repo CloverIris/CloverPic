@@ -3,7 +3,9 @@
 namespace VividPic {
 namespace UI {
 
-ComboBox::ComboBox() = default;
+ComboBox::ComboBox() {
+    SetTabStop(true);
+}
 
 void ComboBox::AddItem(const String& item) {
     m_items.push_back(item);
@@ -32,10 +34,9 @@ void ComboBox::OnPaint(HDC hdc, const Rect& clip) {
     
     // Background
     uint32_t bgColor = m_hovered ? 0x454545 : 0x3C3C3C;
-    HBRUSH brush = Theme::SolidBrush(bgColor);
+    HBRUSH brush = Theme::CachedBrush(bgColor);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, brush);
-    DeleteObject(brush);
     
     // Border
     HPEN borderPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
@@ -51,9 +52,7 @@ void ComboBox::OnPaint(HDC hdc, const Rect& clip) {
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
     
-    HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Value);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     String displayText = GetSelectedItem();
@@ -73,7 +72,6 @@ void ComboBox::OnPaint(HDC hdc, const Rect& clip) {
     DeleteObject(arrowPen);
     
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
     
     // Dropdown list
     if (m_dropdownOpen) {
@@ -89,10 +87,9 @@ void ComboBox::DrawDropdown(HDC hdc) {
     Rect listRect(client.left, client.bottom, client.right, client.bottom + listHeight);
     
     // Dropdown background
-    HBRUSH bgBrush = Theme::SolidBrush(0x3C3C3C);
+    HBRUSH bgBrush = Theme::CachedBrush(0x3C3C3C);
     RECT rc = listRect.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
     
     // Border
     HPEN borderPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
@@ -106,19 +103,16 @@ void ComboBox::DrawDropdown(HDC hdc) {
     
     // Items
     SetBkMode(hdc, TRANSPARENT);
-    HFONT font = CreateFontW(Theme::GetFontSize(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Value);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     for (size_t i = 0; i < m_items.size(); ++i) {
         int itemTop = listRect.top + static_cast<int>(i) * itemHeight;
         
         if (static_cast<int>(i) == m_hoverIndex) {
-            HBRUSH hoverBrush = Theme::SolidBrush(Theme::HighlightBlue);
+            HBRUSH hoverBrush = Theme::CachedBrush(Theme::HighlightBlue);
             RECT itemRc = { listRect.left + 1, itemTop, listRect.right - 1, itemTop + itemHeight };
             FillRect(hdc, &itemRc, hoverBrush);
-            DeleteObject(hoverBrush);
         }
         
         SetTextColor(hdc, static_cast<int>(i) == m_selectedIndex ? Theme::HighlightBlue : Theme::TextPrimary);
@@ -127,7 +121,6 @@ void ComboBox::DrawDropdown(HDC hdc) {
     }
     
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 }
 
 void ComboBox::OnMouseDown(const Point& pos, MouseButton button) {
@@ -166,8 +159,11 @@ void ComboBox::OpenDropdown() {
     m_dropdownOpen = true;
     Rect bounds = GetBounds();
     m_originalHeight = bounds.Height();
-    int itemHeight = 24;
-    int listHeight = static_cast<int>(m_items.size()) * itemHeight;
+    int itemHeight = Theme::GetSize(24);
+    int maxVisible = 8;
+    int visibleItems = static_cast<int>(m_items.size());
+    if (visibleItems > maxVisible) visibleItems = maxVisible;
+    int listHeight = visibleItems * itemHeight + 4;
     SetWindowPos(m_hwnd, HWND_TOP, bounds.left, bounds.top, bounds.Width(), m_originalHeight + listHeight, SWP_SHOWWINDOW);
     SetCapture(m_hwnd);
 }
@@ -196,6 +192,57 @@ void ComboBox::OnMouseLeave() {
     if (!m_dropdownOpen) {
         m_hoverIndex = -1;
         Invalidate();
+    }
+}
+
+void ComboBox::OnKeyDown(uint32_t keyCode) {
+    switch (keyCode) {
+        case VK_DOWN:
+            if (m_dropdownOpen) {
+                m_hoverIndex++;
+                if (m_hoverIndex >= static_cast<int>(m_items.size())) {
+                    m_hoverIndex = 0;
+                }
+                Invalidate();
+            } else {
+                OpenDropdown();
+                m_hoverIndex = m_selectedIndex;
+                Invalidate();
+            }
+            break;
+        case VK_UP:
+            if (m_dropdownOpen) {
+                m_hoverIndex--;
+                if (m_hoverIndex < 0) {
+                    m_hoverIndex = static_cast<int>(m_items.size()) - 1;
+                }
+                Invalidate();
+            } else {
+                OpenDropdown();
+                m_hoverIndex = m_selectedIndex;
+                Invalidate();
+            }
+            break;
+        case VK_ESCAPE:
+            if (m_dropdownOpen) {
+                CloseDropdown();
+                Invalidate();
+            }
+            break;
+        case VK_RETURN:
+            if (m_dropdownOpen && m_hoverIndex >= 0 && m_hoverIndex < static_cast<int>(m_items.size())) {
+                m_selectedIndex = m_hoverIndex;
+                if (m_onChanged) {
+                    m_onChanged(m_selectedIndex);
+                }
+                CloseDropdown();
+                Invalidate();
+            } else if (!m_dropdownOpen) {
+                OpenDropdown();
+                m_hoverIndex = m_selectedIndex;
+                Invalidate();
+            }
+            break;
     }
 }
 

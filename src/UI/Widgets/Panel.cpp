@@ -9,19 +9,16 @@ void Panel::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
     // Background
-    HBRUSH brush = Theme::SolidBrush(m_bgColor);
+    HBRUSH brush = Theme::CachedBrush(m_bgColor);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, brush);
-    DeleteObject(brush);
     
     // Title
     if (!m_title.empty()) {
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, Theme::TextSecondary);
         
-        HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
         
         RECT titleRect = { client.left + 8, client.top + 4, client.right - 8, client.top + 24 };
@@ -29,7 +26,6 @@ void Panel::OnPaint(HDC hdc, const Rect& clip) {
                   DT_SINGLELINE | DT_VCENTER | DT_LEFT);
         
         SelectObject(hdc, oldFont);
-        DeleteObject(font);
         
         // Separator line
         HPEN linePen = CreatePen(PS_SOLID, 1, RGB(0x55, 0x55, 0x55));

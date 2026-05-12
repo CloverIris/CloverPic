@@ -119,18 +119,15 @@ void FilterDialog::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
 
     // Background
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
 
     // Title and sliders
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
 
-    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                              DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
 
     for (size_t i = 0; i < m_params.size(); ++i) {
@@ -138,7 +135,6 @@ void FilterDialog::OnPaint(HDC hdc, const Rect& clip) {
     }
 
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 }
 
 Rect FilterDialog::GetSliderTrackRect(int paramIndex) const {

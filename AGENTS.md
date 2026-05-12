@@ -310,6 +310,31 @@ namespace TabletInput {
 - `Workspace` 顶部工具栏（撤销/重做/笔刷切换按钮）
 - 菜单栏交互（Undo/Redo 已连接，其余为占位符）
 
+### M6 ✅ 文件 I/O、滤镜与文字图层持久化（已落地）
+- `.vvp` 自定义二进制格式序列化（VVP v1/v2）+ WIC PNG 导出
+- 从 HomeScreen / Workspace 打开 `.vvp` 并重建 CanvasView
+- 6 个破坏性滤镜（亮度/对比度、色相/饱和度、高斯模糊、锐化、反相、阈值）
+- `FilterDialog` 参数对话框 + Undo 集成
+- `VVP v2 TextLayer` 完整往返修复（直接插入反序列化 layer）
+
+### Phase 1~4 ✅ 交互体验与细节调优（已落地）
+- **Phase 1.1** Theme 性能优化：`GetCachedFont()` / `CachedBrush()` / `ShutdownCache()`，`DrawGradientRect` 重写为内存 DIB 直接像素操作
+- **Phase 1.2** EditBox 完整编辑体验：caret 光标、文本选择、光标移动、中间插入/Delete、剪贴板（Ctrl+C/X/V）、Ctrl+A 全选、`InvertRect` 反色选择高亮
+- **Phase 1.3** Tooltip 系统：`TooltipWindow`（`WS_POPUP | WS_EX_NOACTIVATE`），Window 基类集成 `SetTooltip()`，500ms 延迟显示
+- **Phase 1.4** Button 控件增强：`SetIconChar()` 图标支持、`SetDisabled()` 禁用态、焦点虚线框、Space/Enter 键盘激活
+- **Phase 1.5** ComboBox 键盘导航：↑/↓ 循环切换、Enter 确认、Esc 关闭；下拉最大高度限制为 8 项
+- **Phase 2.1** Workspace 响应式布局引擎：初始窗口尺寸为主显示器工作区 85%，强制最小 1024×768（按 `Theme::Scale` 缩放）
+- **Phase 2.2** Panel 折叠/展开：`Window` 基类 `SetCollapsible()` / `ToggleCollapsed()`，5 个面板标题栏折叠箭头
+- **Phase 2.3** ScrollView + LayersPanel 滚动：`ScrollView` 组件（滚轮、track 分页、thumb 拖拽），`HRGN` clip 裁剪提升性能
+- **Phase 3.1** Marching Ants 选区动画：100ms 定时器驱动黑白双 brush 交替绘制
+- **Phase 3.2** Toast 操作反馈：`ToastWindow`（`WS_POPUP | WS_EX_LAYERED`），底部居中 2 秒自动消失
+- **Phase 3.3** 右键上下文菜单：`ContextMenu` 组件，CanvasView 右键集成（全选/反选/清除选区）
+- **Phase 3.4** Tab 键导航：`Window` 基类 `SetTabStop()` / `NavigateTab()`，Button/EditBox/ComboBox 默认支持
+- **Phase 4.1** OLE 拖放打开：Workspace `DragAcceptFiles` + `WM_DROPFILES`，自动识别 `.vvp`
+- **Phase 4.2** Splitter 面板宽度拖拽：6px 热区检测，实时拖拽即时重排，边界约束 160~400px
+- **Phase 4.3** 光标/笔体验增强：Workspace `WM_SETCURSOR` 拦截 splitter 热区 → `IDC_SIZEWE`
+- **Phase 4.4** HomeScreen→Workspace 转场动画：`AnimateWindow` 150ms 黑场交叉淡入淡出
+
 ### Bugfix 记录
 
 | Commit | 问题 | 修复方案 |
@@ -336,16 +361,20 @@ namespace TabletInput {
 
 ### Active Issues / 待办
 
+#### 已完成（归档）
 - [x] **Save/Export**：`.vvp` 自定义二进制格式序列化 + WIC PNG 导出（M6 已完成）
 - [x] **打开文件**：从 HomeScreen / Workspace 打开 `.vvp` 并重建 CanvasView
-- [ ] **采样率优化**：Windows Ink `WM_POINTERUPDATE` 受屏幕刷新率限制（60Hz），快速笔迹可能不够平滑。终极方案：`GetPointerPenInfoHistory()` 获取历史帧
+- [x] **滤镜系统**：6 个破坏性滤镜 + FilterDialog + Undo 集成（M6 已完成）
+- [x] **VVP v2 TextLayer 完整往返**：直接插入反序列化 layer（M6 已完成）
+- [x] **Phase 1~4 交互体验增强**：Theme 性能优化、EditBox 完整编辑、Tooltip、Button 增强、ComboBox 键盘导航、响应式布局、Panel 折叠、ScrollView、Marching Ants、Toast、ContextMenu、Tab 导航、OLE 拖放、Splitter 拖拽、转场动画（已完成）
+
+#### 待实现 / 规划中
+- [ ] **采样率优化**：Windows Ink `WM_POINTERUPDATE` 受屏幕刷新率限制（60Hz）。终极方案：`GetPointerPenInfoHistory()` 获取历史帧
 - [ ] **TilePool 真池化**：当前 `Layer` 使用 `new Tile`，真对象池分配 deferred
 - [ ] **D2D 批量 composite**：当前 `CompositeToBuffer` 是纯 CPU，可考虑 D2D 图层合成加速
 - [ ] **纹理导入**：`Texture` brush tip 目前使用 64x64 过程噪声，需支持外部图片
 - [ ] **抗锯齿**：笔刷 stamp 边缘在高 zoom 下可见像素颗粒
-- [x] **滤镜系统**：6 个破坏性滤镜（亮度/对比度、色相/饱和度、高斯模糊、锐化、反相、阈值）+ FilterDialog 参数对话框 + Undo 集成（M6 已完成）
 - [ ] **变换工具增强**：自由变换、扭曲、透视（当前仅实现缩放）
 - [ ] **形状工具增强**：椭圆、直线、多边形、矢量形状（当前仅实现填充矩形）
 - [ ] **设置面板**：首选项对话框、快捷键自定义
-- [ ] **图层分组/剪贴蒙版**：LayersPanel 缺少新建组、蒙版按钮（Solo 模式 ✅ 已完成）
-- [x] **VVP v2 TextLayer 完整往返**：`LoadProject` 改用 `AddLayer(Ref<Layer>)` 直接插入反序列化对象，避免工厂重建导致 payload 丢失
+- [ ] **图层分组/剪贴蒙版**：图层组、剪贴蒙版（Solo 模式 ✅ 已完成）

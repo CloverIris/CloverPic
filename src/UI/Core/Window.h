@@ -44,6 +44,24 @@ public:
     void SetFocus();
     bool HasFocus() const;
     
+    // Tooltip
+    void SetTooltip(const wchar_t* tooltip);
+    
+    // Collapsible panel support
+    void SetCollapsible(bool collapsible);
+    bool IsCollapsible() const;
+    void SetCollapsed(bool collapsed);
+    bool IsCollapsed() const;
+    void ToggleCollapsed();
+    void SetOnCollapsedChanged(Callback callback);
+    
+    // Tab navigation
+    void SetTabStop(bool tabStop);
+    bool IsTabStop() const;
+    void SetTabOrder(int order);
+    int GetTabOrder() const;
+    bool NavigateTab(bool forward);
+    
     // Text
     void SetText(const String& text);
     String GetText() const;
@@ -54,6 +72,7 @@ public:
     virtual void OnMouseDown(const Point& pos, MouseButton button);
     virtual void OnMouseUp(const Point& pos, MouseButton button);
     virtual void OnMouseDoubleClick(const Point& pos, MouseButton button);
+    virtual void OnMouseWheel(int delta);
     virtual void OnMouseEnter();
     virtual void OnMouseLeave();
     virtual void OnSize(const Size& newSize);
@@ -82,10 +101,19 @@ protected:
     bool m_mouseTracking = false;
     bool m_mouseInside = false;
     float m_dpiScale = 1.0f;
+    String m_tooltip;
+    bool m_tooltipPending = false;
+    bool m_collapsible = false;
+    bool m_collapsed = false;
+    Callback m_onCollapsedChanged;
+    bool m_tabStop = false;
+    int m_tabOrder = 0;
     
     static constexpr wchar_t BaseClassName[] = L"VividPic_Window";
     static bool s_classRegistered;
     static uint32_t s_windowId;
+    static class TooltipWindow* s_tooltipWindow;
+    static constexpr uint32_t TooltipTimerId = 0x7F00;
 };
 
 } // namespace UI

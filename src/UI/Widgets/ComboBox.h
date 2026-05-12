@@ -26,6 +26,7 @@ protected:
     void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnMouseMove(const Point& pos) override;
     void OnMouseLeave() override;
+    void OnKeyDown(uint32_t keyCode) override;
     
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
     

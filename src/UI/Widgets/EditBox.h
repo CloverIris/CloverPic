@@ -25,6 +25,8 @@ protected:
     void OnKeyUp(uint32_t keyCode) override;
     void OnChar(wchar_t ch) override;
     bool OnCreate() override;
+    void OnDestroy() override;
+    LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
     
     DWORD GetDefaultStyle() const override { return WS_CHILD | WS_VISIBLE; }
     
@@ -35,9 +37,29 @@ private:
     bool m_readOnly = false;
     Callback m_onChanged;
     
+    // Cursor & selection
+    int m_cursorPos = 0;      // logical insertion point (0..length)
+    int m_selAnchor = 0;      // selection anchor (moves only on non-extended navigation)
+    
     void InsertChar(wchar_t ch);
-    void DeleteChar();
+    void DeleteChar();            // backspace (left)
+    void DeleteCharForward();     // delete (right)
     void NotifyChanged();
+    
+    void UpdateCaret();
+    void SetCursorPos(int pos, bool extendSelection);
+    void ClearSelection();
+    bool HasSelection() const;
+    int SelectionStart() const;
+    int SelectionEnd() const;
+    void DeleteSelection();
+    
+    void CopyToClipboard();
+    void PasteFromClipboard();
+    void CutToClipboard();
+    
+    int HitTestPos(int mouseX) const;
+    int GetTextWidthUpTo(int charCount) const;
 };
 
 } // namespace UI

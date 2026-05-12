@@ -59,22 +59,25 @@ void NavigatorPanel::GetThumbRect(int& outX, int& outY, int& outW, int& outH) co
 void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
     
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
-    RECT titleRc = { 8, 4, client.Width() - 8, 20 };
+    RECT titleRc = { 8, 4, client.Width() - 8 - Theme::GetSize(20), 20 };
     DrawTextW(hdc, L"导航器", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    if (IsCollapsible()) {
+        SetTextColor(hdc, Theme::TextSecondary);
+        RECT arrowRc = { client.Width() - 8 - Theme::GetSize(18), 4, client.Width() - 8, 20 };
+        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
     
     HPEN sepPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
@@ -95,17 +98,14 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     int btnCount = 4;
     int btnWidth = (client.Width() - Theme::GetSize(16)) / btnCount;
     const wchar_t* btnLabels[4] = { L"-", L"+", L"100%", L"Fit" };
-    HFONT btnFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT btnFont = Theme::GetCachedFont(Theme::FontID::Small);
     oldFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
     SetTextColor(hdc, Theme::TextPrimary);
     for (int i = 0; i < btnCount; ++i) {
         int bx = Theme::GetSize(8) + i * btnWidth;
-        HBRUSH btnBg = CreateSolidBrush(Theme::ButtonDefault);
+        HBRUSH btnBg = Theme::CachedBrush(Theme::ButtonDefault);
         RECT btnRc = { bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24) };
         FillRect(hdc, &btnRc, btnBg);
-        DeleteObject(btnBg);
         HPEN btnBorder = CreatePen(PS_SOLID, 1, Theme::BorderLight);
         HPEN oldBtnPen = static_cast<HPEN>(SelectObject(hdc, btnBorder));
         HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
@@ -118,13 +118,10 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
         DrawTextW(hdc, btnLabels[i], -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
     }
     SelectObject(hdc, oldFont);
-    DeleteObject(btnFont);
 
     // Zoom text
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT valFont = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                 DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT valFont = Theme::GetCachedFont(Theme::FontID::Small);
     oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
     
     std::wostringstream oss;
@@ -136,7 +133,6 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     DrawTextW(hdc, oss.str().c_str(), -1, &zoomRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     SelectObject(hdc, oldFont);
-    DeleteObject(valFont);
 }
 
 void NavigatorPanel::UpdateThumbnail() {
@@ -274,7 +270,12 @@ void NavigatorPanel::DrawViewRect(HDC hdc) {
 
 void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
-    
+
+    if (IsCollapsible() && pos.y < Theme::GetSize(26)) {
+        ToggleCollapsed();
+        return;
+    }
+
     Rect client = GetClientBounds();
     
     // Check zoom buttons

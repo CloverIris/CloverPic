@@ -90,6 +90,7 @@ int Application::Run() {
 }
 
 void Application::Shutdown() {
+    UI::Theme::ShutdownCache();
     if (m_gdiplusToken != 0) {
         Gdiplus::GdiplusShutdown(m_gdiplusToken);
         m_gdiplusToken = 0;

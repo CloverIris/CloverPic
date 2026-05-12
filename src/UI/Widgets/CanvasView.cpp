@@ -27,6 +27,8 @@ bool CanvasView::OnCreate() {
     m_tablet = &TabletInput::TabletManager::GetInstance();
     m_tablet->Initialize(m_hwnd);
     
+    SetTimer(m_hwnd, TIMER_MARCHING_ANTS, 100, nullptr);
+    
     return true;
 }
 
@@ -35,6 +37,7 @@ void CanvasView::OnDestroy() {
     if (m_tablet) {
         m_tablet->Shutdown();
     }
+    KillTimer(m_hwnd, TIMER_MARCHING_ANTS);
 }
 
 bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& bgColor, bool transparent, LayerType initialLayer, bool resetLayers) {
@@ -642,6 +645,13 @@ void CanvasView::OnMouseMove(const Point& pos) {
 void CanvasView::OnMouseDown(const Point& pos, MouseButton button) {
     if (!m_layerManager) return;
     
+    if (button == MouseButton::Right) {
+        POINT pt = { pos.x, pos.y };
+        ClientToScreen(m_hwnd, &pt);
+        ShowContextMenu(Point(pt.x, pt.y));
+        return;
+    }
+    
     if (button == MouseButton::Left) {
         float canvasX, canvasY;
         ScreenToCanvas(static_cast<float>(pos.x), static_cast<float>(pos.y), canvasX, canvasY);
@@ -1055,6 +1065,16 @@ LRESULT CanvasView::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             return 0;
         }
+        
+        case WM_TIMER:
+            if (wParam == TIMER_MARCHING_ANTS) {
+                if (m_selection && !m_selection->IsEmpty()) {
+                    m_marchingAntsOffset = (m_marchingAntsOffset + 1) % 8;
+                    Invalidate();
+                }
+                return 0;
+            }
+            break;
     }
     
     return Window::HandleMessage(msg, wParam, lParam);
@@ -1071,6 +1091,41 @@ void CanvasView::ClearSelection() {
 
 bool CanvasView::HasSelection() const {
     return m_selection && !m_selection->IsEmpty();
+}
+
+void CanvasView::SelectAll() {
+    if (!m_selection) {
+        m_selection = std::make_unique<SelectionMask>(m_canvasWidth, m_canvasHeight);
+    }
+    m_selection->FillRect(0, 0, m_canvasWidth, m_canvasHeight, 255);
+    Invalidate();
+}
+
+void CanvasView::InvertSelection() {
+    if (!m_selection) {
+        m_selection = std::make_unique<SelectionMask>(m_canvasWidth, m_canvasHeight);
+    }
+    m_selection->Invert();
+    Invalidate();
+}
+
+void CanvasView::ShowContextMenu(const Point& screenPos) {
+    if (!m_contextMenu) {
+        m_contextMenu = MakeScope<ContextMenu>();
+    }
+    std::vector<ContextMenu::Item> items;
+    items.push_back({ L"全选", true, 1 });
+    items.push_back({ L"反选", true, 2 });
+    items.push_back({ L"清除选区", HasSelection(), 3 });
+    m_contextMenu->SetItems(items);
+    m_contextMenu->SetCallback([this](int id) {
+        switch (id) {
+            case 1: SelectAll(); break;
+            case 2: InvertSelection(); break;
+            case 3: ClearSelection(); break;
+        }
+    });
+    m_contextMenu->ShowAt(screenPos.x, screenPos.y, this);
 }
 
 // -------------------------------------------------------------------------
@@ -1355,23 +1410,30 @@ void CanvasView::ApplyGradient(float x1, float y1, float x2, float y2) {
 void CanvasView::DrawSelectionOutline(ID2D1RenderTarget* rt) {
     if (!rt || !m_selection || m_selection->IsEmpty()) return;
     
-    // For performance, sample boundary pixels sparsely
     std::vector<std::pair<int, int>> boundary;
-    m_selection->GetBoundaryPixels(boundary, 4);
+    m_selection->GetBoundaryPixels(boundary, 2);
     if (boundary.empty()) return;
     
-    ID2D1SolidColorBrush* brush = nullptr;
-    rt->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.8f), &brush);
-    if (!brush) return;
-    
-    // Draw small dots along the boundary
-    for (const auto& [x, y] : boundary) {
-        D2D1_RECT_F rc = D2D1::RectF(static_cast<float>(x), static_cast<float>(y),
-                                      static_cast<float>(x + 1), static_cast<float>(y + 1));
-        rt->FillRectangle(rc, brush);
+    ID2D1SolidColorBrush* whiteBrush = nullptr;
+    ID2D1SolidColorBrush* blackBrush = nullptr;
+    rt->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &whiteBrush);
+    rt->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f), &blackBrush);
+    if (!whiteBrush || !blackBrush) {
+        if (whiteBrush) whiteBrush->Release();
+        if (blackBrush) blackBrush->Release();
+        return;
     }
     
-    brush->Release();
+    constexpr int segment = 4;
+    for (const auto& [x, y] : boundary) {
+        int phase = ((x + y) / segment + m_marchingAntsOffset) % 2;
+        D2D1_RECT_F rc = D2D1::RectF(static_cast<float>(x), static_cast<float>(y),
+                                      static_cast<float>(x + 1), static_cast<float>(y + 1));
+        rt->FillRectangle(rc, phase == 0 ? whiteBrush : blackBrush);
+    }
+    
+    whiteBrush->Release();
+    blackBrush->Release();
 }
 
 // -------------------------------------------------------------------------

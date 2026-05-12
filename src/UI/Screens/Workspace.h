@@ -8,6 +8,7 @@
 #include "UI/Panels/NavigatorPanel.h"
 #include "UI/Panels/ToolBar.h"
 #include "UI/Panels/BrushSizePanel.h"
+#include "UI/Widgets/ToastWindow.h"
 #include "Core/Project.h"
 #include <memory>
 
@@ -28,10 +29,14 @@ protected:
     void OnPaint(HDC hdc, const Rect& clip) override;
     void OnSize(const Size& newSize) override;
     void OnMouseDown(const Point& pos, MouseButton button) override;
+    void OnMouseMove(const Point& pos) override;
+    void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnKeyDown(uint32_t keyCode) override;
     bool OnCreate() override;
     
     DWORD GetDefaultStyle() const override { return WS_OVERLAPPEDWINDOW; }
+    
+    LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) override;
     
 private:
     void LayoutPanels();
@@ -55,8 +60,20 @@ private:
     static constexpr int ToolbarHeight = 36;
     static constexpr int ToolBarWidth = 40;
     static constexpr int StatusBarHeight = 26;
-    static constexpr int LeftPanelWidth = 240;
-    static constexpr int RightPanelWidth = 240;
+    static constexpr int PanelWidthDefault = 240;
+    static constexpr int MinPanelWidth = 160;
+    static constexpr int MaxPanelWidth = 400;
+    int m_leftPanelWidth = PanelWidthDefault;
+    int m_rightPanelWidth = PanelWidthDefault;
+    
+    // Splitter
+    enum class SplitterSide { None, Left, Right };
+    bool m_splitterDragging = false;
+    int m_splitterDragStartX = 0;
+    int m_splitterDragStartWidth = 0;
+    SplitterSide m_splitterSide = SplitterSide::None;
+    SplitterSide HitTestSplitter(const Point& pos) const;
+    void DrawSplitters(HDC hdc);
     
     struct MenuItem {
         String name;
@@ -106,8 +123,11 @@ private:
     
     void DoSave(bool saveAs);
     void RefreshStatusBar();
+    void ShowToast(const wchar_t* text);
+    void OpenProjectFile(const wchar_t* filePath);
     String m_saveStatusText;
     uint64_t m_saveStatusTime = 0;
+    Scope<ToastWindow> m_toastWindow;
 };
 
 } // namespace UI

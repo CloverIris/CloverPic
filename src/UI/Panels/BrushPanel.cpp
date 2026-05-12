@@ -24,10 +24,9 @@ void BrushPanel::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
 
     // Background
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
 
     int pad = Theme::GetSize(Pad);
     int titleH = Theme::GetSize(TitleH);
@@ -63,13 +62,20 @@ void BrushPanel::DrawPanelHeader(HDC hdc, const Rect& client) {
 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = Theme::GetFont(Theme::FontID::PanelTitle);
+    HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
 
-    RECT titleRc = { pad, Theme::GetSize(4), client.Width() - pad, titleH };
+    RECT titleRc = { pad, Theme::GetSize(4), client.Width() - pad - Theme::GetSize(20), titleH };
     DrawTextW(hdc, L"笔刷控制", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    // Collapse arrow
+    if (IsCollapsible()) {
+        SetTextColor(hdc, Theme::TextSecondary);
+        RECT arrowRc = { client.Width() - pad - Theme::GetSize(18), Theme::GetSize(4), client.Width() - pad, titleH };
+        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 
     // Separator line
     HPEN sepPen = Theme::Pen(Theme::BorderLight);
@@ -90,10 +96,9 @@ void BrushPanel::DrawBrushPreview(HDC hdc, int x, int y) {
     for (int cy = 0; cy < 8; ++cy) {
         for (int cx = 0; cx < 8; ++cx) {
             uint32_t c = ((cx + cy) & 1) ? 0x666666 : 0x999999;
-            HBRUSH br = Theme::SolidBrush(c);
+            HBRUSH br = Theme::CachedBrush(c);
             RECT r = { x + cx * check, y + cy * check, x + (cx + 1) * check, y + (cy + 1) * check };
             FillRect(hdc, &r, br);
-            DeleteObject(br);
         }
     }
 
@@ -117,10 +122,9 @@ void BrushPanel::DrawStrokePreview(HDC hdc, int x, int y) {
     Rect rc(x, y, x + w, y + h);
 
     // Dark background
-    HBRUSH bg = Theme::SolidBrush(Theme::BackgroundDark);
+    HBRUSH bg = Theme::CachedBrush(Theme::BackgroundDark);
     RECT r = rc.ToWin32Rect();
     FillRect(hdc, &r, bg);
-    DeleteObject(bg);
 
     // Border
     HPEN pen = Theme::Pen(Theme::BorderLight);
@@ -255,10 +259,9 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y, int width) {
         bool hovered = (m_hoverTipIndex == i);
 
         uint32_t bgColor = selected ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-        HBRUSH brush = Theme::SolidBrush(bgColor);
+        HBRUSH brush = Theme::CachedBrush(bgColor);
         RECT rc = { bx, y, bx + btnW, y + btnH };
         FillRect(hdc, &rc, brush);
-        DeleteObject(brush);
 
         uint32_t borderColor = selected ? Theme::HighlightHover : Theme::BorderLight;
         HPEN pen = Theme::Pen(borderColor);
@@ -271,12 +274,11 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y, int width) {
         DeleteObject(pen);
 
         SetTextColor(hdc, selected ? Theme::TextInverse : Theme::TextPrimary);
-        HFONT fnt = Theme::GetFont(Theme::FontID::Small);
+        HFONT fnt = Theme::GetCachedFont(Theme::FontID::Small);
         HFONT oldF = static_cast<HFONT>(SelectObject(hdc, fnt));
         RECT trc = { bx, y, bx + btnW, y + btnH };
         DrawTextW(hdc, labels[i], -1, &trc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
         SelectObject(hdc, oldF);
-        DeleteObject(fnt);
     }
 }
 
@@ -290,7 +292,7 @@ void BrushPanel::DrawSliders(HDC hdc, int x, int y, int width) {
     };
 
     int sliderH = Theme::GetSize(SliderH);
-    HFONT labelFont = Theme::GetFont(Theme::FontID::Label);
+    HFONT labelFont = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, labelFont));
 
     for (int i = 0; i < 5; ++i) {
@@ -316,7 +318,6 @@ void BrushPanel::DrawSliders(HDC hdc, int x, int y, int width) {
     }
 
     SelectObject(hdc, oldFont);
-    DeleteObject(labelFont);
 }
 
 void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
@@ -327,12 +328,11 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
 
     // Section label
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT labelFont = Theme::GetFont(Theme::FontID::Label);
+    HFONT labelFont = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, labelFont));
     RECT labelRc = { x, y, x + Theme::GetSize(60), y + Theme::GetSize(14) };
     DrawTextW(hdc, L"预设", -1, &labelRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     SelectObject(hdc, oldFont);
-    DeleteObject(labelFont);
 
     int startY = y + Theme::GetSize(16);
     for (int i = 0; i < 5; ++i) {
@@ -341,10 +341,9 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
         bool hovered = (m_hoverPresetIndex == i);
 
         uint32_t bgColor = selected ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-        HBRUSH brush = Theme::SolidBrush(bgColor);
+        HBRUSH brush = Theme::CachedBrush(bgColor);
         RECT rc = { bx, startY, bx + btnW, startY + btnH };
         FillRect(hdc, &rc, brush);
-        DeleteObject(brush);
 
         uint32_t borderColor = selected ? Theme::HighlightHover : Theme::BorderLight;
         HPEN pen = Theme::Pen(borderColor);
@@ -357,12 +356,11 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
         DeleteObject(pen);
 
         SetTextColor(hdc, selected ? Theme::TextInverse : Theme::TextPrimary);
-        HFONT fnt = Theme::GetFont(Theme::FontID::Small);
+        HFONT fnt = Theme::GetCachedFont(Theme::FontID::Small);
         HFONT oldF = static_cast<HFONT>(SelectObject(hdc, fnt));
         RECT trc = { bx, startY, bx + btnW, startY + btnH };
         DrawTextW(hdc, presets[i], -1, &trc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
         SelectObject(hdc, oldF);
-        DeleteObject(fnt);
     }
 }
 

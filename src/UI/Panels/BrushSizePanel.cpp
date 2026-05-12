@@ -26,20 +26,25 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
     // Background
-    HBRUSH bg = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bg = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bg);
-    DeleteObject(bg);
     
     // Title
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextSecondary);
-    HFONT titleFont = Theme::GetFont(Theme::FontID::PanelTitle);
+    HFONT titleFont = Theme::GetCachedFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
-    RECT titleRc = { Theme::GetSize(8), Theme::GetSize(4), client.Width() - Theme::GetSize(8), Theme::GetSize(22) };
+    RECT titleRc = { Theme::GetSize(8), Theme::GetSize(4), client.Width() - Theme::GetSize(8) - Theme::GetSize(20), Theme::GetSize(22) };
     DrawTextW(hdc, L"笔刷尺寸", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    if (IsCollapsible()) {
+        SetTextColor(hdc, Theme::TextSecondary);
+        RECT arrowRc = { client.Width() - Theme::GetSize(8) - Theme::GetSize(18), Theme::GetSize(4), client.Width() - Theme::GetSize(8), Theme::GetSize(22) };
+        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    }
+
     SelectObject(hdc, oldFont);
-    DeleteObject(titleFont);
     
     // Separator
     HPEN sepPen = Theme::Pen(Theme::BorderLight);
@@ -55,7 +60,7 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
     int spacing = Theme::GetSize(2);
     int startX = Theme::GetSize(4);
     
-    HFONT valFont = Theme::GetFont(Theme::FontID::Small);
+    HFONT valFont = Theme::GetCachedFont(Theme::FontID::Small);
     oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
     
     for (int i = 0; i < PresetCount; ++i) {
@@ -70,15 +75,13 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
     }
     
     SelectObject(hdc, oldFont);
-    DeleteObject(valFont);
 }
 
 void BrushSizePanel::DrawButton(HDC hdc, int index, const Rect& rc, bool active, bool hovered) {
     uint32_t bgColor = active ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-    HBRUSH brush = Theme::SolidBrush(bgColor);
+    HBRUSH brush = Theme::CachedBrush(bgColor);
     RECT fillRc = rc.ToWin32Rect();
     FillRect(hdc, &fillRc, brush);
-    DeleteObject(brush);
     
     HPEN border = Theme::Pen(active ? Theme::HighlightHover : Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, border));
@@ -107,6 +110,12 @@ void BrushSizePanel::DrawButton(HDC hdc, int index, const Rect& rc, bool active,
 
 void BrushSizePanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left) return;
+
+    if (IsCollapsible() && pos.y < Theme::GetSize(26)) {
+        ToggleCollapsed();
+        return;
+    }
+
     int idx = HitTest(pos);
     if (idx >= 0) {
         m_currentSize = Presets[idx];

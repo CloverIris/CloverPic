@@ -1,5 +1,6 @@
 #include "UI/Core/Window.h"
 #include "UI/Core/Theme.h"
+#include "UI/Widgets/TooltipWindow.h"
 #include <algorithm>
 #include <windowsx.h>
 
@@ -8,6 +9,7 @@ namespace UI {
 
 bool Window::s_classRegistered = false;
 uint32_t Window::s_windowId = 0;
+TooltipWindow* Window::s_tooltipWindow = nullptr;
 
 Window::Window() {
     m_className = BaseClassName;
@@ -164,6 +166,93 @@ bool Window::HasFocus() const {
     return GetFocus() == m_hwnd;
 }
 
+void Window::SetTooltip(const wchar_t* tooltip) {
+    m_tooltip = tooltip ? tooltip : L"";
+}
+
+void Window::SetCollapsible(bool collapsible) {
+    m_collapsible = collapsible;
+}
+
+bool Window::IsCollapsible() const {
+    return m_collapsible;
+}
+
+void Window::SetCollapsed(bool collapsed) {
+    if (m_collapsed != collapsed) {
+        m_collapsed = collapsed;
+        if (m_onCollapsedChanged) {
+            m_onCollapsedChanged();
+        }
+        Invalidate();
+    }
+}
+
+bool Window::IsCollapsed() const {
+    return m_collapsed;
+}
+
+void Window::ToggleCollapsed() {
+    SetCollapsed(!m_collapsed);
+}
+
+void Window::SetOnCollapsedChanged(Callback callback) {
+    m_onCollapsedChanged = callback;
+}
+
+void Window::SetTabStop(bool tabStop) {
+    m_tabStop = tabStop;
+}
+
+bool Window::IsTabStop() const {
+    return m_tabStop;
+}
+
+void Window::SetTabOrder(int order) {
+    m_tabOrder = order;
+}
+
+int Window::GetTabOrder() const {
+    return m_tabOrder;
+}
+
+bool Window::NavigateTab(bool forward) {
+    // Collect all tab-stop children
+    std::vector<Window*> tabStops;
+    for (auto* child : m_children) {
+        if (child && child->IsTabStop() && child->GetHandle()) {
+            tabStops.push_back(child);
+        }
+    }
+    if (tabStops.empty()) return false;
+    
+    // Sort by tab order
+    std::sort(tabStops.begin(), tabStops.end(), [](Window* a, Window* b) {
+        return a->GetTabOrder() < b->GetTabOrder();
+    });
+    
+    // Find current focus
+    HWND focused = GetFocus();
+    int currentIdx = -1;
+    for (size_t i = 0; i < tabStops.size(); ++i) {
+        if (tabStops[i]->GetHandle() == focused) {
+            currentIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    
+    int nextIdx;
+    if (forward) {
+        nextIdx = (currentIdx + 1) % static_cast<int>(tabStops.size());
+    } else {
+        nextIdx = currentIdx - 1;
+        if (nextIdx < 0) nextIdx = static_cast<int>(tabStops.size()) - 1;
+    }
+    
+    tabStops[nextIdx]->SetFocus();
+    return true;
+}
+
 void Window::SetText(const String& text) {
     if (m_hwnd) {
         SetWindowTextW(m_hwnd, text.c_str());
@@ -185,6 +274,7 @@ void Window::OnMouseMove(const Point& pos) {}
 void Window::OnMouseDown(const Point& pos, MouseButton button) {}
 void Window::OnMouseUp(const Point& pos, MouseButton button) {}
 void Window::OnMouseDoubleClick(const Point& pos, MouseButton button) {}
+void Window::OnMouseWheel(int delta) {}
 void Window::OnMouseEnter() {}
 void Window::OnMouseLeave() {}
 void Window::OnSize(const Size& newSize) {}
@@ -277,17 +367,28 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
                     OnMouseEnter();
                 }
             }
+            // Tooltip delay timer
+            if (!m_tooltip.empty()) {
+                m_tooltipPending = true;
+                SetTimer(m_hwnd, TooltipTimerId, 500, nullptr);
+            }
             return 0;
         }
         
         case WM_MOUSELEAVE: {
             m_mouseTracking = false;
             m_mouseInside = false;
+            m_tooltipPending = false;
+            KillTimer(m_hwnd, TooltipTimerId);
+            if (s_tooltipWindow) s_tooltipWindow->Hide();
             OnMouseLeave();
             return 0;
         }
         
         case WM_LBUTTONDOWN: {
+            m_tooltipPending = false;
+            KillTimer(m_hwnd, TooltipTimerId);
+            if (s_tooltipWindow) s_tooltipWindow->Hide();
             if (GetFocus() != m_hwnd) {
                 ::SetFocus(m_hwnd);
             }
@@ -308,6 +409,12 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             return 0;
         }
         
+        case WM_MOUSEWHEEL: {
+            int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+            OnMouseWheel(delta);
+            return 0;
+        }
+        
         case WM_RBUTTONDOWN: {
             Point pos(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
             OnMouseDown(pos, MouseButton::Right);
@@ -321,6 +428,13 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         
         case WM_KEYDOWN: {
+            if (wParam == VK_TAB) {
+                bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                Window* parent = GetParent();
+                if (parent && parent->NavigateTab(!shift)) {
+                    return 0;
+                }
+            }
             OnKeyDown(static_cast<uint32_t>(wParam));
             return 0;
         }
@@ -347,6 +461,23 @@ LRESULT Window::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
         
         case WM_ERASEBKGND: {
             return 1; // Prevent flicker
+        }
+        
+        case WM_TIMER: {
+            if (wParam == TooltipTimerId) {
+                KillTimer(m_hwnd, TooltipTimerId);
+                if (m_tooltipPending && !m_tooltip.empty()) {
+                    m_tooltipPending = false;
+                    POINT pt;
+                    GetCursorPos(&pt);
+                    if (!s_tooltipWindow) {
+                        s_tooltipWindow = new TooltipWindow();
+                    }
+                    s_tooltipWindow->ShowAt(pt.x, pt.y, m_tooltip.c_str());
+                }
+                return 0;
+            }
+            break;
         }
     }
     

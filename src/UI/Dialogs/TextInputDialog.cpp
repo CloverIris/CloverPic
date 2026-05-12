@@ -173,15 +173,14 @@ void TextInputDialog::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
     // Background
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::PanelBackground);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
     
     // Labels
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT font = Theme::GetFont(Theme::FontID::Label);
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     int margin = 20;

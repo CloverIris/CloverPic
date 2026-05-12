@@ -2,6 +2,7 @@
 
 #include "UI/Core/Window.h"
 #include "UI/Widgets/Button.h"
+#include "UI/Widgets/ScrollView.h"
 #include "Core/LayerManager.h"
 #include "Core/BlendMode.h"
 
@@ -21,6 +22,7 @@ protected:
     void OnMouseMove(const Point& pos) override;
     void OnMouseUp(const Point& pos, MouseButton button) override;
     void OnSize(const Size& newSize) override;
+    void OnMouseWheel(int delta) override;
 
     DWORD GetDefaultStyle() const override { return WS_CHILD | WS_VISIBLE; }
 
@@ -65,6 +67,11 @@ private:
     int m_dragLayerIndex = -1;
     int m_dragTargetIndex = -1;
     int m_dragStartY = 0;
+
+    ScrollView m_scrollView;
+    bool m_scrollbarDragging = false;
+    Rect GetListViewportRect() const;
+    void UpdateScrollView();
 
     static constexpr int BlendModeCount = 18;
     static const BlendMode BlendModes[BlendModeCount];

@@ -206,27 +206,21 @@ void NewCanvasDialog::OnPaint(HDC hdc, const Rect& clip) {
     Rect client = GetClientBounds();
     
     // Background
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::BackgroundDark);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::BackgroundDark);
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
-    DeleteObject(bgBrush);
     
     // Title
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT titleFont = CreateFontW(Theme::GetFontSize(16), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT titleFont = Theme::GetCachedFont(Theme::FontID::PanelTitle);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
     RECT titleRc = { Margin, Margin, client.Width() - Margin, Margin + 24 };
     DrawTextW(hdc, L"新建画布", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     SelectObject(hdc, oldFont);
-    DeleteObject(titleFont);
     
     // Labels
-    HFONT labelFont = CreateFontW(Theme::GetFontSize(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                                   DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+    HFONT labelFont = Theme::GetCachedFont(Theme::FontID::Label);
     oldFont = static_cast<HFONT>(SelectObject(hdc, labelFont));
     SetTextColor(hdc, Theme::TextSecondary);
     
@@ -251,7 +245,6 @@ void NewCanvasDialog::OnPaint(HDC hdc, const Rect& clip) {
     drawLabel(L"图层:");
     
     SelectObject(hdc, oldFont);
-    DeleteObject(labelFont);
     
     // Info area
     row += 2;
@@ -279,10 +272,9 @@ void NewCanvasDialog::UpdateMemoryGauge(HDC hdc) {
     int gaugeHeight = 20;
     
     // Background bar
-    HBRUSH bgBrush = Theme::SolidBrush(Theme::BorderDark);
+    HBRUSH bgBrush = Theme::CachedBrush(Theme::BorderDark);
     RECT bgRc = { gaugeX, gaugeY, gaugeX + gaugeWidth, gaugeY + gaugeHeight };
     FillRect(hdc, &bgRc, bgBrush);
-    DeleteObject(bgBrush);
     
     // Fill bar based on status
     uint32_t fillColor;
@@ -302,10 +294,9 @@ void NewCanvasDialog::UpdateMemoryGauge(HDC hdc) {
     
     int fillWidth = static_cast<int>(gaugeWidth * ratio);
     if (fillWidth > 0) {
-        HBRUSH fillBrush = Theme::SolidBrush(fillColor);
+        HBRUSH fillBrush = Theme::CachedBrush(fillColor);
         RECT fillRc = { gaugeX, gaugeY, gaugeX + fillWidth, gaugeY + gaugeHeight };
         FillRect(hdc, &fillRc, fillBrush);
-        DeleteObject(fillBrush);
     }
     
     // Border
@@ -321,16 +312,13 @@ void NewCanvasDialog::UpdateMemoryGauge(HDC hdc) {
     // Text
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, Theme::TextPrimary);
-    HFONT font = CreateFontW(Theme::GetFontSize(11), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                             DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Small);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     
     RECT textRc = { gaugeX + 4, gaugeY, gaugeX + gaugeWidth - 4, gaugeY + gaugeHeight };
     DrawTextW(hdc, m_memoryText.c_str(), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
     
     SelectObject(hdc, oldFont);
-    DeleteObject(font);
 }
 
 void NewCanvasDialog::UpdateCalculations() {
