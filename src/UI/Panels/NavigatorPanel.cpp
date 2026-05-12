@@ -63,28 +63,10 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bgBrush);
     
-    SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
-    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
-    
-    RECT titleRc = { 8, 4, client.Width() - 8 - Theme::GetSize(20), 20 };
-    DrawTextW(hdc, L"导航器", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-
-    if (IsCollapsible()) {
-        SetTextColor(hdc, Theme::TextSecondary);
-        RECT arrowRc = { client.Width() - 8 - Theme::GetSize(18), 4, client.Width() - 8, 20 };
-        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-    }
-
-    SelectObject(hdc, oldFont);
-    
-    HPEN sepPen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
-    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
-    MoveToEx(hdc, 8, 22, nullptr);
-    LineTo(hdc, client.Width() - 8, 22);
-    SelectObject(hdc, oldPen);
-    DeleteObject(sepPen);
+    // Modern panel header
+    int titleH = Theme::GetSize(22);
+    Rect headerRc(0, 0, client.Width(), titleH);
+    Theme::DrawPanelHeaderModern(hdc, headerRc, L"导航器", IsCollapsed());
     
     if (m_thumbnailDirty) {
         UpdateThumbnail();
@@ -93,36 +75,25 @@ void NavigatorPanel::OnPaint(HDC hdc, const Rect& clip) {
     DrawThumbnail(hdc);
     DrawViewRect(hdc);
     
-    // Zoom control buttons
+    // Zoom control buttons (icon buttons)
     int btnY = client.Height() - Theme::GetSize(52);
     int btnCount = 4;
-    int btnWidth = (client.Width() - Theme::GetSize(16)) / btnCount;
-    const wchar_t* btnLabels[4] = { L"-", L"+", L"100%", L"Fit" };
-    HFONT btnFont = Theme::GetCachedFont(Theme::FontID::Small);
-    oldFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
-    SetTextColor(hdc, Theme::TextPrimary);
+    int btnSize = Theme::GetSize(24);
+    int pad = Theme::GetSize(8);
+    int gap = (client.Width() - pad * 2 - btnSize * btnCount) / (btnCount - 1);
+    if (gap < Theme::GetSize(2)) gap = Theme::GetSize(2);
+    const wchar_t btnIcons[4] = { L'\uE71F', L'\uE8A3', L'\uE71B', L'\uE73A' }; // ZoomOut, ZoomIn, Page, FullScreen
+
     for (int i = 0; i < btnCount; ++i) {
-        int bx = Theme::GetSize(8) + i * btnWidth;
-        HBRUSH btnBg = Theme::CachedBrush(Theme::ButtonDefault);
-        RECT btnRc = { bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24) };
-        FillRect(hdc, &btnRc, btnBg);
-        HPEN btnBorder = CreatePen(PS_SOLID, 1, Theme::BorderLight);
-        HPEN oldBtnPen = static_cast<HPEN>(SelectObject(hdc, btnBorder));
-        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-        HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-        Rectangle(hdc, bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24));
-        SelectObject(hdc, oldBtnPen);
-        SelectObject(hdc, oldNullBr);
-        DeleteObject(btnBorder);
-        RECT textRc = { bx, btnY, bx + btnWidth - 2, btnY + Theme::GetSize(24) };
-        DrawTextW(hdc, btnLabels[i], -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+        int bx = pad + i * (btnSize + gap);
+        Rect btnRc(bx, btnY, bx + btnSize, btnY + btnSize);
+        Theme::DrawIconButton(hdc, btnRc, btnIcons[i], false, false);
     }
-    SelectObject(hdc, oldFont);
 
     // Zoom text
     SetTextColor(hdc, Theme::TextPrimary);
     HFONT valFont = Theme::GetCachedFont(Theme::FontID::Small);
-    oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
     
     std::wostringstream oss;
     oss << L"缩放: " << static_cast<int>(m_zoom * 100) << L"%";
@@ -256,10 +227,20 @@ void NavigatorPanel::DrawViewRect(HDC hdc) {
     viewH = std::min(viewH, static_cast<float>(thumbH));
     
     if (viewW > 2 && viewH > 2) {
+        // Semi-transparent blue fill
+        HBRUSH viewBrush = CreateSolidBrush(RGB(0x00, 0x78, 0xD7));
+        HBRUSH oldBrush = static_cast<HBRUSH>(SelectObject(hdc, viewBrush));
+        RECT fillRc = { static_cast<int>(viewX), static_cast<int>(viewY),
+                        static_cast<int>(viewX + viewW), static_cast<int>(viewY + viewH) };
+        FillRect(hdc, &fillRc, viewBrush);
+        SelectObject(hdc, oldBrush);
+        DeleteObject(viewBrush);
+
+        // Border
         HPEN viewPen = CreatePen(PS_SOLID, 2, RGB(0x00, 0x78, 0xD7));
         HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, viewPen));
         HBRUSH nullBrush = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-        HBRUSH oldBrush = static_cast<HBRUSH>(SelectObject(hdc, nullBrush));
+        oldBrush = static_cast<HBRUSH>(SelectObject(hdc, nullBrush));
         Rectangle(hdc, static_cast<int>(viewX), static_cast<int>(viewY),
                   static_cast<int>(viewX + viewW), static_cast<int>(viewY + viewH));
         SelectObject(hdc, oldPen);
@@ -281,9 +262,19 @@ void NavigatorPanel::OnMouseDown(const Point& pos, MouseButton button) {
     // Check zoom buttons
     int btnY = client.Height() - Theme::GetSize(52);
     int btnCount = 4;
-    int btnWidth = (client.Width() - Theme::GetSize(16)) / btnCount;
-    if (pos.y >= btnY && pos.y < btnY + Theme::GetSize(24)) {
-        int btnIndex = (pos.x - Theme::GetSize(8)) / btnWidth;
+    int btnSize = Theme::GetSize(24);
+    int pad = Theme::GetSize(8);
+    int gap = (client.Width() - pad * 2 - btnSize * btnCount) / (btnCount - 1);
+    if (gap < Theme::GetSize(2)) gap = Theme::GetSize(2);
+    if (pos.y >= btnY && pos.y < btnY + btnSize) {
+        int btnIndex = -1;
+        for (int i = 0; i < btnCount; ++i) {
+            int bx = pad + i * (btnSize + gap);
+            if (pos.x >= bx && pos.x < bx + btnSize) {
+                btnIndex = i;
+                break;
+            }
+        }
         if (btnIndex >= 0 && btnIndex < btnCount && m_onZoomChanged) {
             switch (btnIndex) {
                 case 0: m_onZoomChanged(std::max(0.01f, m_zoom * 0.8f)); break;

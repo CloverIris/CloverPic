@@ -80,7 +80,8 @@ struct Theme {
         Label,       // 11pt Normal - General labels
         Value,       // 11pt Normal - Value displays
         Small,       // 10pt Normal - Secondary info
-        Button       // 12pt Normal - Button text
+        Button,      // 12pt Normal - Button text
+        Icon         // 16pt Normal - Segoe MDL2 Assets icons
     };
     
     // Legacy font factory (creates new HFONT each time; caller must DeleteObject)
@@ -135,6 +136,15 @@ struct Theme {
     
     // Tooltip background
     static void DrawTooltip(HDC hdc, const Rect& rc);
+    
+    // Icon button (rounded rect with Segoe MDL2 Assets icon)
+    static void DrawIconButton(HDC hdc, const Rect& rc, wchar_t icon, bool active, bool hovered);
+    
+    // Modern panel header with left accent bar and collapse arrow
+    static void DrawPanelHeaderModern(HDC hdc, const Rect& rc, const wchar_t* title, bool collapsed);
+    
+    // Color swatch (rounded rect with optional active/hover border)
+    static void DrawColorSwatch(HDC hdc, const Rect& rc, uint32_t color, bool active, bool hovered);
     
     // Color conversion
     static Color ColorFromHex(uint32_t hex) {

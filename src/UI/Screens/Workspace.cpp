@@ -43,6 +43,12 @@ bool Workspace::Initialize(Ref<Project> project) {
     ShowWindow(m_hwnd, SW_HIDE);
     AnimateWindow(m_hwnd, 150, AW_ACTIVATE | AW_BLEND);
     
+    // AnimateWindow uses layered window bitmap capture which cannot correctly
+    // capture D2D-rendered child windows (CanvasView). Force a full repaint
+    // of the entire window tree after animation completes.
+    RedrawWindow(m_hwnd, nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+    
     return true;
 }
 
@@ -330,7 +336,7 @@ void Workspace::OnPaint(HDC hdc, const Rect& clip) {
             SIZE ts;
             GetTextExtentPoint32W(memdc, m_menus[m_openMenuIndex].name.c_str(), static_cast<int>(m_menus[m_openMenuIndex].name.length()), &ts);
             SelectObject(memdc, old);
-            // font cached
+            DeleteObject(font);
             ReleaseDC(m_hwnd, memdc);
             
             POINT pt = { m_menuItemRects[m_openMenuIndex].left, Theme::GetSize(MenuBarHeight) };
@@ -371,7 +377,7 @@ void Workspace::DrawMenuBar(HDC hdc) {
     }
     
     SelectObject(hdc, oldFont);
-    // font cached
+    DeleteObject(font);
     
     HPEN linePen = CreatePen(PS_SOLID, 1, Theme::BorderDark);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, linePen));
@@ -399,13 +405,13 @@ void Workspace::DrawToolbar(HDC hdc) {
 }
 
 void Workspace::BuildMenus() {
-    m_menus.push_back({ L"文件(F)", { L"新建窗口", L"打开", L"保存", L"导出", L"退出" } });
-    m_menus.push_back({ L"编辑(E)", { L"撤销", L"重做", L"首选项" } });
-    m_menus.push_back({ L"图层(L)", { L"新建图层", L"删除图层", L"合并" } });
-    m_menus.push_back({ L"滤镜(R)", { L"亮度/对比度", L"色相/饱和度", L"高斯模糊", L"锐化", L"反相", L"阈值" } });
-    m_menus.push_back({ L"工具(T)", { L"笔刷", L"橡皮", L"吸管" } });
-    m_menus.push_back({ L"窗口(W)", { L"初始化布局" } });
-    m_menus.push_back({ L"Help", { L"关于" } });
+    m_menus.push_back({ L"文件(F)", { L"新建窗口", L"打开", L"保存", L"导出", L"退出" }, { true, true, true, true, false } });
+    m_menus.push_back({ L"编辑(E)", { L"撤销", L"重做", L"首选项" }, { true, true, false } });
+    m_menus.push_back({ L"图层(L)", { L"新建图层", L"删除图层", L"合并" }, { false, false, false } });
+    m_menus.push_back({ L"滤镜(R)", { L"亮度/对比度", L"色相/饱和度", L"高斯模糊", L"锐化", L"反相", L"阈值" }, { true, true, true, true, true, true } });
+    m_menus.push_back({ L"工具(T)", { L"笔刷", L"橡皮", L"吸管" }, { false, false, false } });
+    m_menus.push_back({ L"窗口(W)", { L"初始化布局" }, { false } });
+    m_menus.push_back({ L"Help", { L"关于" }, { false } });
 }
 
 void Workspace::OnMenuItemClicked(int menuIndex, int itemIndex) {
@@ -566,9 +572,13 @@ void Workspace::OnMenuItemClicked(int menuIndex, int itemIndex) {
             }
         }
     } else {
-        std::wstring msg = L"菜单: " + m_menus[menuIndex].name + L" > " + m_menus[menuIndex].items[itemIndex];
-        MessageBoxW(m_hwnd, msg.c_str(), L"功能占位符", MB_OK);
-        ShowToast(msg.c_str());
+        // Fallback for any unhandled menu item: only show placeholder if item is enabled
+        if (itemIndex < static_cast<int>(m_menus[menuIndex].items.size()) &&
+            (itemIndex >= static_cast<int>(m_menus[menuIndex].enabled.size()) || m_menus[menuIndex].enabled[itemIndex])) {
+            std::wstring msg = L"菜单: " + m_menus[menuIndex].name + L" > " + m_menus[menuIndex].items[itemIndex];
+            MessageBoxW(m_hwnd, msg.c_str(), L"功能占位符", MB_OK);
+            ShowToast(msg.c_str());
+        }
     }
 }
 
@@ -758,7 +768,7 @@ void Workspace::DrawToolbarButtons(HDC hdc) {
     }
     
     SelectObject(hdc, old);
-    // font cached
+    DeleteObject(font);
     
     // Current color square
     int colorX = startX + 3 * (btnSize + spacing) + Theme::GetSize(8);
@@ -802,7 +812,7 @@ void Workspace::ShowMenuDropdown(int menuIndex, int screenX, int screenY, int ti
         }
     }
     SelectObject(hdc, old);
-    // font cached
+    DeleteObject(font);
     ReleaseDC(m_hwnd, hdc);
     
     int dropdownHeight = static_cast<int>(menu.items.size()) * itemHeight + 4;
@@ -815,6 +825,7 @@ void Workspace::ShowMenuDropdown(int menuIndex, int screenX, int screenY, int ti
     }
     
     m_dropdownWindow->SetItems(menu.items, menuIndex);
+    m_dropdownWindow->SetEnabledItems(menu.enabled);
     m_dropdownWindow->SetCallback([this](int menuIdx, int itemIdx) {
         m_openMenuIndex = -1;
         HideMenuDropdown();
@@ -862,12 +873,15 @@ void Workspace::MenuDropdownWindow::OnPaint(HDC hdc, const Rect& clip) {
     
     for (size_t j = 0; j < m_items.size(); ++j) {
         int iy = static_cast<int>(j) * itemHeight + 2;
+        bool itemEnabled = (j < m_enabled.size()) ? m_enabled[j] : true;
         
-        if (static_cast<int>(j) == m_hoverIndex) {
+        if (itemEnabled && static_cast<int>(j) == m_hoverIndex) {
             HBRUSH hoverBrush = Theme::CachedBrush(Theme::HighlightBlue);
             RECT hoverRc = { 2, iy, client.Width() - 2, iy + itemHeight };
             FillRect(hdc, &hoverRc, hoverBrush);
             SetTextColor(hdc, RGB(0xFF, 0xFF, 0xFF));
+        } else if (!itemEnabled) {
+            SetTextColor(hdc, Theme::TextDisabled);
         } else {
             SetTextColor(hdc, Theme::TextPrimary);
         }
@@ -905,6 +919,15 @@ void Workspace::MenuDropdownWindow::OnMouseDown(const Point& pos, MouseButton bu
         int itemHeight = Theme::GetSize(24);
         int index = (pos.y - 2) / itemHeight;
         if (index >= 0 && index < static_cast<int>(m_items.size())) {
+            bool itemEnabled = (index < static_cast<int>(m_enabled.size())) ? m_enabled[index] : true;
+            if (!itemEnabled) {
+                // Disabled item: close menu without action
+                if (m_callback) {
+                    m_callback(m_menuIndex, -1);
+                }
+                ReleaseCapture();
+                return;
+            }
             if (m_callback) {
                 m_callback(m_menuIndex, index);
             }

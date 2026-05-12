@@ -78,6 +78,7 @@ private:
     struct MenuItem {
         String name;
         std::vector<String> items;
+        std::vector<bool> enabled; // parallel to items; true = clickable, false = grayed out
     };
     std::vector<MenuItem> m_menus;
     std::vector<Rect> m_menuItemRects; // Cached bounds for alignment
@@ -101,6 +102,7 @@ private:
             m_items = items;
             m_menuIndex = menuIndex;
         }
+        void SetEnabledItems(const std::vector<bool>& enabled) { m_enabled = enabled; }
         void SetCallback(std::function<void(int, int)> cb) { m_callback = cb; }
         void SetHoverIndex(int idx) { m_hoverIndex = idx; Invalidate(); }
     protected:
@@ -113,6 +115,7 @@ private:
         DWORD GetDefaultExStyle() const override { return WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE; }
     private:
         std::vector<String> m_items;
+        std::vector<bool> m_enabled;
         std::function<void(int, int)> m_callback;
         int m_menuIndex = -1;
         int m_hoverIndex = -1;

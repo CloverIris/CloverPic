@@ -57,34 +57,9 @@ void BrushPanel::OnPaint(HDC hdc, const Rect& clip) {
 }
 
 void BrushPanel::DrawPanelHeader(HDC hdc, const Rect& client) {
-    int pad = Theme::GetSize(Pad);
     int titleH = Theme::GetSize(TitleH);
-
-    SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, Theme::TextSecondary);
-    HFONT font = Theme::GetCachedFont(Theme::FontID::PanelTitle);
-    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
-
-    RECT titleRc = { pad, Theme::GetSize(4), client.Width() - pad - Theme::GetSize(20), titleH };
-    DrawTextW(hdc, L"笔刷控制", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-
-    // Collapse arrow
-    if (IsCollapsible()) {
-        SetTextColor(hdc, Theme::TextSecondary);
-        RECT arrowRc = { client.Width() - pad - Theme::GetSize(18), Theme::GetSize(4), client.Width() - pad, titleH };
-        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-    }
-
-    SelectObject(hdc, oldFont);
-
-    // Separator line
-    HPEN sepPen = Theme::Pen(Theme::BorderLight);
-    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
-    int sepY = titleH + Theme::GetSize(SepMargin) / 2;
-    MoveToEx(hdc, pad, sepY, nullptr);
-    LineTo(hdc, client.Width() - pad, sepY);
-    SelectObject(hdc, oldPen);
-    DeleteObject(sepPen);
+    Rect headerRc(0, 0, client.Width(), titleH);
+    Theme::DrawPanelHeaderModern(hdc, headerRc, L"笔刷控制", IsCollapsed());
 }
 
 void BrushPanel::DrawBrushPreview(HDC hdc, int x, int y) {
@@ -252,6 +227,7 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y, int width) {
     int btnW = (width - Theme::GetSize(4) * 4) / 5;
     int btnH = Theme::GetSize(TipBtnH);
     int gap = Theme::GetSize(4);
+    int radius = Theme::GetSize(3);
 
     for (int i = 0; i < 5; ++i) {
         int bx = x + i * (btnW + gap);
@@ -259,19 +235,8 @@ void BrushPanel::DrawTipButtons(HDC hdc, int x, int y, int width) {
         bool hovered = (m_hoverTipIndex == i);
 
         uint32_t bgColor = selected ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-        HBRUSH brush = Theme::CachedBrush(bgColor);
-        RECT rc = { bx, y, bx + btnW, y + btnH };
-        FillRect(hdc, &rc, brush);
-
-        uint32_t borderColor = selected ? Theme::HighlightHover : Theme::BorderLight;
-        HPEN pen = Theme::Pen(borderColor);
-        HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
-        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-        HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-        Rectangle(hdc, bx, y, bx + btnW, y + btnH);
-        SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBr);
-        DeleteObject(pen);
+        uint32_t borderColor = selected ? Theme::HighlightHover : (hovered ? Theme::BorderLight : Theme::BorderDark);
+        Theme::DrawRoundRect(hdc, Rect(bx, y, bx + btnW, y + btnH), radius, bgColor, borderColor);
 
         SetTextColor(hdc, selected ? Theme::TextInverse : Theme::TextPrimary);
         HFONT fnt = Theme::GetCachedFont(Theme::FontID::Small);
@@ -325,6 +290,7 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
     int btnW = (width - Theme::GetSize(4) * 4) / 5;
     int btnH = Theme::GetSize(PresetBtnH);
     int gap = Theme::GetSize(4);
+    int radius = Theme::GetSize(3);
 
     // Section label
     SetTextColor(hdc, Theme::TextSecondary);
@@ -341,19 +307,8 @@ void BrushPanel::DrawPresetButtons(HDC hdc, int x, int y, int width) {
         bool hovered = (m_hoverPresetIndex == i);
 
         uint32_t bgColor = selected ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-        HBRUSH brush = Theme::CachedBrush(bgColor);
-        RECT rc = { bx, startY, bx + btnW, startY + btnH };
-        FillRect(hdc, &rc, brush);
-
-        uint32_t borderColor = selected ? Theme::HighlightHover : Theme::BorderLight;
-        HPEN pen = Theme::Pen(borderColor);
-        HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
-        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-        HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-        Rectangle(hdc, bx, startY, bx + btnW, startY + btnH);
-        SelectObject(hdc, oldPen);
-        SelectObject(hdc, oldBr);
-        DeleteObject(pen);
+        uint32_t borderColor = selected ? Theme::HighlightHover : (hovered ? Theme::BorderLight : Theme::BorderDark);
+        Theme::DrawRoundRect(hdc, Rect(bx, startY, bx + btnW, startY + btnH), radius, bgColor, borderColor);
 
         SetTextColor(hdc, selected ? Theme::TextInverse : Theme::TextPrimary);
         HFONT fnt = Theme::GetCachedFont(Theme::FontID::Small);

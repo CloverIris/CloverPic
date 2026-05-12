@@ -115,6 +115,16 @@ private:
     ID2D1Bitmap* m_compositeBitmap = nullptr;
     std::vector<uint8_t> m_compositeBuffer;
     
+    // Cached D2D brushes (created once with render target, released on shutdown)
+    ID2D1SolidColorBrush* m_previewBrush = nullptr;
+    ID2D1SolidColorBrush* m_fillBrush = nullptr;
+    ID2D1SolidColorBrush* m_lightBrush = nullptr;
+    ID2D1SolidColorBrush* m_darkBrush = nullptr;
+    ID2D1SolidColorBrush* m_borderBrush = nullptr;
+    ID2D1SolidColorBrush* m_cursorBrush = nullptr;
+    ID2D1SolidColorBrush* m_whiteBrush = nullptr;
+    ID2D1SolidColorBrush* m_blackBrush = nullptr;
+    
     // Layer management
     LayerManager* m_layerManager = nullptr;
     uint32_t m_canvasWidth = 0;

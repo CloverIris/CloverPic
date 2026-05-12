@@ -108,7 +108,89 @@ bool BrushPresetManager::LoadFromFile(const std::wstring& path) {
     std::ifstream file(narrowPath, std::ios::in);
     if (!file.is_open()) return false;
 
-    // Stub: full parser in M6
+    BrushPreset current;
+    bool inPreset = false;
+    bool hasValidPreset = false;
+    std::string line;
+
+    auto commitPreset = [&]() {
+        if (inPreset && hasValidPreset) {
+            m_presets.push_back(current);
+        }
+        inPreset = false;
+        hasValidPreset = false;
+    };
+
+    while (std::getline(file, line)) {
+        // Trim trailing \r for Windows line endings
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == ';') continue;
+
+        if (line == "[BrushPreset]") {
+            commitPreset();
+            current = BrushPreset{};
+            inPreset = true;
+            hasValidPreset = false;
+            continue;
+        }
+
+        if (!inPreset) continue;
+
+        size_t eqPos = line.find('=');
+        if (eqPos == std::string::npos) continue;
+
+        std::string key = line.substr(0, eqPos);
+        std::string value = line.substr(eqPos + 1);
+
+        // Trim whitespace (basic)
+        auto trim = [](std::string& s) {
+            size_t start = s.find_first_not_of(" \t");
+            if (start == std::string::npos) { s.clear(); return; }
+            size_t end = s.find_last_not_of(" \t");
+            s = s.substr(start, end - start + 1);
+        };
+        trim(key);
+        trim(value);
+
+        try {
+            if (key == "Name") {
+                if (!value.empty()) {
+                    int wlen = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+                    if (wlen > 0) {
+                        std::wstring wname;
+                        wname.resize(wlen);
+                        MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, wname.data(), wlen);
+                        wname.pop_back();
+                        current.name = wname;
+                        hasValidPreset = true;
+                    }
+                }
+            } else if (key == "TipType") {
+                current.tipType = static_cast<BrushTipType>(std::stoi(value));
+            } else if (key == "Size") {
+                current.size = std::stof(value);
+            } else if (key == "Opacity") {
+                current.opacity = std::stof(value);
+            } else if (key == "Flow") {
+                current.flow = std::stof(value);
+            } else if (key == "Spacing") {
+                current.spacing = std::stof(value);
+            } else if (key == "WetMix") {
+                current.wetMix = std::stof(value);
+            } else if (key == "PressureCurve") {
+                current.pressureCurve = std::stoi(value);
+            } else if (key == "TextureScale") {
+                current.textureScale = std::stof(value);
+            }
+        } catch (...) {
+            // Ignore malformed numeric values
+        }
+    }
+
+    commitPreset();
     return true;
 }
 

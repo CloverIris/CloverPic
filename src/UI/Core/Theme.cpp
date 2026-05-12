@@ -11,7 +11,7 @@ float Theme::Scale = 1.25f;
 // -----------------------------------------------------------------
 // Font cache
 // -----------------------------------------------------------------
-static std::array<HFONT, 8> s_fontCache{};
+static std::array<HFONT, 9> s_fontCache{};
 static float s_fontCacheScale = 0.0f;
 
 HFONT Theme::GetCachedFont(FontID id) {
@@ -108,6 +108,10 @@ HFONT Theme::GetFont(FontID id) {
             return CreateFontW(static_cast<int>(GetFontSize(13)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI");
+        case FontID::Icon:
+            return CreateFontW(static_cast<int>(GetFontSize(16)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                               DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                               CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe MDL2 Assets");
     }
     return nullptr;
 }
@@ -319,6 +323,89 @@ void Theme::DrawTooltip(HDC hdc, const Rect& rc) {
     SelectObject(hdc, oldPen);
     SelectObject(hdc, oldBr);
     DeleteObject(pen);
+}
+
+void Theme::DrawIconButton(HDC hdc, const Rect& rc, wchar_t icon, bool active, bool hovered) {
+    int radius = 3;
+    uint32_t bgColor = active ? HighlightBlue : (hovered ? ButtonHover : ButtonDefault);
+    uint32_t borderColor = active ? HighlightHover : (hovered ? BorderLight : BorderDark);
+    
+    DrawRoundRect(hdc, rc, radius, bgColor, borderColor);
+    
+    // Icon
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, active ? TextInverse : TextPrimary);
+    HFONT iconFont = GetCachedFont(FontID::Icon);
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, iconFont));
+    RECT trc = rc.ToWin32Rect();
+    std::wstring s(1, icon);
+    DrawTextW(hdc, s.c_str(), -1, &trc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    SelectObject(hdc, oldFont);
+}
+
+void Theme::DrawPanelHeaderModern(HDC hdc, const Rect& rc, const wchar_t* title, bool collapsed) {
+    int pad = GetSize(8);
+    int titleH = GetSize(22);
+    int accentW = GetSize(3);
+    
+    // Background
+    HBRUSH bg = CachedBrush(PanelHeader);
+    RECT bgRc = rc.ToWin32Rect();
+    FillRect(hdc, &bgRc, bg);
+    
+    // Left accent bar
+    HBRUSH accent = CachedBrush(HighlightBlue);
+    RECT accentRc = { rc.left, rc.top + GetSize(4), rc.left + accentW, rc.top + titleH - GetSize(4) };
+    FillRect(hdc, &accentRc, accent);
+    
+    // Title text
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, TextSecondary);
+    HFONT titleFont = GetCachedFont(FontID::PanelTitle);
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
+    RECT titleRc = { rc.left + accentW + pad, rc.top, rc.right - pad - GetSize(20), rc.top + titleH };
+    DrawTextW(hdc, title, -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+    
+    // Collapse arrow
+    SetTextColor(hdc, TextSecondary);
+    RECT arrowRc = { rc.right - pad - GetSize(18), rc.top, rc.right - pad, rc.top + titleH };
+    DrawTextW(hdc, collapsed ? L"\u25B6" : L"\u25BC", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    
+    SelectObject(hdc, oldFont);
+    
+    // Bottom separator (gradient fade)
+    int sepY = rc.top + titleH;
+    HPEN sepPen = Pen(BorderDark);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
+    MoveToEx(hdc, rc.left + pad, sepY, nullptr);
+    LineTo(hdc, rc.right - pad, sepY);
+    SelectObject(hdc, oldPen);
+    DeleteObject(sepPen);
+}
+
+void Theme::DrawColorSwatch(HDC hdc, const Rect& rc, uint32_t color, bool active, bool hovered) {
+    int radius = GetSize(3);
+    
+    // Fill
+    HBRUSH fill = SolidBrush(color);
+    HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, fill));
+    HPEN pen = Pen(active ? HighlightBlue : (hovered ? BorderLight : BorderDark), active ? 2 : 1);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
+    
+    RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, radius * 2, radius * 2);
+    
+    SelectObject(hdc, oldBr);
+    SelectObject(hdc, oldPen);
+    DeleteObject(fill);
+    DeleteObject(pen);
+    
+    // Hover glow (subtle white overlay)
+    if (hovered && !active) {
+        HBRUSH glow = CreateSolidBrush(RGB(255, 255, 255));
+        RECT glowRc = { rc.left + 1, rc.top + 1, rc.right - 1, rc.bottom - 1 };
+        // Use alpha blend if possible, otherwise skip
+        DeleteObject(glow);
+    }
 }
 
 } // namespace UI

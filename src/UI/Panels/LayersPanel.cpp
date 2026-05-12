@@ -44,9 +44,18 @@ const wchar_t* LayersPanel::GetBlendModeName(BlendMode mode) {
     }
 }
 
-// -------------------------------------------------------------------------
-// Layout helpers — shared by paint and hit-test
-// -------------------------------------------------------------------------
+wchar_t LayersPanel::GetLayerIcon(int btnType, bool state) {
+    switch (btnType) {
+        case 0: return state ? L'\uE8B5' : L'\uE8B6'; // View / Hide
+        case 1: return state ? L'\uE72E' : L'\uE785'; // Lock / Unlock
+        case 2: return state ? L'\uE73E' : L'\uE73E'; // Solo (same, colored differently)
+        default: return L'?';
+    }
+}
+
+// ------------------------------------------------------------------
+// Layout helpers
+// ------------------------------------------------------------------
 
 int LayersPanel::GetLayerListY() const {
     int dropdownY = Theme::GetSize(26);
@@ -92,7 +101,7 @@ void LayersPanel::GetLayerItemButtonRects(int layerIndex, Rect& outSolo, Rect& o
     int y = item.top + Theme::GetSize(4);
     int h = Theme::GetSize(20);
     int right = item.right - Theme::GetSize(4);
-    
+
     outLock = Rect(right - BtnWidth, y, right, y + h);
     right -= BtnWidth + BtnGap;
     outEye = Rect(right - BtnWidth, y, right, y + h);
@@ -102,9 +111,9 @@ void LayersPanel::GetLayerItemButtonRects(int layerIndex, Rect& outSolo, Rect& o
     outSolo = Rect(right - BtnWidth, y, right, y + h);
 }
 
-// -------------------------------------------------------------------------
+// ------------------------------------------------------------------
 // Painting
-// -------------------------------------------------------------------------
+// ------------------------------------------------------------------
 
 void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     (void)clip;
@@ -119,29 +128,12 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
 
     SetBkMode(hdc, TRANSPARENT);
 
-    // Title
-    SetTextColor(hdc, Theme::TextSecondary);
-    HFONT titleFont = Theme::GetCachedFont(Theme::FontID::PanelTitle);
-    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
-    RECT titleRc = { Theme::GetSize(8), 4, client.Width() - Theme::GetSize(8) - Theme::GetSize(20), Theme::GetSize(20) };
-    DrawTextW(hdc, L"图层", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+    // Modern panel header
+    int titleH = Theme::GetSize(22);
+    Rect headerRc(0, 0, client.Width(), titleH);
+    Theme::DrawPanelHeaderModern(hdc, headerRc, L"图层", IsCollapsed());
 
-    if (IsCollapsible()) {
-        SetTextColor(hdc, Theme::TextSecondary);
-        RECT arrowRc = { client.Width() - Theme::GetSize(8) - Theme::GetSize(18), 4, client.Width() - Theme::GetSize(8), Theme::GetSize(20) };
-        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-    }
-
-    SelectObject(hdc, oldFont);
-
-    // Separator
-    HPEN sepPen = Theme::Pen(Theme::BorderLight);
-    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
-    int sepY = Theme::GetSize(22);
-    MoveToEx(hdc, Theme::GetSize(8), sepY, nullptr);
-    LineTo(hdc, client.Width() - Theme::GetSize(8), sepY);
-    SelectObject(hdc, oldPen);
-    DeleteObject(sepPen);
+    if (IsCollapsed()) return;
 
     // Blend mode dropdown for active layer
     int dropdownY = Theme::GetSize(26);
@@ -153,7 +145,6 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     uint8_t opacity = activeLayer ? activeLayer->GetOpacity() : 255;
     DrawOpacitySlider(hdc, Theme::GetSize(8), opacityY, client.Width() - Theme::GetSize(16), opacity);
 
-    // Blend dropdown overlay (drawn after layer items so it appears on top)
     bool drawDropdownAfter = m_blendDropdownOpen;
 
     // Layer items — clip to viewport
@@ -170,20 +161,21 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     int y = GetLayerListY() - m_scrollView.GetScrollOffset();
 
     HFONT itemFont = Theme::GetCachedFont(Theme::FontID::Label);
-    oldFont = static_cast<HFONT>(SelectObject(hdc, itemFont));
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, itemFont));
 
     size_t count = m_layerManager->GetLayerCount();
     for (int i = static_cast<int>(count) - 1; i >= 0; --i) {
         auto layer = m_layerManager->GetLayer(i);
         if (!layer) continue;
 
-        // Skip items completely outside viewport
+        // Skip items outside viewport
         if (y + ItemHeight < listVp.top || y > listVp.bottom) {
             y += ItemHeight + 2;
             continue;
         }
 
         bool isActive = (static_cast<size_t>(i) == m_layerManager->GetActiveLayerIndex());
+        bool isHovered = (i == m_hoverLayerIndex);
 
         // Drag insertion line
         if (m_draggingLayer && m_dragTargetIndex >= 0 && m_dragTargetIndex != m_dragLayerIndex && i == m_dragTargetIndex) {
@@ -196,27 +188,49 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
         }
 
         // Item background
+        Rect itemRc(Theme::GetSize(4), y, client.Width() - Theme::GetSize(4), y + ItemHeight);
         if (isActive) {
-            HBRUSH activeBrush = Theme::CachedBrush(Theme::HighlightBlue);
-            RECT itemBg = { Theme::GetSize(4), y, client.Width() - Theme::GetSize(4), y + ItemHeight };
-            FillRect(hdc, &itemBg, activeBrush);
-        } else {
-            if ((count - 1 - i) % 2 == 1) {
-                HBRUSH altBrush = Theme::CachedBrush(0x383838);
-                RECT itemBg = { Theme::GetSize(4), y, client.Width() - Theme::GetSize(4), y + ItemHeight };
-                FillRect(hdc, &itemBg, altBrush);
-            }
+            // Left accent bar + tinted background
+            int accentW = Theme::GetSize(3);
+            HBRUSH accentBrush = Theme::CachedBrush(Theme::HighlightBlue);
+            RECT accentRc = { itemRc.left, itemRc.top, itemRc.left + accentW, itemRc.bottom };
+            FillRect(hdc, &accentRc, accentBrush);
+
+            // Semi-transparent highlight background (approximated with solid color)
+            uint32_t hlColor = 0x1A3A5A; // Approximate #0078D7 @ 20% over #3C3C3C
+            HBRUSH hlBrush = Theme::CachedBrush(hlColor);
+            RECT hlRc = { itemRc.left + accentW, itemRc.top, itemRc.right, itemRc.bottom };
+            FillRect(hdc, &hlRc, hlBrush);
+        } else if (isHovered) {
+            HBRUSH hoverBrush = Theme::CachedBrush(0x424242);
+            RECT hoverRc = itemRc.ToWin32Rect();
+            FillRect(hdc, &hoverRc, hoverBrush);
+        } else if ((count - 1 - i) % 2 == 1) {
+            HBRUSH altBrush = Theme::CachedBrush(0x383838);
+            RECT altRc = itemRc.ToWin32Rect();
+            FillRect(hdc, &altRc, altBrush);
         }
+
+        // Rounded corners for item (subtle)
+        HPEN itemBorder = CreatePen(PS_SOLID, 1, isActive ? Theme::HighlightBlue : (isHovered ? Theme::BorderLight : Theme::BorderDark));
+        HPEN oldItemPen = static_cast<HPEN>(SelectObject(hdc, itemBorder));
+        HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+        HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+        int r = Theme::GetSize(2);
+        RoundRect(hdc, itemRc.left, itemRc.top, itemRc.right, itemRc.bottom, r * 2, r * 2);
+        SelectObject(hdc, oldItemPen);
+        SelectObject(hdc, oldNullBr);
+        DeleteObject(itemBorder);
 
         // Dragged item highlight
         if (m_draggingLayer && i == m_dragLayerIndex) {
             HPEN dragPen = CreatePen(PS_DOT, 1, Theme::HighlightBlue);
             HPEN oldDragPen = static_cast<HPEN>(SelectObject(hdc, dragPen));
-            HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-            HBRUSH oldNullBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+            HBRUSH nullBrush = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+            HBRUSH oldNullBrush = static_cast<HBRUSH>(SelectObject(hdc, nullBrush));
             Rectangle(hdc, 2, y + 2, client.Width() - 2, y + ItemHeight - 2);
             SelectObject(hdc, oldDragPen);
-            SelectObject(hdc, oldNullBr);
+            SelectObject(hdc, oldNullBrush);
             DeleteObject(dragPen);
         }
 
@@ -245,30 +259,45 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
         Rect soloRc, paRc, eyeRc, lockRc;
         GetLayerItemButtonRects(i, soloRc, paRc, eyeRc, lockRc);
 
+        // Icon font
+        HFONT iconFont = Theme::GetCachedFont(Theme::FontID::Icon);
+        HFONT oldIconFont = static_cast<HFONT>(SelectObject(hdc, iconFont));
+
         // Solo button
         bool isSolo = m_layerManager->IsSoloActive() && m_layerManager->GetSoloLayerIndex() == static_cast<size_t>(i);
         SetTextColor(hdc, isSolo ? Theme::HighlightBlue : Theme::TextDisabled);
         RECT sRc = soloRc.ToWin32Rect();
-        DrawTextW(hdc, L"S", -1, &sRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+        std::wstring soloStr(1, GetLayerIcon(2, isSolo));
+        DrawTextW(hdc, soloStr.c_str(), -1, &sRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
         // Protect alpha checkbox
         Theme::DrawCheckBox(hdc, paRc, layer->IsProtectAlpha(), false, nullptr);
 
-        // Visibility icon (eye)
+        // Visibility icon
         SetTextColor(hdc, layer->IsVisible() ? Theme::TextPrimary : Theme::TextDisabled);
         RECT eRc = eyeRc.ToWin32Rect();
-        DrawTextW(hdc, layer->IsVisible() ? L"👁" : L"⊘", -1, &eRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+        std::wstring eyeStr(1, GetLayerIcon(0, layer->IsVisible()));
+        DrawTextW(hdc, eyeStr.c_str(), -1, &eRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
         // Lock icon
         SetTextColor(hdc, layer->IsLocked() ? Theme::TextPrimary : Theme::TextDisabled);
         RECT lRc = lockRc.ToWin32Rect();
-        DrawTextW(hdc, layer->IsLocked() ? L"🔒" : L"○", -1, &lRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+        std::wstring lockStr(1, GetLayerIcon(1, layer->IsLocked()));
+        DrawTextW(hdc, lockStr.c_str(), -1, &lRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
 
-        // Name
-        SetTextColor(hdc, isActive ? Theme::TextInverse : Theme::TextPrimary);
+        SelectObject(hdc, oldIconFont);
+
+        // Name (or rename field)
         int nameX = thumbX + ThumbSize + Theme::GetSize(8);
-        RECT nameRc = { nameX, y + Theme::GetSize(4), soloRc.left - Theme::GetSize(4), y + Theme::GetSize(20) };
-        DrawTextW(hdc, layer->GetName().c_str(), -1, &nameRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
+        Rect nameRc(nameX, y + Theme::GetSize(4), soloRc.left - Theme::GetSize(4), y + Theme::GetSize(20));
+
+        if (m_renamingLayer && m_renameLayerIndex == i) {
+            DrawRenameField(hdc, nameRc);
+        } else {
+            SetTextColor(hdc, isActive ? Theme::TextInverse : Theme::TextPrimary);
+            RECT nRc = nameRc.ToWin32Rect();
+            DrawTextW(hdc, layer->GetName().c_str(), -1, &nRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS);
+        }
 
         // Opacity + Blend mode text
         SetTextColor(hdc, Theme::TextSecondary);
@@ -294,53 +323,101 @@ void LayersPanel::OnPaint(HDC hdc, const Rect& clip) {
     // Scrollbar
     m_scrollView.Draw(hdc, listVp);
 
-    // Blend dropdown overlay (drawn on top of everything, outside clip)
+    // Blend dropdown overlay
     if (drawDropdownAfter) {
         DrawBlendDropdownList(hdc, Theme::GetSize(8), dropdownY + DropdownHeight, client.Width() - Theme::GetSize(16));
     }
 
-    // Bottom toolbar area
+    // Bottom toolbar
+    DrawToolbar(hdc);
+}
+
+void LayersPanel::DrawToolbar(HDC hdc) {
+    Rect client = GetClientBounds();
     int toolbarY = client.Height() - Theme::GetSize(32);
     HBRUSH toolbarBrush = Theme::CachedBrush(Theme::BackgroundDark);
     RECT toolbarRc = { 0, toolbarY, client.Width(), client.Height() };
     FillRect(hdc, &toolbarRc, toolbarBrush);
 
     HPEN topLine = Theme::Pen(Theme::BorderLight);
-    oldPen = static_cast<HPEN>(SelectObject(hdc, topLine));
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, topLine));
     MoveToEx(hdc, 0, toolbarY, nullptr);
     LineTo(hdc, client.Width(), toolbarY);
     SelectObject(hdc, oldPen);
     DeleteObject(topLine);
 
-    // Toolbar buttons: New, Duplicate, Merge Down, Delete
+    // 4 icon buttons: New, Duplicate, Merge Down, Delete
     int btnCount = 4;
-    int btnWidth = client.Width() / btnCount;
-    const wchar_t* btnLabels[4] = { L"+", L"⧉", L"↓", L"🗑" };
-    HFONT btnFont = Theme::GetCachedFont(Theme::FontID::Button);
-    HFONT oldBtnFont = static_cast<HFONT>(SelectObject(hdc, btnFont));
-    SetTextColor(hdc, Theme::TextPrimary);
+    int pad = Theme::GetSize(4);
+    int btnSize = Theme::GetSize(24);
+    int gap = (client.Width() - pad * 2 - btnSize * btnCount) / (btnCount - 1);
+    if (gap < Theme::GetSize(2)) gap = Theme::GetSize(2);
+
+    const wchar_t icons[4] = { L'\uE710', L'\uE8C8', L'\uE74B', L'\uE74D' };
+
     for (int i = 0; i < btnCount; ++i) {
-        int bx = i * btnWidth;
-        RECT btnRc = { bx, toolbarY, bx + btnWidth, client.Height() };
-        DrawTextW(hdc, btnLabels[i], -1, &btnRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+        int bx = pad + i * (btnSize + gap);
+        int by = toolbarY + (client.Height() - toolbarY - btnSize) / 2;
+        Rect btnRc(bx, by, bx + btnSize, by + btnSize);
+        bool hovered = (m_hoverToolbarBtn == i);
+        Theme::DrawIconButton(hdc, btnRc, icons[i], false, hovered);
     }
-    SelectObject(hdc, oldBtnFont);
 }
 
-// -------------------------------------------------------------------------
-// Dropdown & slider drawing
-// -------------------------------------------------------------------------
+void LayersPanel::DrawRenameField(HDC hdc, const Rect& nameRc) {
+    // Input background
+    HBRUSH editBg = Theme::CachedBrush(Theme::InputBackground);
+    RECT editRc = nameRc.ToWin32Rect();
+    FillRect(hdc, &editRc, editBg);
+
+    HPEN borderPen = CreatePen(PS_SOLID, 1, Theme::HighlightBlue);
+    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, borderPen));
+    HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
+    HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
+    Rectangle(hdc, nameRc.left, nameRc.top, nameRc.right, nameRc.bottom);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBr);
+    DeleteObject(borderPen);
+
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, Theme::TextPrimary);
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
+    RECT textRc = { nameRc.left + Theme::GetSize(2), nameRc.top, nameRc.right - Theme::GetSize(2), nameRc.bottom };
+    DrawTextW(hdc, m_renameText.c_str(), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
+
+    // Caret
+    if (HasFocus()) {
+        HDC memDC = CreateCompatibleDC(hdc);
+        HFONT oldF = static_cast<HFONT>(SelectObject(memDC, font));
+        SIZE sz;
+        GetTextExtentPoint32W(memDC, m_renameText.c_str(), m_renameCursorPos, &sz);
+        SelectObject(memDC, oldF);
+        DeleteDC(memDC);
+        int caretX = nameRc.left + Theme::GetSize(2) + sz.cx;
+        int caretY1 = nameRc.top + Theme::GetSize(2);
+        int caretY2 = nameRc.bottom - Theme::GetSize(2);
+        HPEN caretPen = CreatePen(PS_SOLID, 1, Theme::HighlightBlue);
+        oldPen = static_cast<HPEN>(SelectObject(hdc, caretPen));
+        MoveToEx(hdc, caretX, caretY1, nullptr);
+        LineTo(hdc, caretX, caretY2);
+        SelectObject(hdc, oldPen);
+        DeleteObject(caretPen);
+    }
+    SelectObject(hdc, oldFont);
+}
 
 void LayersPanel::DrawBlendDropdown(HDC hdc, int x, int y, int width) {
+    int radius = Theme::GetSize(2);
     HBRUSH bg = Theme::CachedBrush(Theme::ButtonDefault);
     RECT rc = { x, y, x + width, y + DropdownHeight };
     FillRect(hdc, &rc, bg);
 
-    HPEN pen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+    HPEN pen = Theme::Pen(Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
     HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
     HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-    Rectangle(hdc, x, y, x + width, y + DropdownHeight);
+    RoundRect(hdc, x, y, x + width, y + DropdownHeight, radius * 2, radius * 2);
     SelectObject(hdc, oldPen);
     SelectObject(hdc, oldBr);
     DeleteObject(pen);
@@ -359,40 +436,57 @@ void LayersPanel::DrawBlendDropdown(HDC hdc, int x, int y, int width) {
 
     SetTextColor(hdc, Theme::TextSecondary);
     RECT arrowRc = { x + width - 18, y, x + width - 4, y + DropdownHeight };
-    DrawTextW(hdc, m_blendDropdownOpen ? L"▲" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    DrawTextW(hdc, m_blendDropdownOpen ? L"\u25B2" : L"\u25BC", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
     SelectObject(hdc, oldFont);
 }
 
 void LayersPanel::DrawBlendDropdownList(HDC hdc, int x, int y, int width) {
-    // Draw a floating panel with shadow-like border
     int listH = BlendModeCount * DropdownHeight;
+    int radius = Theme::GetSize(2);
 
-    // Background
+    // Background with shadow-like border
     HBRUSH bg = Theme::CachedBrush(Theme::PanelBackground);
     RECT rc = { x, y, x + width, y + listH };
     FillRect(hdc, &rc, bg);
 
-    HPEN pen = CreatePen(PS_SOLID, 1, Theme::BorderLight);
+    HPEN pen = Theme::Pen(Theme::BorderLight);
     HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, pen));
     HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
     HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-    Rectangle(hdc, x, y, x + width, y + listH);
+    RoundRect(hdc, x, y, x + width, y + listH, radius * 2, radius * 2);
     SelectObject(hdc, oldPen);
     SelectObject(hdc, oldBr);
     DeleteObject(pen);
 
+    auto activeLayer = m_layerManager ? m_layerManager->GetActiveLayer() : nullptr;
+    BlendMode currentMode = activeLayer ? activeLayer->GetBlendMode() : BlendMode::Normal;
+
     for (int i = 0; i < BlendModeCount; ++i) {
         int iy = y + i * DropdownHeight;
         bool hovered = (i == m_blendHoverIndex);
+        bool isCurrent = (BlendModes[i] == currentMode);
 
-        HBRUSH itemBg = Theme::CachedBrush(hovered ? Theme::HighlightBlue : Theme::PanelBackground);
-        RECT itemRc = { x + 1, iy, x + width - 1, iy + DropdownHeight };
-        FillRect(hdc, &itemRc, itemBg);
+        if (hovered) {
+            HBRUSH itemBg = Theme::CachedBrush(Theme::HighlightBlue);
+            RECT itemRc = { x + 1, iy, x + width - 1, iy + DropdownHeight };
+            FillRect(hdc, &itemRc, itemBg);
+        } else if (isCurrent) {
+            HBRUSH itemBg = Theme::CachedBrush(0x2A4A6A); // subtle blue tint
+            RECT itemRc = { x + 1, iy, x + width - 1, iy + DropdownHeight };
+            FillRect(hdc, &itemRc, itemBg);
+        }
+
+        // Left blue mark for current item
+        if (isCurrent) {
+            HBRUSH markBrush = Theme::CachedBrush(Theme::HighlightBlue);
+            RECT markRc = { x + 1, iy + 4, x + Theme::GetSize(3), iy + DropdownHeight - 4 };
+            FillRect(hdc, &markRc, markBrush);
+        }
 
         SetTextColor(hdc, hovered ? Theme::TextInverse : Theme::TextPrimary);
         HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
         HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
-        RECT textRc = { x + 6, iy, x + width - 6, iy + DropdownHeight };
+        RECT textRc = { x + (isCurrent ? Theme::GetSize(6) : 6), iy, x + width - 6, iy + DropdownHeight };
         DrawTextW(hdc, GetBlendModeName(BlendModes[i]), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
         SelectObject(hdc, oldFont);
     }
@@ -404,7 +498,11 @@ void LayersPanel::DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t op
     HFONT font = Theme::GetCachedFont(Theme::FontID::Label);
     HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, font));
     std::wostringstream oss;
-    oss << L"不透明度: " << (opacity * 100 / 255) << L"%";
+    if (m_opacityEditing) {
+        oss << L"不透明度: " << m_opacityText << L"%";
+    } else {
+        oss << L"不透明度: " << (opacity * 100 / 255) << L"%";
+    }
     RECT labelRc = { x, y, x + width, y + Theme::GetSize(14) };
     DrawTextW(hdc, oss.str().c_str(), -1, &labelRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
 
@@ -417,9 +515,102 @@ void LayersPanel::DrawOpacitySlider(HDC hdc, int x, int y, int width, uint8_t op
     SelectObject(hdc, oldFont);
 }
 
-// -------------------------------------------------------------------------
+// ------------------------------------------------------------------
+// Rename inline edit
+// ------------------------------------------------------------------
+
+void LayersPanel::StartRename(int layerIndex) {
+    if (!m_layerManager) return;
+    auto layer = m_layerManager->GetLayer(layerIndex);
+    if (!layer) return;
+    m_renamingLayer = true;
+    m_renameLayerIndex = layerIndex;
+    m_renameText = layer->GetName();
+    m_renameCursorPos = static_cast<int>(m_renameText.length());
+    SetFocus();
+    Invalidate();
+}
+
+void LayersPanel::EndRename(bool apply) {
+    if (!m_renamingLayer) return;
+    if (apply && m_layerManager && m_renameLayerIndex >= 0) {
+        auto layer = m_layerManager->GetLayer(m_renameLayerIndex);
+        if (layer && !m_renameText.empty()) {
+            layer->SetName(m_renameText);
+        }
+    }
+    m_renamingLayer = false;
+    m_renameLayerIndex = -1;
+    m_renameText.clear();
+    m_renameCursorPos = 0;
+    Invalidate();
+}
+
+void LayersPanel::RenameInsertChar(wchar_t ch) {
+    if (m_renameText.length() >= 64) return;
+    if (ch < 32) return;
+    m_renameText.insert(m_renameCursorPos, 1, ch);
+    m_renameCursorPos++;
+    Invalidate();
+}
+
+void LayersPanel::RenameDeleteChar() {
+    if (m_renameCursorPos > 0) {
+        m_renameText.erase(m_renameCursorPos - 1, 1);
+        m_renameCursorPos--;
+        Invalidate();
+    }
+}
+
+void LayersPanel::RenameMoveCursor(int delta) {
+    m_renameCursorPos += delta;
+    if (m_renameCursorPos < 0) m_renameCursorPos = 0;
+    if (m_renameCursorPos > static_cast<int>(m_renameText.length())) m_renameCursorPos = static_cast<int>(m_renameText.length());
+    Invalidate();
+}
+
+// ------------------------------------------------------------------
+// Opacity inline edit
+// ------------------------------------------------------------------
+
+void LayersPanel::StartOpacityEdit() {
+    if (!m_layerManager) return;
+    auto layer = m_layerManager->GetActiveLayer();
+    if (!layer) return;
+    m_opacityEditing = true;
+    std::wostringstream oss;
+    oss << (layer->GetOpacity() * 100 / 255);
+    m_opacityText = oss.str();
+    m_opacityCursorPos = static_cast<int>(m_opacityText.length());
+    SetFocus();
+    Invalidate();
+}
+
+void LayersPanel::EndOpacityEdit(bool apply) {
+    if (!m_opacityEditing) return;
+    if (apply && m_layerManager) {
+        auto layer = m_layerManager->GetActiveLayer();
+        if (layer) {
+            int val = 0;
+            for (wchar_t ch : m_opacityText) {
+                if (ch >= L'0' && ch <= L'9') {
+                    val = val * 10 + (ch - L'0');
+                }
+            }
+            val = std::clamp(val, 0, 100);
+            layer->SetOpacity(static_cast<uint8_t>(val * 255 / 100));
+            m_layerManager->MarkCompositeDirty();
+        }
+    }
+    m_opacityEditing = false;
+    m_opacityText.clear();
+    m_opacityCursorPos = 0;
+    Invalidate();
+}
+
+// ------------------------------------------------------------------
 // Mouse handling
-// -------------------------------------------------------------------------
+// ------------------------------------------------------------------
 
 void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
     if (button != MouseButton::Left || !m_layerManager) return;
@@ -429,7 +620,22 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
         return;
     }
 
-    // Check blend dropdown list (overlay)
+    // End inline edits on outside click
+    if (m_renamingLayer) {
+        int renamedLayer = HitTestLayer(pos);
+        if (renamedLayer != m_renameLayerIndex) {
+            EndRename(true);
+            return;
+        }
+    }
+    if (m_opacityEditing) {
+        if (HitTestOpacitySlider(pos) < 0) {
+            EndOpacityEdit(true);
+            return;
+        }
+    }
+
+    // Blend dropdown list (overlay)
     if (m_blendDropdownOpen) {
         int blendItem = HitTestBlendItem(pos);
         if (blendItem >= 0) {
@@ -462,7 +668,6 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
         return;
     }
     if (m_scrollView.IsPointInScrollbar(listVp, pos)) {
-        // Click on track: page scroll
         Rect thumbRc = m_scrollView.GetThumbRect(listVp);
         int pageDelta = listVp.Height() * 3 / 4;
         if (pos.y < thumbRc.top) {
@@ -477,10 +682,11 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
     Rect client = GetClientBounds();
     int toolbarY = client.Height() - Theme::GetSize(32);
 
+    // Toolbar
     if (pos.y >= toolbarY) {
         int btnIndex = HitTestToolbarButton(pos);
         switch (btnIndex) {
-            case 0: { // New layer
+            case 0: {
                 size_t count = m_layerManager->GetLayerCount();
                 std::wostringstream name;
                 name << L"图层 " << (count + 1);
@@ -488,13 +694,13 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
                 UpdateScrollView();
                 break;
             }
-            case 1: { // Duplicate
+            case 1: {
                 size_t active = m_layerManager->GetActiveLayerIndex();
                 m_layerManager->DuplicateLayer(active);
                 UpdateScrollView();
                 break;
             }
-            case 2: { // Merge down
+            case 2: {
                 size_t active = m_layerManager->GetActiveLayerIndex();
                 if (active < m_layerManager->GetLayerCount() - 1) {
                     m_layerManager->MergeDown(active);
@@ -502,7 +708,7 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
                 UpdateScrollView();
                 break;
             }
-            case 3: { // Delete
+            case 3: {
                 size_t active = m_layerManager->GetActiveLayerIndex();
                 if (m_layerManager->GetLayerCount() > 1) {
                     m_layerManager->DeleteLayer(active);
@@ -517,8 +723,15 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
 
     // Opacity slider
     if (HitTestOpacitySlider(pos) >= 0) {
-        m_opacityDragging = true;
-        SetOpacityFromSliderPos(pos.x, Theme::GetSize(8), client.Width() - Theme::GetSize(16));
+        // Check for double-click on label area (above track)
+        int dropdownY = Theme::GetSize(26);
+        int opacityY = dropdownY + DropdownHeight + Theme::GetSize(4);
+        if (pos.y >= opacityY && pos.y < opacityY + Theme::GetSize(14)) {
+            StartOpacityEdit();
+        } else {
+            m_opacityDragging = true;
+            SetOpacityFromSliderPos(pos.x, Theme::GetSize(8), client.Width() - Theme::GetSize(16));
+        }
         Invalidate();
         return;
     }
@@ -547,6 +760,17 @@ void LayersPanel::OnMouseDown(const Point& pos, MouseButton button) {
             Invalidate();
             return;
         }
+
+        // Double-click detection for rename
+        uint64_t now = GetTickCount64();
+        if (m_lastClickLayer == layerIdx && (now - m_lastClickTime) < 400) {
+            m_lastClickTime = 0;
+            m_lastClickLayer = -1;
+            StartRename(layerIdx);
+            return;
+        }
+        m_lastClickTime = now;
+        m_lastClickLayer = layerIdx;
 
         m_layerManager->SetActiveLayer(layerIdx);
         m_draggingLayer = true;
@@ -636,14 +860,35 @@ int LayersPanel::HitTestToolbarButton(const Point& pos) const {
     int toolbarY = client.Height() - Theme::GetSize(32);
     if (pos.y < toolbarY) return -1;
     int btnCount = 4;
-    int btnWidth = client.Width() / btnCount;
-    int btnIndex = pos.x / btnWidth;
-    if (btnIndex < 0) btnIndex = 0;
-    if (btnIndex >= btnCount) btnIndex = btnCount - 1;
-    return btnIndex;
+    int pad = Theme::GetSize(4);
+    int btnSize = Theme::GetSize(24);
+    int gap = (client.Width() - pad * 2 - btnSize * btnCount) / (btnCount - 1);
+    if (gap < Theme::GetSize(2)) gap = Theme::GetSize(2);
+    for (int i = 0; i < btnCount; ++i) {
+        int bx = pad + i * (btnSize + gap);
+        int by = toolbarY + (client.Height() - toolbarY - btnSize) / 2;
+        if (pos.x >= bx && pos.x < bx + btnSize && pos.y >= by && pos.y < by + btnSize) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void LayersPanel::OnMouseMove(const Point& pos) {
+    // Toolbar hover
+    int oldHoverToolbar = m_hoverToolbarBtn;
+    m_hoverToolbarBtn = HitTestToolbarButton(pos);
+    if (oldHoverToolbar != m_hoverToolbarBtn) {
+        Invalidate();
+    }
+
+    // Layer hover
+    int oldHoverLayer = m_hoverLayerIndex;
+    m_hoverLayerIndex = HitTestLayer(pos);
+    if (oldHoverLayer != m_hoverLayerIndex) {
+        Invalidate();
+    }
+
     if (m_scrollbarDragging) {
         Rect listVp = GetListViewportRect();
         m_scrollView.UpdateDrag(pos, listVp);
@@ -695,8 +940,16 @@ void LayersPanel::OnMouseUp(const Point& pos, MouseButton button) {
     }
 }
 
+void LayersPanel::OnMouseLeave() {
+    if (m_hoverToolbarBtn >= 0 || m_hoverLayerIndex >= 0) {
+        m_hoverToolbarBtn = -1;
+        m_hoverLayerIndex = -1;
+        Invalidate();
+    }
+}
+
 void LayersPanel::OnMouseWheel(int delta) {
-    m_scrollView.OnMouseWheel(delta);
+    m_scrollView.ScrollBy(delta);
     Invalidate();
 }
 
@@ -704,6 +957,72 @@ void LayersPanel::OnSize(const Size& newSize) {
     (void)newSize;
     UpdateScrollView();
     Invalidate();
+}
+
+// ------------------------------------------------------------------
+// Keyboard (for inline edits)
+// ------------------------------------------------------------------
+
+void LayersPanel::OnKeyDown(uint32_t keyCode) {
+    if (m_renamingLayer) {
+        switch (keyCode) {
+            case VK_LEFT: RenameMoveCursor(-1); break;
+            case VK_RIGHT: RenameMoveCursor(1); break;
+            case VK_HOME: m_renameCursorPos = 0; Invalidate(); break;
+            case VK_END: m_renameCursorPos = static_cast<int>(m_renameText.length()); Invalidate(); break;
+            case VK_DELETE:
+                if (m_renameCursorPos < static_cast<int>(m_renameText.length())) {
+                    m_renameText.erase(m_renameCursorPos, 1);
+                    Invalidate();
+                }
+                break;
+            case VK_RETURN: EndRename(true); break;
+            case VK_ESCAPE: EndRename(false); break;
+        }
+        return;
+    }
+    if (m_opacityEditing) {
+        switch (keyCode) {
+            case VK_LEFT: m_opacityCursorPos = std::max(0, m_opacityCursorPos - 1); Invalidate(); break;
+            case VK_RIGHT: m_opacityCursorPos = std::min(static_cast<int>(m_opacityText.length()), m_opacityCursorPos + 1); Invalidate(); break;
+            case VK_HOME: m_opacityCursorPos = 0; Invalidate(); break;
+            case VK_END: m_opacityCursorPos = static_cast<int>(m_opacityText.length()); Invalidate(); break;
+            case VK_DELETE:
+                if (m_opacityCursorPos < static_cast<int>(m_opacityText.length())) {
+                    m_opacityText.erase(m_opacityCursorPos, 1);
+                    Invalidate();
+                }
+                break;
+            case VK_RETURN: EndOpacityEdit(true); break;
+            case VK_ESCAPE: EndOpacityEdit(false); break;
+        }
+        return;
+    }
+}
+
+void LayersPanel::OnChar(wchar_t ch) {
+    if (m_renamingLayer) {
+        if (ch == L'\b') {
+            RenameDeleteChar();
+        } else if (ch >= 32) {
+            RenameInsertChar(ch);
+        }
+        return;
+    }
+    if (m_opacityEditing) {
+        if (ch == L'\b') {
+            if (m_opacityCursorPos > 0) {
+                m_opacityText.erase(m_opacityCursorPos - 1, 1);
+                m_opacityCursorPos--;
+                Invalidate();
+            }
+        } else if (ch >= L'0' && ch <= L'9' && m_opacityText.length() < 3) {
+            m_opacityText.insert(m_opacityCursorPos, 1, ch);
+            m_opacityCursorPos++;
+            Invalidate();
+        }
+        return;
+    }
 }
 
 } // namespace UI

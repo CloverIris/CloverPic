@@ -30,29 +30,10 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
     RECT rc = client.ToWin32Rect();
     FillRect(hdc, &rc, bg);
     
-    // Title
-    SetBkMode(hdc, TRANSPARENT);
-    SetTextColor(hdc, Theme::TextSecondary);
-    HFONT titleFont = Theme::GetCachedFont(Theme::FontID::PanelTitle);
-    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, titleFont));
-    RECT titleRc = { Theme::GetSize(8), Theme::GetSize(4), client.Width() - Theme::GetSize(8) - Theme::GetSize(20), Theme::GetSize(22) };
-    DrawTextW(hdc, L"笔刷尺寸", -1, &titleRc, DT_SINGLELINE | DT_VCENTER | DT_LEFT);
-
-    if (IsCollapsible()) {
-        SetTextColor(hdc, Theme::TextSecondary);
-        RECT arrowRc = { client.Width() - Theme::GetSize(8) - Theme::GetSize(18), Theme::GetSize(4), client.Width() - Theme::GetSize(8), Theme::GetSize(22) };
-        DrawTextW(hdc, IsCollapsed() ? L"►" : L"▼", -1, &arrowRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
-    }
-
-    SelectObject(hdc, oldFont);
-    
-    // Separator
-    HPEN sepPen = Theme::Pen(Theme::BorderLight);
-    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, sepPen));
-    MoveToEx(hdc, Theme::GetSize(8), Theme::GetSize(24), nullptr);
-    LineTo(hdc, client.Width() - Theme::GetSize(8), Theme::GetSize(24));
-    SelectObject(hdc, oldPen);
-    DeleteObject(sepPen);
+    // Modern panel header
+    int titleH = Theme::GetSize(22);
+    Rect headerRc(0, 0, client.Width(), titleH);
+    Theme::DrawPanelHeaderModern(hdc, headerRc, L"笔刷尺寸", IsCollapsed());
     
     // Grid buttons
     int startY = Theme::GetSize(28);
@@ -61,7 +42,7 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
     int startX = Theme::GetSize(4);
     
     HFONT valFont = Theme::GetCachedFont(Theme::FontID::Small);
-    oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
+    HFONT oldFont = static_cast<HFONT>(SelectObject(hdc, valFont));
     
     for (int i = 0; i < PresetCount; ++i) {
         int row = i / ButtonsPerRow;
@@ -78,24 +59,22 @@ void BrushSizePanel::OnPaint(HDC hdc, const Rect& clip) {
 }
 
 void BrushSizePanel::DrawButton(HDC hdc, int index, const Rect& rc, bool active, bool hovered) {
+    int radius = Theme::GetSize(3);
     uint32_t bgColor = active ? Theme::HighlightBlue : (hovered ? Theme::ButtonHover : Theme::ButtonDefault);
-    HBRUSH brush = Theme::CachedBrush(bgColor);
-    RECT fillRc = rc.ToWin32Rect();
-    FillRect(hdc, &fillRc, brush);
+    uint32_t borderColor = active ? Theme::HighlightHover : (hovered ? Theme::BorderLight : Theme::BorderDark);
+    Theme::DrawRoundRect(hdc, rc, radius, bgColor, borderColor);
     
-    HPEN border = Theme::Pen(active ? Theme::HighlightHover : Theme::BorderLight);
-    HPEN oldPen = static_cast<HPEN>(SelectObject(hdc, border));
-    HBRUSH nullBr = static_cast<HBRUSH>(GetStockObject(NULL_BRUSH));
-    HBRUSH oldBr = static_cast<HBRUSH>(SelectObject(hdc, nullBr));
-    Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
-    SelectObject(hdc, oldPen);
-    SelectObject(hdc, oldBr);
-    DeleteObject(border);
-    
-    // Label
+    // Hover: slight scale effect (simulate by drawing larger text)
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, active ? Theme::TextInverse : Theme::TextPrimary);
     RECT textRc = rc.ToWin32Rect();
+    
+    HFONT font = Theme::GetCachedFont(Theme::FontID::Small);
+    if (hovered && !active) {
+        // Slightly larger font for hover
+        font = Theme::GetCachedFont(Theme::FontID::Label);
+    }
+    HFONT oldF = static_cast<HFONT>(SelectObject(hdc, font));
     
     std::wostringstream oss;
     if (Presets[index] >= 100.0f) {
@@ -106,6 +85,7 @@ void BrushSizePanel::DrawButton(HDC hdc, int index, const Rect& rc, bool active,
         oss << Presets[index];
     }
     DrawTextW(hdc, oss.str().c_str(), -1, &textRc, DT_SINGLELINE | DT_VCENTER | DT_CENTER);
+    SelectObject(hdc, oldF);
 }
 
 void BrushSizePanel::OnMouseDown(const Point& pos, MouseButton button) {

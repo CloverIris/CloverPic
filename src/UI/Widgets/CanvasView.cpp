@@ -67,6 +67,16 @@ bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& 
         return false;
     }
     
+    // Create cached D2D brushes
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.7f), &m_previewBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.5f, 0.5f, 0.5f, 1.0f), &m_lightBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.4f, 0.4f, 0.4f, 1.0f), &m_darkBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.3f, 0.3f, 0.3f, 1.0f), &m_borderBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.7f, 0.7f, 0.7f, 0.8f), &m_cursorBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &m_whiteBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f), &m_blackBrush);
+    m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.4f), &m_fillBrush);
+    
     if (resetLayers) {
         // Initialize layer manager
         m_layerManager = &LayerManager::GetInstance();
@@ -118,6 +128,14 @@ bool CanvasView::InitializeCanvas(uint32_t width, uint32_t height, const Color& 
 }
 
 void CanvasView::ShutdownCanvas() {
+    if (m_previewBrush) { m_previewBrush->Release(); m_previewBrush = nullptr; }
+    if (m_fillBrush) { m_fillBrush->Release(); m_fillBrush = nullptr; }
+    if (m_lightBrush) { m_lightBrush->Release(); m_lightBrush = nullptr; }
+    if (m_darkBrush) { m_darkBrush->Release(); m_darkBrush = nullptr; }
+    if (m_borderBrush) { m_borderBrush->Release(); m_borderBrush = nullptr; }
+    if (m_cursorBrush) { m_cursorBrush->Release(); m_cursorBrush = nullptr; }
+    if (m_whiteBrush) { m_whiteBrush->Release(); m_whiteBrush = nullptr; }
+    if (m_blackBrush) { m_blackBrush->Release(); m_blackBrush = nullptr; }
     if (m_compositeBitmap) {
         m_compositeBitmap->Release();
         m_compositeBitmap = nullptr;
@@ -280,91 +298,82 @@ void CanvasView::CompositeAndRender() {
         DrawBrushCursor(m_renderTarget);
         
         // Tool drag preview overlays (selection rect, lasso path, gradient line)
-        if (m_isDragging) {
-            ID2D1SolidColorBrush* previewBrush = nullptr;
-            m_renderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.7f), &previewBrush);
-            if (previewBrush) {
-                switch (m_currentTool) {
-                    case ToolType::RectSelect: {
-                        float x1 = std::min(m_dragStartX, m_dragCurrentX);
-                        float y1 = std::min(m_dragStartY, m_dragCurrentY);
-                        float x2 = std::max(m_dragStartX, m_dragCurrentX);
-                        float y2 = std::max(m_dragStartY, m_dragCurrentY);
-                        D2D1_RECT_F rc = D2D1::RectF(x1, y1, x2, y2);
-                        m_renderTarget->DrawRectangle(rc, previewBrush, 1.0f);
-                        break;
-                    }
-                    case ToolType::EllipseSelect: {
-                        float cx = (m_dragStartX + m_dragCurrentX) * 0.5f;
-                        float cy = (m_dragStartY + m_dragCurrentY) * 0.5f;
-                        float rx = std::abs(m_dragCurrentX - m_dragStartX) * 0.5f;
-                        float ry = std::abs(m_dragCurrentY - m_dragStartY) * 0.5f;
-                        D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(cx, cy), rx, ry);
-                        m_renderTarget->DrawEllipse(ellipse, previewBrush, 1.0f);
-                        break;
-                    }
-                    case ToolType::LassoSelect: {
-                        if (m_lassoPoints.size() > 1) {
-                            for (size_t i = 1; i < m_lassoPoints.size(); ++i) {
-                                m_renderTarget->DrawLine(
-                                    D2D1::Point2F(static_cast<float>(m_lassoPoints[i-1].x), static_cast<float>(m_lassoPoints[i-1].y)),
-                                    D2D1::Point2F(static_cast<float>(m_lassoPoints[i].x), static_cast<float>(m_lassoPoints[i].y)),
-                                    previewBrush, 1.0f);
-                            }
-                        }
-                        break;
-                    }
-                    case ToolType::Gradient: {
-                        m_renderTarget->DrawLine(
-                            D2D1::Point2F(m_dragStartX, m_dragStartY),
-                            D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
-                            previewBrush, 1.5f);
-                        // Draw start/end dots
-                        D2D1_ELLIPSE e1 = D2D1::Ellipse(D2D1::Point2F(m_dragStartX, m_dragStartY), 3.0f, 3.0f);
-                        D2D1_ELLIPSE e2 = D2D1::Ellipse(D2D1::Point2F(m_dragCurrentX, m_dragCurrentY), 3.0f, 3.0f);
-                        m_renderTarget->FillEllipse(e1, previewBrush);
-                        m_renderTarget->FillEllipse(e2, previewBrush);
-                        break;
-                    }
-                    case ToolType::Move: {
-                        // Show ghost offset line
-                        m_renderTarget->DrawLine(
-                            D2D1::Point2F(m_dragStartX, m_dragStartY),
-                            D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
-                            previewBrush, 1.0f);
-                        break;
-                    }
-                    case ToolType::Shape: {
-                        float x1 = std::min(m_dragStartX, m_dragCurrentX);
-                        float y1 = std::min(m_dragStartY, m_dragCurrentY);
-                        float x2 = std::max(m_dragStartX, m_dragCurrentX);
-                        float y2 = std::max(m_dragStartY, m_dragCurrentY);
-                        D2D1_RECT_F rc = D2D1::RectF(x1, y1, x2, y2);
-                        ID2D1SolidColorBrush* fillBrush = nullptr;
-                        m_renderTarget->CreateSolidColorBrush(
-                            D2D1::ColorF(m_brushColor.r/255.0f, m_brushColor.g/255.0f, m_brushColor.b/255.0f, m_brushColor.a/255.0f * 0.4f),
-                            &fillBrush);
-                        if (fillBrush) {
-                            m_renderTarget->FillRectangle(rc, fillBrush);
-                            fillBrush->Release();
-                        }
-                        m_renderTarget->DrawRectangle(rc, previewBrush, 1.0f);
-                        break;
-                    }
-                    case ToolType::Transform: {
-                        // Draw transform pivot and scale indicator
-                        m_renderTarget->DrawLine(
-                            D2D1::Point2F(m_dragStartX, m_dragStartY),
-                            D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
-                            previewBrush, 1.0f);
-                        D2D1_ELLIPSE pivot = D2D1::Ellipse(D2D1::Point2F(m_dragStartX, m_dragStartY), 4.0f, 4.0f);
-                        m_renderTarget->DrawEllipse(pivot, previewBrush, 1.0f);
-                        break;
-                    }
-                    default:
-                        break;
+        if (m_isDragging && m_previewBrush) {
+            switch (m_currentTool) {
+                case ToolType::RectSelect: {
+                    float x1 = std::min(m_dragStartX, m_dragCurrentX);
+                    float y1 = std::min(m_dragStartY, m_dragCurrentY);
+                    float x2 = std::max(m_dragStartX, m_dragCurrentX);
+                    float y2 = std::max(m_dragStartY, m_dragCurrentY);
+                    D2D1_RECT_F rc = D2D1::RectF(x1, y1, x2, y2);
+                    m_renderTarget->DrawRectangle(rc, m_previewBrush, 1.0f);
+                    break;
                 }
-                previewBrush->Release();
+                case ToolType::EllipseSelect: {
+                    float cx = (m_dragStartX + m_dragCurrentX) * 0.5f;
+                    float cy = (m_dragStartY + m_dragCurrentY) * 0.5f;
+                    float rx = std::abs(m_dragCurrentX - m_dragStartX) * 0.5f;
+                    float ry = std::abs(m_dragCurrentY - m_dragStartY) * 0.5f;
+                    D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(cx, cy), rx, ry);
+                    m_renderTarget->DrawEllipse(ellipse, m_previewBrush, 1.0f);
+                    break;
+                }
+                case ToolType::LassoSelect: {
+                    if (m_lassoPoints.size() > 1) {
+                        for (size_t i = 1; i < m_lassoPoints.size(); ++i) {
+                            m_renderTarget->DrawLine(
+                                D2D1::Point2F(static_cast<float>(m_lassoPoints[i-1].x), static_cast<float>(m_lassoPoints[i-1].y)),
+                                D2D1::Point2F(static_cast<float>(m_lassoPoints[i].x), static_cast<float>(m_lassoPoints[i].y)),
+                                m_previewBrush, 1.0f);
+                        }
+                    }
+                    break;
+                }
+                case ToolType::Gradient: {
+                    m_renderTarget->DrawLine(
+                        D2D1::Point2F(m_dragStartX, m_dragStartY),
+                        D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
+                        m_previewBrush, 1.5f);
+                    // Draw start/end dots
+                    D2D1_ELLIPSE e1 = D2D1::Ellipse(D2D1::Point2F(m_dragStartX, m_dragStartY), 3.0f, 3.0f);
+                    D2D1_ELLIPSE e2 = D2D1::Ellipse(D2D1::Point2F(m_dragCurrentX, m_dragCurrentY), 3.0f, 3.0f);
+                    m_renderTarget->FillEllipse(e1, m_previewBrush);
+                    m_renderTarget->FillEllipse(e2, m_previewBrush);
+                    break;
+                }
+                case ToolType::Move: {
+                    // Show ghost offset line
+                    m_renderTarget->DrawLine(
+                        D2D1::Point2F(m_dragStartX, m_dragStartY),
+                        D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
+                        m_previewBrush, 1.0f);
+                    break;
+                }
+                case ToolType::Shape: {
+                    float x1 = std::min(m_dragStartX, m_dragCurrentX);
+                    float y1 = std::min(m_dragStartY, m_dragCurrentY);
+                    float x2 = std::max(m_dragStartX, m_dragCurrentX);
+                    float y2 = std::max(m_dragStartY, m_dragCurrentY);
+                    D2D1_RECT_F rc = D2D1::RectF(x1, y1, x2, y2);
+                    if (m_fillBrush) {
+                        m_fillBrush->SetColor(D2D1::ColorF(m_brushColor.r/255.0f, m_brushColor.g/255.0f, m_brushColor.b/255.0f, m_brushColor.a/255.0f * 0.4f));
+                        m_renderTarget->FillRectangle(rc, m_fillBrush);
+                    }
+                    m_renderTarget->DrawRectangle(rc, m_previewBrush, 1.0f);
+                    break;
+                }
+                case ToolType::Transform: {
+                    // Draw transform pivot and scale indicator
+                    m_renderTarget->DrawLine(
+                        D2D1::Point2F(m_dragStartX, m_dragStartY),
+                        D2D1::Point2F(m_dragCurrentX, m_dragCurrentY),
+                        m_previewBrush, 1.0f);
+                    D2D1_ELLIPSE pivot = D2D1::Ellipse(D2D1::Point2F(m_dragStartX, m_dragStartY), 4.0f, 4.0f);
+                    m_renderTarget->DrawEllipse(pivot, m_previewBrush, 1.0f);
+                    break;
+                }
+                default:
+                    break;
             }
         }
         
@@ -405,49 +414,33 @@ void CanvasView::UpdateCompositeBitmap() {
 }
 
 void CanvasView::DrawCheckerboard(ID2D1RenderTarget* rt) {
-    if (!rt) return;
+    if (!rt || !m_lightBrush || !m_darkBrush) return;
     
     const float checkSize = 8.0f;
     const int checksX = static_cast<int>(m_canvasWidth / checkSize) + 1;
     const int checksY = static_cast<int>(m_canvasHeight / checkSize) + 1;
     
-    ID2D1SolidColorBrush* lightBrush = nullptr;
-    ID2D1SolidColorBrush* darkBrush = nullptr;
-    rt->CreateSolidColorBrush(D2D1::ColorF(0.5f, 0.5f, 0.5f, 1.0f), &lightBrush);
-    rt->CreateSolidColorBrush(D2D1::ColorF(0.4f, 0.4f, 0.4f, 1.0f), &darkBrush);
-    
-    if (lightBrush && darkBrush) {
-        for (int y = 0; y < checksY; ++y) {
-            for (int x = 0; x < checksX; ++x) {
-                float x0 = x * checkSize;
-                float y0 = y * checkSize;
-                float x1 = std::min(x0 + checkSize, static_cast<float>(m_canvasWidth));
-                float y1 = std::min(y0 + checkSize, static_cast<float>(m_canvasHeight));
-                D2D1_RECT_F rect = D2D1::RectF(x0, y0, x1, y1);
-                rt->FillRectangle(rect, ((x + y) % 2 == 0) ? lightBrush : darkBrush);
-            }
+    for (int y = 0; y < checksY; ++y) {
+        for (int x = 0; x < checksX; ++x) {
+            float x0 = x * checkSize;
+            float y0 = y * checkSize;
+            float x1 = std::min(x0 + checkSize, static_cast<float>(m_canvasWidth));
+            float y1 = std::min(y0 + checkSize, static_cast<float>(m_canvasHeight));
+            D2D1_RECT_F rect = D2D1::RectF(x0, y0, x1, y1);
+            rt->FillRectangle(rect, ((x + y) % 2 == 0) ? m_lightBrush : m_darkBrush);
         }
     }
-    
-    if (lightBrush) lightBrush->Release();
-    if (darkBrush) darkBrush->Release();
 }
 
 void CanvasView::DrawCanvasBorder(ID2D1RenderTarget* rt) {
-    if (!rt) return;
+    if (!rt || !m_borderBrush) return;
     
-    ID2D1SolidColorBrush* borderBrush = nullptr;
-    rt->CreateSolidColorBrush(D2D1::ColorF(0.3f, 0.3f, 0.3f, 1.0f), &borderBrush);
-    
-    if (borderBrush) {
-        D2D1_RECT_F rect = D2D1::RectF(0, 0, static_cast<float>(m_canvasWidth), static_cast<float>(m_canvasHeight));
-        rt->DrawRectangle(rect, borderBrush, 1.0f);
-        borderBrush->Release();
-    }
+    D2D1_RECT_F rect = D2D1::RectF(0, 0, static_cast<float>(m_canvasWidth), static_cast<float>(m_canvasHeight));
+    rt->DrawRectangle(rect, m_borderBrush, 1.0f);
 }
 
 void CanvasView::DrawBrushCursor(ID2D1RenderTarget* rt) {
-    if (!rt || m_isDrawing || !m_cursorInside) return;
+    if (!rt || !m_cursorBrush || m_isDrawing || !m_cursorInside) return;
     
     float canvasX, canvasY;
     ScreenToCanvas(m_cursorScreenX, m_cursorScreenY, canvasX, canvasY);
@@ -457,10 +450,6 @@ void CanvasView::DrawBrushCursor(ID2D1RenderTarget* rt) {
         canvasY < 0 || canvasY >= static_cast<float>(m_canvasHeight)) {
         return;
     }
-    
-    ID2D1SolidColorBrush* cursorBrush = nullptr;
-    rt->CreateSolidColorBrush(D2D1::ColorF(0.7f, 0.7f, 0.7f, 0.8f), &cursorBrush);
-    if (!cursorBrush) return;
     
     auto& brush = Render::BrushEngine::GetInstance();
     float radius = (brush.GetSize() * 0.5f) * m_zoom;
@@ -473,105 +462,104 @@ void CanvasView::DrawBrushCursor(ID2D1RenderTarget* rt) {
                 D2D1::Point2F(canvasX, canvasY),
                 radius, radius
             );
-            rt->DrawEllipse(ellipse, cursorBrush, 1.0f);
+            rt->DrawEllipse(ellipse, m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::Eyedropper: {
             float len = 8.0f;
             float cx = canvasX;
             float cy = canvasY;
-            rt->DrawLine(D2D1::Point2F(cx - len, cy), D2D1::Point2F(cx + len, cy), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(cx, cy - len), D2D1::Point2F(cx, cy + len), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(cx - len, cy), D2D1::Point2F(cx + len, cy), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(cx, cy - len), D2D1::Point2F(cx, cy + len), m_cursorBrush, 1.0f);
             D2D1_RECT_F rect = D2D1::RectF(cx - 4, cy - 4, cx + 4, cy + 4);
-            rt->DrawRectangle(rect, cursorBrush, 1.0f);
+            rt->DrawRectangle(rect, m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::Fill: {
             float s = 10.0f;
             float cx = canvasX;
             float cy = canvasY;
-            rt->DrawLine(D2D1::Point2F(cx - s*0.5f, cy - s*0.3f), D2D1::Point2F(cx + s*0.5f, cy - s*0.3f), cursorBrush, 1.5f);
-            rt->DrawLine(D2D1::Point2F(cx - s*0.5f, cy - s*0.3f), D2D1::Point2F(cx - s*0.3f, cy + s*0.5f), cursorBrush, 1.5f);
-            rt->DrawLine(D2D1::Point2F(cx + s*0.5f, cy - s*0.3f), D2D1::Point2F(cx + s*0.3f, cy + s*0.5f), cursorBrush, 1.5f);
-            rt->DrawLine(D2D1::Point2F(cx - s*0.3f, cy + s*0.5f), D2D1::Point2F(cx + s*0.3f, cy + s*0.5f), cursorBrush, 1.5f);
+            rt->DrawLine(D2D1::Point2F(cx - s*0.5f, cy - s*0.3f), D2D1::Point2F(cx + s*0.5f, cy - s*0.3f), m_cursorBrush, 1.5f);
+            rt->DrawLine(D2D1::Point2F(cx - s*0.5f, cy - s*0.3f), D2D1::Point2F(cx - s*0.3f, cy + s*0.5f), m_cursorBrush, 1.5f);
+            rt->DrawLine(D2D1::Point2F(cx + s*0.5f, cy - s*0.3f), D2D1::Point2F(cx + s*0.3f, cy + s*0.5f), m_cursorBrush, 1.5f);
+            rt->DrawLine(D2D1::Point2F(cx - s*0.3f, cy + s*0.5f), D2D1::Point2F(cx + s*0.3f, cy + s*0.5f), m_cursorBrush, 1.5f);
             break;
         }
         case ToolType::RectSelect: {
             float s = 6.0f;
-            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), m_cursorBrush, 1.0f);
             D2D1_RECT_F rc = D2D1::RectF(canvasX - s, canvasY - s, canvasX + s, canvasY + s);
-            rt->DrawRectangle(rc, cursorBrush, 1.0f);
+            rt->DrawRectangle(rc, m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::EllipseSelect: {
             D2D1_ELLIPSE ellipse = D2D1::Ellipse(D2D1::Point2F(canvasX, canvasY), 6.0f, 6.0f);
-            rt->DrawEllipse(ellipse, cursorBrush, 1.0f);
+            rt->DrawEllipse(ellipse, m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::LassoSelect: {
             float s = 6.0f;
-            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX + s*0.5f, canvasY + s*0.5f), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX + s*0.5f, canvasY + s*0.5f), D2D1::Point2F(canvasX - s*0.5f, canvasY + s*0.5f), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX - s*0.5f, canvasY + s*0.5f), D2D1::Point2F(canvasX, canvasY - s), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX + s*0.5f, canvasY + s*0.5f), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX + s*0.5f, canvasY + s*0.5f), D2D1::Point2F(canvasX - s*0.5f, canvasY + s*0.5f), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s*0.5f, canvasY + s*0.5f), D2D1::Point2F(canvasX, canvasY - s), m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::MagicWand: {
             float s = 6.0f;
-            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), m_cursorBrush, 1.0f);
             D2D1_ELLIPSE e = D2D1::Ellipse(D2D1::Point2F(canvasX, canvasY), 3.0f, 3.0f);
-            rt->FillEllipse(e, cursorBrush);
+            rt->FillEllipse(e, m_cursorBrush);
             break;
         }
         case ToolType::Move: {
             float s = 8.0f;
-            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX, canvasY - s), D2D1::Point2F(canvasX, canvasY + s), m_cursorBrush, 1.0f);
             // Arrow heads
-            rt->DrawLine(D2D1::Point2F(canvasX + s - 3, canvasY - 3), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX + s - 3, canvasY + 3), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX - 3, canvasY + s - 3), D2D1::Point2F(canvasX, canvasY + s), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX + 3, canvasY + s - 3), D2D1::Point2F(canvasX, canvasY + s), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX + s - 3, canvasY - 3), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX + s - 3, canvasY + 3), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - 3, canvasY + s - 3), D2D1::Point2F(canvasX, canvasY + s), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX + 3, canvasY + s - 3), D2D1::Point2F(canvasX, canvasY + s), m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::Gradient: {
             float s = 8.0f;
-            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY), D2D1::Point2F(canvasX + s, canvasY), m_cursorBrush, 1.0f);
             D2D1_ELLIPSE e1 = D2D1::Ellipse(D2D1::Point2F(canvasX - s, canvasY), 2.0f, 2.0f);
             D2D1_ELLIPSE e2 = D2D1::Ellipse(D2D1::Point2F(canvasX + s, canvasY), 2.0f, 2.0f);
-            rt->FillEllipse(e1, cursorBrush);
-            rt->FillEllipse(e2, cursorBrush);
+            rt->FillEllipse(e1, m_cursorBrush);
+            rt->FillEllipse(e2, m_cursorBrush);
             break;
         }
         case ToolType::Transform: {
             float s = 8.0f;
             D2D1_RECT_F rc = D2D1::RectF(canvasX - s, canvasY - s, canvasX + s, canvasY + s);
-            rt->DrawRectangle(rc, cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY - s), D2D1::Point2F(canvasX + s, canvasY + s), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX + s, canvasY - s), D2D1::Point2F(canvasX - s, canvasY + s), cursorBrush, 1.0f);
+            rt->DrawRectangle(rc, m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - s, canvasY - s), D2D1::Point2F(canvasX + s, canvasY + s), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX + s, canvasY - s), D2D1::Point2F(canvasX - s, canvasY + s), m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::Text: {
             // I-beam cursor shape
             float w = 3.0f, h = 10.0f;
             D2D1_RECT_F rc = D2D1::RectF(canvasX - w*0.5f, canvasY - h*0.5f, canvasX + w*0.5f, canvasY + h*0.5f);
-            rt->FillRectangle(rc, cursorBrush);
-            rt->DrawLine(D2D1::Point2F(canvasX - w - 2, canvasY - h*0.5f), D2D1::Point2F(canvasX + w + 2, canvasY - h*0.5f), cursorBrush, 1.0f);
-            rt->DrawLine(D2D1::Point2F(canvasX - w - 2, canvasY + h*0.5f), D2D1::Point2F(canvasX + w + 2, canvasY + h*0.5f), cursorBrush, 1.0f);
+            rt->FillRectangle(rc, m_cursorBrush);
+            rt->DrawLine(D2D1::Point2F(canvasX - w - 2, canvasY - h*0.5f), D2D1::Point2F(canvasX + w + 2, canvasY - h*0.5f), m_cursorBrush, 1.0f);
+            rt->DrawLine(D2D1::Point2F(canvasX - w - 2, canvasY + h*0.5f), D2D1::Point2F(canvasX + w + 2, canvasY + h*0.5f), m_cursorBrush, 1.0f);
             break;
         }
         case ToolType::Shape: {
             float s = 6.0f;
             D2D1_RECT_F rc = D2D1::RectF(canvasX - s, canvasY - s, canvasX + s, canvasY + s);
-            rt->DrawRectangle(rc, cursorBrush, 1.0f);
+            rt->DrawRectangle(rc, m_cursorBrush, 1.0f);
             break;
         }
         default:
             break;
     }
     
-    cursorBrush->Release();
 }
 
 void CanvasView::OnMouseMove(const Point& pos) {
@@ -1408,32 +1396,19 @@ void CanvasView::ApplyGradient(float x1, float y1, float x2, float y2) {
 // D2D selection outline (marching ants)
 // -------------------------------------------------------------------------
 void CanvasView::DrawSelectionOutline(ID2D1RenderTarget* rt) {
-    if (!rt || !m_selection || m_selection->IsEmpty()) return;
+    if (!rt || !m_whiteBrush || !m_blackBrush || !m_selection || m_selection->IsEmpty()) return;
     
     std::vector<std::pair<int, int>> boundary;
     m_selection->GetBoundaryPixels(boundary, 2);
     if (boundary.empty()) return;
-    
-    ID2D1SolidColorBrush* whiteBrush = nullptr;
-    ID2D1SolidColorBrush* blackBrush = nullptr;
-    rt->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &whiteBrush);
-    rt->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f), &blackBrush);
-    if (!whiteBrush || !blackBrush) {
-        if (whiteBrush) whiteBrush->Release();
-        if (blackBrush) blackBrush->Release();
-        return;
-    }
     
     constexpr int segment = 4;
     for (const auto& [x, y] : boundary) {
         int phase = ((x + y) / segment + m_marchingAntsOffset) % 2;
         D2D1_RECT_F rc = D2D1::RectF(static_cast<float>(x), static_cast<float>(y),
                                       static_cast<float>(x + 1), static_cast<float>(y + 1));
-        rt->FillRectangle(rc, phase == 0 ? whiteBrush : blackBrush);
+        rt->FillRectangle(rc, phase == 0 ? m_whiteBrush : m_blackBrush);
     }
-    
-    whiteBrush->Release();
-    blackBrush->Release();
 }
 
 // -------------------------------------------------------------------------
