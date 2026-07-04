@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <algorithm>
 
-namespace VividPic {
+namespace CloverPic {
 
 enum class BlendMode {
     Normal,
@@ -57,4 +57,4 @@ private:
                      float& outR, float& outG, float& outB, float& outA);
 };
 
-} // namespace VividPic
+} // namespace CloverPic

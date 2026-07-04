@@ -2,14 +2,15 @@
 
 #include "Core/Layer.h"
 #include "Core/History.h"
-#include "Render/BrushPreset.h"
+#include "Core/Render/BrushPreset.h"
 
-namespace VividPic {
+namespace CloverPic {
 
 class RasterLayer : public Layer {
 public:
     RasterLayer(const String& name, LayerType type, uint32_t canvasWidth, uint32_t canvasHeight);
     ~RasterLayer() override;
+    void SetHistoryManager(HistoryManager* historyManager) { m_historyManager = historyManager; }
 
     LayerType GetType() const override { return m_type; }
 
@@ -52,10 +53,11 @@ private:
 
     // Current stroke undo item (active during a drawing stroke)
     std::unique_ptr<StrokeUndoItem> m_currentUndoItem;
+    HistoryManager* m_historyManager = nullptr;
 
     void ReleaseAllTiles();
     Render::Tile* AcquireTile(uint32_t gridX, uint32_t gridY);
     void DetachForWrite(); // Copy-on-Write: clone tiles if shared
 };
 
-} // namespace VividPic
+} // namespace CloverPic

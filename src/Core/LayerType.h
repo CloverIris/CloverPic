@@ -1,6 +1,6 @@
 #pragma once
 
-namespace VividPic {
+namespace CloverPic {
 
 enum class LayerType {
     Color,
@@ -12,4 +12,4 @@ enum class LayerType {
     Adjustment
 };
 
-} // namespace VividPic
+} // namespace CloverPic

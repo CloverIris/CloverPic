@@ -4,7 +4,7 @@
 #include <cmath>
 #include <stack>
 
-namespace VividPic {
+namespace CloverPic {
 
 SelectionMask::SelectionMask(uint32_t canvasWidth, uint32_t canvasHeight)
     : m_canvasWidth(canvasWidth), m_canvasHeight(canvasHeight) {
@@ -156,22 +156,6 @@ void SelectionMask::FillEllipse(uint32_t cx, uint32_t cy, uint32_t rx, uint32_t 
     }
 }
 
-// Simple scanline polygon fill (even-odd rule)
-static void ScanlineFill(int y, const std::vector<std::pair<float, float>>& xIntersections,
-                         std::function<void(int x1, int x2)> fillRow) {
-    std::vector<float> xs;
-    xs.reserve(xIntersections.size());
-    for (auto [y0, x] : xIntersections) {
-        if (static_cast<int>(y0) == y) xs.push_back(x);
-    }
-    std::sort(xs.begin(), xs.end());
-    for (size_t i = 0; i + 1 < xs.size(); i += 2) {
-        int x1 = static_cast<int>(std::ceil(xs[i]));
-        int x2 = static_cast<int>(std::floor(xs[i + 1]));
-        if (x2 >= x1) fillRow(x1, x2);
-    }
-}
-
 void SelectionMask::FillPolygon(const std::vector<Point>& points, uint8_t value) {
     if (points.size() < 3) return;
 
@@ -301,4 +285,4 @@ bool SelectionMask::MaskTile::IsFull() const {
     return true;
 }
 
-} // namespace VividPic
+} // namespace CloverPic

@@ -1,436 +1,178 @@
-# ViVidPic 产品需求文档 (PRD)
-
-## 1. 文档信息
-
-| 项目 | 内容 |
-|------|------|
-| **产品名称** | ViVidPic |
-| **版本** | v1.0.0 |
-| **目标平台** | Windows 10 (x64) |
-| **开发语言** | 纯 C++20 |
-| **工具链** | MinGW-w64 (GCC 13+, CMake 3.25+) |
-| **软件类型** | 专业插画/漫画绘画工具 |
-| **数位板支持** | Windows Ink API + WinTab 双栈支持 |
-
----
-
-## 2. 项目概述
-
-ViVidPic 是一款面向插画师和漫画作者的纯 C++ 原生绘画软件。它采用自研渲染管线与轻量级 UI 框架，在 Windows 10 上提供低延迟、高保真的绘画体验。核心特性包括：智能内存感知的画布推荐、专业级图层系统、多引擎数位板压感支持、可拖拽浮动面板布局，以及云端项目同步能力。
-
----
-
-## 3. 系统架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Presentation Layer                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │ HomeScreen│ │ Workspace│ │  Dialogs │ │  Panels  │       │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
-├─────────────────────────────────────────────────────────────┤
-│                      Application Layer                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │ Project  │ │  Canvas  │ │  Layer   │ │  Brush   │       │
-│  │ Manager  │ │  Engine  │ │  Manager │ │  Engine  │       │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
-├─────────────────────────────────────────────────────────────┤
-│                      Infrastructure Layer                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
-│  │  Memory  │ │  Tablet  │ │  Render  │ │   I/O    │       │
-│  │  Advisor │ │  Driver  │ │  Backend │ │  System  │       │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 4. 功能模块详细设计
-
-### 4.1 Module: HomeScreen 项目管理
-
-**对应截图 Image 1**，作为应用程序启动后的首屏。
-
-#### 4.1.1 界面布局
-- **左侧/中央导航区**：垂直分组按钮列表，暗色主题（#2B2B2B 背景，#3C3C3C 按钮）
-- **底部状态栏**：语言选择下拉框 (`Language: (auto)`)
-
-#### 4.1.2 功能分组
-
-**画画看吧（创作入口）**
-| 按钮 | 功能描述 |
-|------|----------|
-| 绘制插画 | 打开新建画布对话框（默认插画预设） |
-| 绘制漫画 | 打开新建画布对话框（默认漫画/分镜预设） |
-| 打开文件夹 | 唤起资源管理器，打开本地项目目录 |
-| 最近使用的文件夹 | 下拉/展开最近 10 个访问过的项目路径 |
-| 从云端打开 | 打开云端项目列表对话框（需登录） |
-| 图书馆 | 打开素材/参考图库管理器 |
-| 延时摄影画廊 | 查看本地录制的绘画过程回放列表 |
-
-**投稿试试吧（发布入口）**
-| 按钮 | 功能描述 |
-|------|----------|
-| 提交艺术品 | 导出并上传到作品投稿平台 |
-| 从云端提交 | 选择云端项目直接投稿 |
-| 漫画投稿 | 漫画分页投稿向导 |
-| 申请比赛 | 打开比赛活动列表页面 |
-
-**其他**
-| 按钮 | 功能描述 |
-|------|----------|
-| 环境设定 | 打开全局首选项对话框 |
-| 教程 | 打开内置教程浏览器 |
-| 视频作品 | 管理导出的延时摄影视频 |
-
-#### 4.1.3 项目管理逻辑
-- **最近文档**：维护 `recent_projects.json`，保存路径、缩略图哈希、最后打开时间
-- **项目文件格式**：`.vvp` (ViVidPic Project)，自定义二进制分块格式（VVP v1/v2 双版本兼容）
-  - VVP v2 采用 `"VVP2"` magic + chunk 结构，支持 `RasterLayer` 像素数据与 `TextLayer` 可编辑属性（文本/字体/字号/颜色/位置）的完整序列化
-  - 支持从 HomeScreen / Workspace 打开 `.vvp` 并重建 CanvasView
-
----
-
-### 4.2 Module: 画布创建与内存感知推荐
-
-**对应截图 Image 2**。
-
-#### 4.2.1 新建画布对话框
-- **尺寸输入**：
-  - 宽度、高度：数值输入框 + 单位选择（cm / mm / inch / px）
-  - "替换宽度和高度"按钮：快速交换宽高数值
-  - 纸张尺寸预设下拉框：A4, A3, B5, US Letter, 明信片, 自定义...
-- **分辨率**：DPI 输入（默认 350，范围 72~2400）
-- **背景色**：下拉选择（透明 / 白色 / 黑色 / 自定义），透明时显示棋盘格预览
-- **初始图层**：下拉选择（彩色图层 / 灰度图层 / 透明图层）
-- **纪录区域**：实时显示计算后的像素尺寸（如 `1600 px * 1200 px (350 dpi)`）
-
-#### 4.2.2 内存感知推荐系统（核心算法）
-
-**需求**：根据系统物理内存的 **80%** 计算安全上限，向用户推荐最大画布尺寸与图层上限。
-
-```cpp
-struct MemoryAdvice {
-    size_t max_canvas_width;
-    size_t max_canvas_height;
-    size_t max_layers;
-    size_t memory_per_layer;
-    size_t total_estimated_usage;
-};
-
-MemoryAdvice CalculateMemoryAdvice() {
-    MEMORYSTATUSEX memStatus;
-    memStatus.dwLength = sizeof(memStatus);
-    GlobalMemoryStatusEx(&memStatus);
-    uint64_t totalPhysical = memStatus.ullTotalPhys;
-    
-    uint64_t memoryBudget = totalPhysical * 0.80;
-    uint64_t usableBudget = memoryBudget - (512ULL * 1024 * 1024);
-    
-    // memory_per_layer = width * height * 4 bytes
-    // 额外开销：图层缩略图、遮罩、选区缓存按 20% 计算
-    
-    // UI 展示规则
-    // - 绿色：当前设置在安全预算 50% 以内
-    // - 黄色：当前设置在安全预算 50%~80%
-    // - 红色：当前设置超出安全预算，必须警告并阻止创建
-}
-```
-
-#### 4.2.3 颜色模式
-- **RGB文件**：选择关联的 RGB 配置文件（sRGB, Adobe RGB, ProPhoto RGB）
-- **CMYK文件**：选择关联的 CMYK 配置文件（用于印刷预览，绘画时仍基于 RGB，导出时转换）
-
----
-
-### 4.3 Module: 主工作区与可拖拽面板布局
-
-**对应截图 Image 3**。
-
-#### 4.3.1 顶部菜单栏
-| 菜单 | 功能 |
-|------|------|
-| 文件(F) | 新建窗口、新建云端计划、打开、保存、导出、打印 |
-| 编辑(E) | 撤销/重做、剪切/复制/粘贴、首选项 |
-| 图层(L) | 新建、复制、删除、合并、合并可见、拼合图像 |
-| 滤镜(R) | 高斯模糊、锐化、色调分离、色相/饱和度调整 |
-| 选择(S) | 全选、取消选择、反选、羽化、扩展/收缩 |
-| 捕捉(N) | 启用/关闭捕捉、网格设置、透视辅助线 |
-| 颜色(C) | 颜色配置文件、校样设置 |
-| 表示(V) | 缩放、旋转画布、显示/隐藏网格、全屏模式 |
-| 工具(T) | 笔刷、橡皮、吸管、填充、选择工具等切换 |
-| 窗口(W) | 面板开关、初始化布局、保存/加载工作区 |
-| 云 | 同步状态、上传/下载、冲突解决 |
-| 时间流逝 | 开始/停止录制、回放设置 |
-| Help | 文档、快捷键列表、关于 |
-
-#### 4.3.2 顶部快捷工具栏
-- 图标化常用操作：新建、打开、保存、撤销/重做、笔刷预设切换、不透明度快速调整
-- 显示当前工具属性摘要（如画笔大小、当前颜色）
-
-#### 4.3.3 左侧面板区（可拖拽浮动/停靠）
-
-**颜色面板（颜色）**
-- 大型方形色域选择器（饱和度/明度）
-- 右侧垂直色相条（0°~360°）
-- 当前颜色数值显示（RGB, HSV, Hex）
-- 颜色历史记录（最近使用的 16 色）
-
-**笔刷预览（笔刷预览）**
-- 左半：当前笔刷笔尖形状预览（支持透明背景棋盘格）
-- 右半：笔刷笔触效果预览（显示一次绘制轨迹）
-
-**笔刷控制（笔刷控制）**
-- 笔刷大小滑块（范围 1~5000 px）
-- 不透明度滑块（0%~100%）
-
-**笔刷列表（笔刷）**
-- 分组列表视图，显示笔刷名称、尺寸预设值、颜色标签
-- 支持：新建笔刷、删除、复制、导入/导出笔刷包（`.vvpbrush`）
-
-#### 4.3.4 中央画布区
-- 暗色背景（#4A4A4A），画布外区域显示棋盘格或纯色
-- 空画布时显示提示文字
-- 支持画布旋转（任意角度）、镜像翻转、缩放（1%~6400%）
-- 光标：根据当前工具显示不同光标
-
-#### 4.3.5 右侧面板区（可拖拽浮动/停靠）
-
-**导航器（导航）**
-- 整图缩略图预览
-- 当前视图范围矩形框（可拖拽移动视图）
-- 缩放比例显示与控制
-
-**图层面板（图层）**
-- 图层列表（缩略图 + 名称 + 可见性/锁定/Solo 图标）
-- 不透明度滑块
-- 混合模式下拉框（18 种：Normal / Multiply / Screen / Overlay / Difference / Add / Subtract / Darken / Lighten / ColorDodge / ColorBurn / HardLight / SoftLight / Exclusion / Hue / Saturation / Color / Luminosity）
-- 复选框：保护透明度（Protect Alpha）、锁定
-- 底部工具栏：新建图层、复制图层、合并图层、删除图层
-
-**笔刷尺寸预设（笔刷尺寸）**
-- 网格状快速选择按钮：1, 1.5, 2, 3, 4, 5, 7, 10, 12, 15, 20, 25, 30, 40, 50, 70, 100, 150, 200, 300, 400, 500, 700, 1000
-- 点击快速设置笔刷大小
-
----
-
-### 4.4 Module: 绘画引擎与数位板支持
-
-#### 4.4.1 渲染后端
-- **MinGW 兼容方案**：使用 **Direct2D** 或自研基于 Direct3D 11/12 的 2D 渲染器
-- 画布渲染采用瓦片化（Tiled）内存管理，仅加载当前视图附近的图层数据到 GPU/内存
-- 支持大画布（>10000x10000px）的流畅缩放与平移
-
-#### 4.4.2 Windows 数位板 API 集成
-
-**必须同时支持以下两种接口**：
-
-1. **Windows Ink API**（Windows 10 原生，推荐）
-   - 使用 `WM_POINTERDOWN` / `WM_POINTERUPDATE` / `WM_POINTERUP`
-   - 获取：压感（Pressure）、倾斜（XTilt, YTilt）、笔身旋转（Rotation）、擦除侧键
-   - 支持手写笔悬停（Hover）显示光标
-
-2. **WinTab API**（Wacom 等传统驱动）
-   - 加载 `Wintab32.dll` 动态链接库
-   - 处理 `WT_PACKET` 消息
-   - 兼容老旧数位板设备
-
-**压感映射**：
-- 压感范围：0~2048 或 0~8192（根据硬件自动适配）
-- 压感曲线：可自定义（线性、S型、硬边等），影响笔刷大小和不透明度
-- 倾斜映射：支持将笔倾斜角度映射为笔刷形状椭圆化
-
----
-
-### 4.5 Module: 图层系统（核心）
-
-#### 4.5.1 图层类型
-| 类型 | 说明 | 状态 |
-|------|------|------|
-| 彩色图层 (`RasterLayer`) | 标准 RGBA 绘画图层，256×256 TileGrid 分块 + COW | ✅ 已实现 |
-| 文字图层 (`TextLayer`) | 可编辑文本，保留字体/字号/颜色/位置，DirectWrite 栅格化缓存 | ✅ 已实现 |
-| 灰度图层 | 仅灰度通道，用于起稿 | ⏳ 规划中 |
-| 透明图层 | 仅用于组织，无像素数据 | ⏳ 规划中 |
-| 图层组 | 可嵌套，支持组级混合模式与不透明度 | ⏳ 规划中 |
-| 矢量图层 | 钢笔路径，可无损缩放（用于漫画框线） | ⏳ 规划中 |
-| 调整图层 | 非破坏性色彩调整（色相/饱和度/曲线） | ⏳ 规划中 |
-
-#### 4.5.2 图层操作
-- **基础**：新建、删除、复制、合并（向下/可见/所选）、拼合图像
-- **可见性**：显示/隐藏、Solo 模式（仅显示当前图层，再次点击恢复）
-- **锁定**：透明像素锁定、全部锁定、位置锁定
-- **蒙版**：图层蒙版（256级灰度）、剪贴蒙版（基于下方图层Alpha）
-- **混合模式**：18 种标准混合模式（Normal, Multiply, Screen, Overlay, Difference, Add, Subtract, Darken, Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Exclusion, Hue, Saturation, Color, Luminosity）
-- **不透明度**：0%~100%，支持按笔刷压力覆盖
-
-#### 4.5.3 图层性能
-- 采用 **Copy-on-Write** 机制
-- 大图层自动分块（256x256px 瓦片），空区域不占用内存
-- 缩略图异步生成
-
----
-
-### 4.6 Module: 笔刷引擎
-
-#### 4.6.1 笔刷参数
-- 笔尖形状：圆形、方形、自定义纹理（PNG/Alpha）
-- 大小：1~5000px，支持压力映射
-- 不透明度：0%~100%，支持压力映射
-- 流量（Flow）：每次叠加的墨水浓度
-- 间距（Spacing）：笔触点之间的距离
-- 混合（Wet Mix）：模拟水彩/油画混合效果
-- 纹理叠加：加载纸张纹理，影响笔刷边缘
-
-#### 4.6.2 内置笔刷预设
-| 笔刷名 | 默认大小 | 特性 |
-|--------|----------|------|
-| 钢笔 | 8 | 硬边，无抗锯齿（像素画风格可选） |
-| G笔尖 | 10 | 漫画标准笔尖，压感控制粗细 |
-| G笔尖(软) | 10 | 软边G笔 |
-| 毛笔(水墨) | 30 | 模拟水墨扩散 |
-| 喷枪 | 100 | 软边喷雾，适合上色 |
-
----
-
-### 4.7 Module: 工具系统
-
-| 工具 | 功能 | 状态 |
-|------|------|------|
-| 笔刷工具 | 基础绘画，支持所有笔刷 | ✅ |
-| 橡皮擦 | 擦除像素（硬边/软边/笔刷形状） | ✅ |
-| 吸管 | 吸取画布颜色，自动切回上一个工具 | ✅ |
-| 油漆桶 | 填充连续区域或整图层 | ✅ |
-| 渐变工具 | 线性渐变填充（拖拽起点/终点） | ✅ |
-| 移动工具 | 移动图层内容或选区内容 | ✅ |
-| 套索选择 | 自由手绘选区 | ✅ |
-| 矩形/椭圆选择 | 几何选区，支持羽化 | ✅ |
-| 魔棒选择 | 基于颜色容差选择（FloodFill） | ✅ |
-| 变换工具 | 缩放变换（围绕画布中心 bilinear resampling） | ✅（基础）|
-| 文字工具 | 插入可编辑文字（DirectWrite 栅格化） | ✅ |
-| 形状工具 | 拖拽绘制填充矩形 | ✅（基础）|
-
----
-
-### 4.8 Module: 文件与导出
-
-#### 4.8.1 原生格式
-- `.vvp`：项目文件（VVP v2 自定义二进制分块格式，含图层像素数据与 TextLayer 可编辑属性）
-- `.vvpbrush`：笔刷预设包（规划中）
-
-#### 4.8.2 导入/导出格式
-| 格式 | 导入 | 导出 | 备注 |
-|------|------|------|------|
-| PNG | ✓ | ✓ | 支持透明，推荐插画导出 |
-| JPEG | ✓ | ✓ | 质量可调 1~100 |
-| BMP | ✓ | ✓ | 无压缩 |
-| TIFF | ✓ | ✓ | 支持图层（需扩展） |
-| PSD | ✓ | △ | 导入图层（基本兼容） |
-| ABR | ✓ | - | Photoshop 笔刷导入 |
-
----
-
-### 4.9 Module: 云端同步（扩展）
-
-- **账户系统**：匿名设备绑定或邮箱注册
-- **项目云存储**：自动上传 `.vvp` 文件到云端
-- **冲突处理**：本地与云端版本对比，支持合并或选择保留
-- **云端打开/提交**：从 HomeScreen 直接访问云端项目库
-
----
-
-### 4.10 Module: 延时摄影（时间流逝）
-
-- **录制**：可选择录制整个绘画过程或按时间间隔截图（1秒/5秒/30秒）
-- **回放**：内置播放器，支持调速（1x~16x）
-- **导出**：输出为 MP4（使用 FFmpeg，MinGW 编译）或 GIF
-- **存储**：帧序列保存在项目 `timelapse/` 目录，可后期重新编码
-
----
-
-### 4.11 Module: 滤镜与调整
-
-- **破坏性滤镜**：高斯模糊、运动模糊、锐化、USM 锐化、噪点、马赛克
-- **色彩调整**：亮度/对比度、色阶、曲线、色相/饱和度、色彩平衡、反相、阈值
-- **调整图层**（非破坏性）：曲线、色相/饱和度、色彩平衡
-
----
-
-## 5. 非功能需求
-
-| 类别 | 要求 |
-|------|------|
-| **性能** | 在 8GB 内存设备上，A4@350dpi 画布，支持至少 50 个图层流畅操作 |
-| **延迟** | 笔刷绘制延迟 < 16ms（60Hz 下 1 帧） |
-| **内存** | 空闲内存低于 10% 时自动触发警告 |
-| **兼容性** | 支持 Windows 10 版本 1903+，兼容 WinTab 与 Windows Ink 数位板 |
-| **可扩展性** | 插件接口预留（C++ DLL 插件系统 v2.0 实现） |
-| **国际化** | 支持中文、英文、日文（基于 JSON 的语言包，HomeScreen 可切换） |
-
----
-
-## 6. 数据模型
-
-```cpp
-struct Project {
-    UUID id;
-    std::string name;
-    Canvas canvas;
-    std::vector<std::unique_ptr<Layer>> layers;
-    std::optional<TimelapseRecorder> recorder;
-    Metadata meta;
-};
-
-struct Canvas {
-    uint32_t width_px;
-    uint32_t height_px;
-    float dpi;
-    ColorMode color_mode;
-    std::optional<ColorProfile> rgb_profile;
-    std::optional<ColorProfile> cmyk_profile;
-};
-
-struct Layer {
-    UUID id;
-    std::string name;
-    LayerType type;
-    BlendMode blend_mode;
-    uint8_t opacity;
-    bool visible;
-    bool locked;
-    bool protect_alpha;
-    std::optional<Mask> mask;
-    std::unique_ptr<PixelBuffer> pixels;
-};
-```
-
----
-
-## 7. 界面视觉规范
-
-- **主题**：深色模式
-  - 背景：`#2B2B2B`
-  - 面板：`#3C3C3C`
-  - 按钮默认：`#4A4A4A`
-  - 按钮悬停：`#5A5A5A`
-  - 高亮/选中：`#0078D7`（蓝色）
-  - 文字主色：`#E0E0E0`
-  - 文字次色：`#A0A0A0`
-- **字体**：优先使用系统默认无衬线字体（微软雅黑 / Segoe UI）
-- **面板**：支持浮动、停靠、自动隐藏、标签页堆叠
-- **光标**：自定义高精度光标，支持 32x32 与 64x64 版本
-
----
-
-## 8. 里程碑规划
-
-| 阶段 | 周期 | 交付物 |
-|------|------|--------|
-| **M1** | 2周 | 项目框架、MinGW 编译系统、自研 UI 基础、HomeScreen |
-| **M2** | 3周 | 画布引擎、Direct2D 渲染、基础笔刷、Windows Ink 数位板支持 |
-| **M3** | 2周 | 图层系统（彩色/透明/组）、混合模式、内存推荐算法 |
-| **M4** | 2周 | 完整笔刷引擎、笔刷面板、预设系统、WinTab 支持 |
-| **M5** | 2周 | 选择工具、变换、填充、渐变、文字工具、形状工具、导航器、Solo 模式、ToolBar 同步 |
-| **M6** | 2周 | 文件 I/O（VVP v1/v2 / PNG）、历史/撤销、滤镜、文字图层保存/加载 ✅ |
-| **M6.5** | — | 交互体验增强：Tooltip、Toast、右键菜单、Tab 导航、面板折叠/ScrollView、OLE 拖放、Splitter 拖拽、Marching Ants、转场动画 ✅ |
-| **M7** | 1周 | 云端 API 集成、延时摄影、导出功能 |
-| **M8** | 1周 | 国际化、设置面板、性能优化、Bug 修复 |
+# CloverPic PRD
+
+## 1. 产品定位
+
+CloverPic 是 Clover Creation 系列中的桌面绘画软件，面向插画、草图和轻量图片编辑。产品体验参考轻量级专业绘图工具：启动快、画布响应直接、图层和画笔工作流清晰，不依赖大型第三方 UI 框架。
+
+架构目标是把绘画模型、UI 逻辑和平台能力彻底分离。Core 负责所有平台无关的产品逻辑；adapter 只负责操作系统无法抽象掉的部分。未来添加 macOS、Linux、WASM 或其他平台时，应当只新增 adapter，而不是修改 core。
+
+## 2. 用户目标
+
+- 用户可以快速新建画布并开始绘制。
+- 用户可以使用画笔、橡皮、颜色和图层完成基础插画流程。
+- 用户可以保存 `.vvp` 项目并在之后继续编辑。
+- 用户可以导出 PNG 等通用图片格式。
+- 用户可以通过撤销/重做安全探索绘制过程。
+- 用户可以使用鼠标、键盘、滚轮和数位笔完成自然输入。
+
+## 3. MVP 范围
+
+MVP 保留绘画主流程，不追求云端、社区、素材库、教程等外围功能。
+
+当前 MVP 包含：
+
+- Program Manager：首页项目管理器，包含新建、打开、最近项目、搜索和未来内容 tile 占位。
+- Workspace：顶栏、工具栏、颜色区、画笔区、导航区、图层区、状态栏和画布区。
+- 画布：缩放、平移、软合成、dirty-rect 局部刷新。
+- 工具：画笔、橡皮、基础移动/选择/颜色切换扩展点。
+- 图层：Raster layer、Text layer 数据模型，选择、增加、删除、显示/隐藏。
+- 历史记录：Undo / Redo。
+- 文件：`.vvp` 保存与打开，PNG 导出。
+- 输入：鼠标、键盘、滚轮、数位笔压力路径统一进入 core input event。
+- 渲染：core 生成固定 `Bgra8Unorm` frame，adapter 只负责显示。
+- 文字：adapter 发现系统字体文件，core 自研 TrueType 解析、glyph lookup、kerning、灰度抗锯齿软光栅。
+
+## 4. 非 MVP 范围
+
+以下能力不作为当前闭环的完成条件，但应保留扩展空间：
+
+- 云同步、投稿、图库、教程、社区。
+- 完整素材管理和在线 brush marketplace。
+- 完整自由变换、透视变形、高级矢量形状。
+- 完整色彩管理管线和 HDR tone mapping。
+- 多平台 adapter 的实际实现。
+- 高级性能优化，如 SIMD tile 合成、GPU 图层合成、真 tile pool 池化。
+- 复杂脚本文字 shaping、OpenType feature shaping、emoji color fonts、LCD subpixel rendering。
+
+## 5. 架构原则
+
+### 5.1 Core owns product behavior
+
+Core 拥有：
+
+- Project、Layer、LayerManager、RasterLayer、TextLayer、SelectionMask。
+- BrushEngine、tile 数据、滤镜、历史记录。
+- AppRuntime、EditorSession、CanvasController。
+- UiScene、UiNode、布局、z-order、focus、hover、capture、modal。
+- CommandDispatcher、ModalManager、FrameScheduler。
+- `.vvp` 项目序列化/反序列化。
+- RGBA/BGRA frame 生成和 dirty rect 决策。
+- CoreTextEngine：字体 face 探测、TrueType glyph 解析、glyph cache、fallback、文本软光栅。
+
+### 5.2 Adapter owns platform capabilities
+
+Adapter 拥有：
+
+- 平台窗口和主循环。
+- DPI、viewport、resize、close、focus 等窗口状态。
+- 鼠标、键盘、滚轮、touch、pen/tablet 原生事件翻译。
+- 文件字节读写、文件对话框、最近文件存储。
+- PNG/JPEG 等平台图片编码能力。
+- 系统 UI 字体族名、字体目录、字体文件路径枚举。
+- 显示器信息、动态范围、色彩配置路径、系统内存信息。
+- 把 core 输出的 `RgbaFrame` 呈现到平台 surface。
+
+Adapter 不应理解 UI 语义，不应拥有图层或画布状态，不应解析 `.vvp` 项目格式，也不应负责应用文字栅格。
+
+## 6. Core / Adapter API
+
+平台能力通过 `Core::PlatformServices` 聚合安装，必须在 `AppRuntime::Initialize()` 前完成。
+
+核心接口组：
+
+- `IPlatformHost`：viewport、DPI、request frame、request quit。
+- `ISurfacePresenter`：接收 `RgbaFrame` 与 dirty rects。
+- `IPlatformFileSystem`：跨平台文件字节读写。
+- `IImageEncoder`：PNG 等图片编码能力。
+- `IFileDialogService`：打开、保存、导出路径选择。
+- `IRecentFilesStore`：最近文件持久化。
+- `IPlatformFontCatalogProvider`：系统 UI 字体族名、字体路径 hint、安装字体文件路径。
+- `IDisplayInfoProvider`：显示器尺寸、DPI、色彩配置、HDR/SDR 信息。
+- `IMemoryInfoProvider`：系统可用内存等建议性信息。
+
+更详细契约见 `docs/CoreAdapterAPI.md`。
+
+## 7. UI 系统需求
+
+UI 应由 core scene 驱动，而不是平台子窗口或平台控件驱动。
+
+`UiScene` 需要支持：
+
+- 稳定节点树：parent、children、bounds、z-order。
+- 节点类型：button、panel、toolbar item、layer item、swatch、canvas region、modal blocker、search box、tile。
+- 状态：hover、focus、capture、modal stack。
+- 命中测试：所有坐标为 core 窗口坐标。
+- 可访问性标签：`accessibilityLabel`。
+- 刷新分类：静态、交互、高频动画区域。
+- command payload：节点触发 command，runtime 不依赖平台消息。
+
+平台 adapter 只提供窗口尺寸和输入事件；按钮点击、拖拽、菜单、modal 阻塞、画布交互都由 core 计算。
+
+## 8. 刷新与渲染需求
+
+- Core 通过 soft renderer 绘制 UI、画布预览、图层合成和基础图形。
+- Core 输出固定像素格式 `Bgra8Unorm`。
+- `FrameScheduler` 管理 dirty rects 和 animated regions。
+- 静态 UI 不应持续重绘。
+- 笔刷绘制、拖拽、光标预览、选区动画可以注册为高频刷新区域。
+- Adapter 呈现 dirty rects 时不得理解 UI 结构，只按矩形区域搬运像素。
+
+## 9. 文件与项目格式需求
+
+- `.vvp` 是 CloverPic 的 core-owned 项目格式。
+- Core 负责项目 schema、版本号、图层 payload、tile 数据、文本图层数据。
+- Adapter 只负责 `ReadFileBytes` / `WriteFileBytes`。
+- 导出 PNG 时，core 合成像素，adapter 负责编码。
+- 未来其他平台必须复用同一个 `.vvp` serializer，避免项目文件在不同平台行为不一致。
+
+## 10. Windows Adapter 需求
+
+Windows 是第一个 adapter，当前职责是：
+
+- 创建单个 Win32 `HWND`。
+- 初始化 COM、DPI awareness、WIC 等 Windows 服务。
+- 翻译 Win32 mouse / keyboard / wheel / pointer pen / touch 事件为 core input。
+- 处理 `WM_SIZE`、`WM_DPICHANGED`、close、paint。
+- 在 `BeginPaint` 的 HDC 内呈现 core 帧，支持 dirty rect clipping。
+- 通过 Win32 文件对话框提供打开/保存/导出路径。
+- 通过 WIC 提供 PNG 编码。
+- 通过 Windows 字体目录和注册表提供字体发现。
+- 提供系统内存、主显示器、动态范围、色彩配置等设备信息。
+
+Windows adapter 不应创建旧式子窗口 UI，不应运行 GDI 控件体系，不应拥有 Workspace、CanvasView 或 layer state。
+
+## 11. 验收标准
+
+构建验收：
+
+- 使用 CLion bundled CMake + MinGW configure/build 成功。
+- `CloverPicCore` 只编译 `src/Core` 和平台无关代码。
+- Windows 系统库只链接到最终 `CloverPic.exe`。
+- `src/Core` 不包含 `windows.h`、`HWND`、`HDC`、平台渲染对象、平台文字对象、平台图片编解码对象或 Win32 dialog 类型。
+- 仓库源码不包含第三方字体栅格库依赖或相关构建入口。
+
+功能验收：
+
+- 应用启动并显示 Program Manager。
+- 新建 preset 画布后进入 Workspace。
+- 画笔/橡皮可以绘制。
+- 颜色切换、图层选择/增删/隐藏可用。
+- Undo / Redo 可用。
+- 滚轮缩放、中键或对应输入路径平移可用。
+- `.vvp` 保存后可以重新打开。
+- PNG 可以导出。
+- UI 文本使用 core 文字引擎渲染；字体缺失时不崩溃并回退。
+
+架构验收：
+
+- 旧 `src/UI`、`src/App`、`src/Tablet`、旧 `src/Render` 不再作为构建入口。
+- `main.cpp` 只启动 Windows adapter 和 core runtime。
+- 新平台只需实现 adapter 服务集合，不需要修改 core 才能启动相同产品逻辑。
+
+## 12. 风险与策略
+
+- 旧 UI 功能不会一次性完全等价迁移；MVP 优先保证主绘画流程和架构边界。
+- 高级工具可以逐步以 core command、core modal、core widget 的方式补回。
+- 平台能力缺失时，adapter 应返回空值或 `Unknown`，core 不为单个平台写条件分支。
+- 内存信息、显示信息、HDR/SDR 信息只作为 core 决策建议，不把内存所有权交给 adapter。
+- 自研字体引擎首轮只覆盖常见 TrueType/OpenType `glyf` 字体、Unicode cmap、kerning、复合 glyph 和灰度 AA；复杂 shaping 与彩色字体作为后续增强。

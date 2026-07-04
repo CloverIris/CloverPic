@@ -4,7 +4,7 @@
 #include <vector>
 #include <memory>
 
-namespace VividPic {
+namespace CloverPic {
 
 // -------------------------------------------------------------------------
 // SelectionMask — per-pixel 0..255 mask, stored in sparse 256x256 tiles.
@@ -76,4 +76,4 @@ private:
     static constexpr uint32_t TILE_MASK = TILE_SIZE - 1;
 };
 
-} // namespace VividPic
+} // namespace CloverPic

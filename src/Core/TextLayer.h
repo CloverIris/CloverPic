@@ -4,7 +4,7 @@
 #include "Core/RasterLayer.h"
 #include <memory>
 
-namespace VividPic {
+namespace CloverPic {
 
 // TextLayer: stores editable text properties with a raster cache for compositing.
 // The raster cache is regenerated from source data when dirty.
@@ -63,7 +63,7 @@ public:
     std::vector<uint8_t> SerializePayload() const override;
     void DeserializePayload(const uint8_t* data, size_t len) override;
 
-    // Regenerate raster cache from source data (Phase 2: DirectWrite rasterization)
+    // Regenerate raster cache from source data through the core soft text engine.
     void RasterizeIfNeeded() const override;
     void Rasterize() const; // Force rasterize
 
@@ -81,4 +81,4 @@ private:
     void EnsureCache() const;
 };
 
-} // namespace VividPic
+} // namespace CloverPic

@@ -1,6 +1,6 @@
 #include "Core/Project.h"
 
-namespace VividPic {
+namespace CloverPic {
 
 Project::Project(const String& name) {
     m_metadata.name = name;
@@ -8,4 +8,4 @@ Project::Project(const String& name) {
     m_metadata.modifiedAt = m_metadata.createdAt;
 }
 
-} // namespace VividPic
+} // namespace CloverPic

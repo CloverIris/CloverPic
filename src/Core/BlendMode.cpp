@@ -1,7 +1,7 @@
 #include "Core/BlendMode.h"
 #include <cmath>
 
-namespace VividPic {
+namespace CloverPic {
 
 static void RGBToHSL(float r, float g, float b, float& h, float& s, float& l);
 static void HSLToRGB(float h, float s, float l, float& r, float& g, float& b);
@@ -213,4 +213,4 @@ void BlendOperations::Over(float bsr, float bsg, float bsb, float sa,
     outB = (bsb * sa + db * da * (1.0f - sa)) / outA;
 }
 
-} // namespace VividPic
+} // namespace CloverPic

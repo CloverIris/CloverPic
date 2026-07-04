@@ -6,7 +6,7 @@
 #include <string>
 #include <chrono>
 
-namespace VividPic {
+namespace CloverPic {
 
 enum class ColorMode {
     RGB,
@@ -50,4 +50,4 @@ private:
     ProjectMetadata m_metadata;
 };
 
-} // namespace VividPic
+} // namespace CloverPic

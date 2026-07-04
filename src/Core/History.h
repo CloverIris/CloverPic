@@ -5,7 +5,7 @@
 #include <memory>
 #include <unordered_set>
 
-namespace VividPic {
+namespace CloverPic {
 
 class Layer;
 
@@ -38,7 +38,7 @@ private:
 
 class HistoryManager {
 public:
-    static HistoryManager& GetInstance();
+    HistoryManager() = default;
 
     void Push(std::unique_ptr<StrokeUndoItem> item);
     void Undo();
@@ -55,11 +55,9 @@ public:
     size_t GetMaxSteps() const { return m_maxSteps; }
 
 private:
-    HistoryManager() = default;
-
     std::vector<std::unique_ptr<StrokeUndoItem>> m_undoStack;
     std::vector<std::unique_ptr<StrokeUndoItem>> m_redoStack;
     size_t m_maxSteps = 50;
 };
 
-} // namespace VividPic
+} // namespace CloverPic

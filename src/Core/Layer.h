@@ -3,13 +3,13 @@
 #include "Utils/Types.h"
 #include "Core/LayerType.h"
 #include "Core/BlendMode.h"
-#include "Render/TilePool.h"
-#include "Render/BrushPreset.h"
+#include "Core/Render/TilePool.h"
+#include "Core/Render/BrushPreset.h"
 
 #include <vector>
 #include <memory>
 
-namespace VividPic {
+namespace CloverPic {
 
 class Layer {
 public:
@@ -82,7 +82,7 @@ public:
 
     // Extensible payload for VVP v2 (source data for text/vector layers)
     virtual std::vector<uint8_t> SerializePayload() const { return {}; }
-    virtual void DeserializePayload(const uint8_t* data, size_t len) {}
+    virtual void DeserializePayload(const uint8_t*, size_t) {}
 
     // For text/vector layers: regenerate raster cache from source data
     virtual void RasterizeIfNeeded() const {}
@@ -109,4 +109,4 @@ protected:
     void InitializeGrid();
 };
 
-} // namespace VividPic
+} // namespace CloverPic

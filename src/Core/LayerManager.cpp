@@ -1,15 +1,10 @@
 #include "Core/LayerManager.h"
 #include "Core/RasterLayer.h"
 #include "Core/TextLayer.h"
-#include "Render/TilePool.h"
+#include "Core/Render/TilePool.h"
 #include <algorithm>
 
-namespace VividPic {
-
-LayerManager& LayerManager::GetInstance() {
-    static LayerManager instance;
-    return instance;
-}
+namespace CloverPic {
 
 void LayerManager::Initialize(uint32_t canvasWidth, uint32_t canvasHeight) {
     Shutdown();
@@ -41,6 +36,9 @@ Ref<Layer> LayerManager::AddLayer(const String& name, LayerType type) {
     } else {
         layer = MakeRef<RasterLayer>(name, type, m_canvasWidth, m_canvasHeight);
     }
+    if (auto rasterLayer = std::dynamic_pointer_cast<RasterLayer>(layer)) {
+        rasterLayer->SetHistoryManager(m_historyManager);
+    }
     m_layers.push_back(layer);
     m_activeLayerIndex = m_layers.size() - 1;
     m_compositeDirty = true;
@@ -49,6 +47,9 @@ Ref<Layer> LayerManager::AddLayer(const String& name, LayerType type) {
 
 void LayerManager::AddLayer(Ref<Layer> layer) {
     if (!layer) return;
+    if (auto rasterLayer = std::dynamic_pointer_cast<RasterLayer>(layer)) {
+        rasterLayer->SetHistoryManager(m_historyManager);
+    }
     m_layers.push_back(layer);
     m_activeLayerIndex = m_layers.size() - 1;
     m_compositeDirty = true;
@@ -242,4 +243,4 @@ void LayerManager::CompositeToBuffer(uint8_t* outBuffer, uint32_t width, uint32_
     m_compositeDirty = false;
 }
 
-} // namespace VividPic
+} // namespace CloverPic

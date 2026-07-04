@@ -1,7 +1,7 @@
 #include "Core/RasterLayer.h"
 #include "Core/SelectionMask.h"
 #include "Core/History.h"
-#include "Render/TilePool.h"
+#include "Core/Render/TilePool.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -43,20 +43,20 @@ static float SampleNoise(float u, float v) {
          + v01 * (1.0f - fx) * fy + v11 * fx * fy;
 }
 
-static float ComputeTipFalloff(float dx, float dy, float radius, VividPic::Render::BrushTipType tipType, float textureScale) {
+static float ComputeTipFalloff(float dx, float dy, float radius, CloverPic::Render::BrushTipType tipType, float textureScale) {
     float dist = std::sqrt(dx * dx + dy * dy);
     if (dist >= radius) return 0.0f;
     
     switch (tipType) {
-        case VividPic::Render::BrushTipType::RoundHard: {
+        case CloverPic::Render::BrushTipType::RoundHard: {
             float t = dist / radius;
             return 1.0f - std::pow(t, 8.0f); // Very sharp edge
         }
-        case VividPic::Render::BrushTipType::RoundSoft: {
+        case CloverPic::Render::BrushTipType::RoundSoft: {
             float t = dist / radius;
             return std::cos(t * 3.14159265f * 0.5f); // Cosine falloff
         }
-        case VividPic::Render::BrushTipType::Flat: {
+        case CloverPic::Render::BrushTipType::Flat: {
             // Elliptical flat tip
             float major = radius;
             float minor = radius * 0.35f;
@@ -64,7 +64,7 @@ static float ComputeTipFalloff(float dx, float dy, float radius, VividPic::Rende
             if (d >= 1.0f) return 0.0f;
             return 1.0f - std::pow(d, 4.0f);
         }
-        case VividPic::Render::BrushTipType::Bristle: {
+        case CloverPic::Render::BrushTipType::Bristle: {
             // Multiple fine lines
             float base = std::cos(dist / radius * 3.14159265f * 0.5f);
             if (base <= 0.0f) return 0.0f;
@@ -73,7 +73,7 @@ static float ComputeTipFalloff(float dx, float dy, float radius, VividPic::Rende
             float streak = std::sin(angle * 8.0f + dist * 0.5f);
             return base * (0.6f + 0.4f * streak);
         }
-        case VividPic::Render::BrushTipType::Texture: {
+        case CloverPic::Render::BrushTipType::Texture: {
             float base = std::cos(dist / radius * 3.14159265f * 0.5f);
             if (base <= 0.0f) return 0.0f;
             float nu = (dx / radius + 1.0f) * 0.5f * textureScale;
@@ -85,7 +85,7 @@ static float ComputeTipFalloff(float dx, float dy, float radius, VividPic::Rende
     return 0.0f;
 }
 
-namespace VividPic {
+namespace CloverPic {
 
 RasterLayer::RasterLayer(const String& name, LayerType type, uint32_t canvasWidth, uint32_t canvasHeight)
     : Layer(name, type, canvasWidth, canvasHeight)
@@ -203,7 +203,9 @@ void RasterLayer::EndStroke() {
     if (m_currentUndoItem) {
         if (!m_currentUndoItem->IsEmpty()) {
             m_currentUndoItem->CaptureRedoTiles();
-            HistoryManager::GetInstance().Push(std::move(m_currentUndoItem));
+            if (m_historyManager) {
+                m_historyManager->Push(std::move(m_currentUndoItem));
+            }
         }
         m_currentUndoItem.reset();
     }
@@ -394,4 +396,4 @@ void RasterLayer::UpdateThumbnail() {
     }
 }
 
-} // namespace VividPic
+} // namespace CloverPic

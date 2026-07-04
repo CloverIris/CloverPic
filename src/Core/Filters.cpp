@@ -1,12 +1,12 @@
 #include "Core/Filters.h"
 #include "Core/Layer.h"
-#include "Render/TilePool.h"
+#include "Core/Render/TilePool.h"
 #include <cmath>
 #include <cstring>
 #include <algorithm>
 #include <vector>
 
-namespace VividPic {
+namespace CloverPic {
 
 // ------------------------------------------------------------------
 // Color space helpers
@@ -104,8 +104,6 @@ void Filters::ApplyBrightnessContrast(Layer* layer, int brightness, int contrast
                 float bf = tile->data[i];
                 float gf = tile->data[i + 1];
                 float rf = tile->data[i + 2];
-                float a = tile->data[i + 3];
-
                 // Apply contrast then brightness
                 bf = (bf - 128.0f) * c + 128.0f + b;
                 gf = (gf - 128.0f) * c + 128.0f + b;
@@ -139,8 +137,6 @@ void Filters::ApplyHueSaturation(Layer* layer, int hueShift, int saturation) {
                 uint8_t b = tile->data[i];
                 uint8_t g = tile->data[i + 1];
                 uint8_t r = tile->data[i + 2];
-                uint8_t a = tile->data[i + 3];
-
                 float h, s, v;
                 RGBToHSV(r, g, b, h, s, v);
 
@@ -386,4 +382,4 @@ void Filters::ApplySharpen(Layer* layer, int amount) {
     layer->MarkDirty();
 }
 
-} // namespace VividPic
+} // namespace CloverPic

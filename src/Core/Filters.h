@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace VividPic {
+namespace CloverPic {
 
 class Layer;
 
@@ -25,4 +25,4 @@ private:
     static void BuildGaussianKernel(int radius, std::vector<float>& kernel);
 };
 
-} // namespace VividPic
+} // namespace CloverPic

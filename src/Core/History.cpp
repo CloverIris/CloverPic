@@ -1,10 +1,10 @@
 #include "Core/History.h"
 #include "Core/Layer.h"
-#include "Render/TilePool.h"
+#include "Core/Render/TilePool.h"
 #include <cstring>
 #include <iostream>
 
-namespace VividPic {
+namespace CloverPic {
 
 // StrokeUndoItem implementation
 StrokeUndoItem::StrokeUndoItem(Layer* layer) : m_layer(layer) {}
@@ -75,12 +75,6 @@ void StrokeUndoItem::Redo() {
     m_layer->MarkDirty();
 }
 
-// HistoryManager implementation
-HistoryManager& HistoryManager::GetInstance() {
-    static HistoryManager instance;
-    return instance;
-}
-
 void HistoryManager::Push(std::unique_ptr<StrokeUndoItem> item) {
     if (!item || item->IsEmpty()) return;
     m_undoStack.push_back(std::move(item));
@@ -122,4 +116,4 @@ void HistoryManager::Clear() {
     m_redoStack.clear();
 }
 
-} // namespace VividPic
+} // namespace CloverPic

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(VividPic VERSION 1.0.0 LANGUAGES CXX)
+project(CloverPic VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,10 +8,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # MinGW specific settings
 if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O2")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++ -mwindows")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 
-# Windows subsystem for release, console for debug
+# Use a console subsystem for debug builds and a GUI subsystem for release.
+# Passing both -mwindows and -mconsole makes MinGW emit conflicting subsystem
+# options during linking on this machine.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mconsole -municode")
 else()
@@ -19,22 +21,45 @@ else()
 endif()
 
 # Source files
-file(GLOB_RECURSE SOURCES 
-    src/*.cpp
+file(GLOB_RECURSE CORE_SOURCES
+    src/Core/*.cpp
 )
 
-file(GLOB_RECURSE HEADERS
-    src/*.h
+file(GLOB_RECURSE CORE_HEADERS
+    src/Core/*.h
+    src/Utils/*.h
 )
 
-add_executable(VividPic ${SOURCES} ${HEADERS})
+file(GLOB_RECURSE WINDOWS_ADAPTER_SOURCES
+    src/Platform/Windows/*.cpp
+)
 
-target_include_directories(VividPic PRIVATE 
+file(GLOB_RECURSE WINDOWS_ADAPTER_HEADERS
+    src/Platform/Windows/*.h
+)
+
+# The MVP refactor is driven by Core::AppRuntime + Platform/Windows/WindowsHost.
+# CloverPicCore must stay platform-neutral; Windows-only code enters only the executable.
+add_library(CloverPicCore STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+
+target_include_directories(CloverPicCore PUBLIC
     ${CMAKE_SOURCE_DIR}/src
 )
 
+add_executable(CloverPic
+    src/main.cpp
+    ${WINDOWS_ADAPTER_SOURCES}
+    ${WINDOWS_ADAPTER_HEADERS}
+)
+
+target_include_directories(CloverPic PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(CloverPic PRIVATE CloverPicCore)
+
 # Link Windows system libraries (MinGW compatible)
-target_link_libraries(VividPic PRIVATE
+target_link_libraries(CloverPic PRIVATE
     -Wl,-Bstatic
     winpthread
     -Wl,-Bdynamic
@@ -48,25 +73,21 @@ target_link_libraries(VividPic PRIVATE
     dwmapi
     shlwapi
     winmm
-    d2d1
-    dwrite
     windowscodecs
 )
 
 # Enable Unicode
-target_compile_definitions(VividPic PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+target_compile_definitions(CloverPic PRIVATE UNICODE _UNICODE _WIN32_WINNT=0x0A00)
 
-# Copy assets to build directory
-add_custom_command(TARGET VividPic POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:VividPic>/assets
-)
-
-# Copy MinGW runtime DLLs for standalone execution
-if(MINGW)
-    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-    add_custom_command(TARGET VividPic POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${MINGW_BIN_DIR}/libwinpthread-1.dll" $<TARGET_FILE_DIR:VividPic>
+# Copy assets to build directory when the repository includes them.
+# Some clones only contain source code, so the build should not fail if
+# the optional runtime assets directory is absent.
+if(EXISTS "${CMAKE_SOURCE_DIR}/assets")
+    add_custom_command(TARGET CloverPic POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets $<TARGET_FILE_DIR:CloverPic>/assets
     )
+else()
+    message(STATUS "Optional assets directory not found; skipping asset copy step.")
 endif()
+

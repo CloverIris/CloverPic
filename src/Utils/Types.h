@@ -5,9 +5,8 @@
 #include <vector>
 #include <memory>
 #include <functional>
-#include <Windows.h>
 
-namespace VividPic {
+namespace CloverPic {
 
 using String = std::wstring;
 using StringView = std::wstring_view;
@@ -75,9 +74,6 @@ struct Rect {
         return p.x >= left && p.x < right && p.y >= top && p.y < bottom;
     }
     
-    RECT ToWin32Rect() const {
-        return RECT{ left, top, right, bottom };
-    }
 };
 
 struct Color {
@@ -115,10 +111,6 @@ struct Color {
         );
     }
     
-    COLORREF ToCOLORREF() const {
-        return RGB(r, g, b);
-    }
-    
     static Color Interpolate(const Color& a, const Color& b, float t) {
         return Color(
             static_cast<uint8_t>(a.r + (b.r - a.r) * t),
@@ -147,4 +139,4 @@ using Callback = std::function<void()>;
 using CallbackBool = std::function<void(bool)>;
 using CallbackInt = std::function<void(int)>;
 
-} // namespace VividPic
+} // namespace CloverPic

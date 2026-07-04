@@ -1,16 +1,18 @@
 #pragma once
 
 #include "Core/Layer.h"
-#include "Render/TilePool.h"
+#include "Core/Render/TilePool.h"
 #include <vector>
 #include <memory>
 
-namespace VividPic {
+namespace CloverPic {
+
+class HistoryManager;
 
 class LayerManager {
 public:
-    static LayerManager& GetInstance();
-    
+    void SetHistoryManager(HistoryManager* historyManager) { m_historyManager = historyManager; }
+
     // Initialize with canvas dimensions
     void Initialize(uint32_t canvasWidth, uint32_t canvasHeight);
     void Shutdown();
@@ -54,16 +56,15 @@ public:
     void ClearCompositeDirty() { m_compositeDirty = false; }
     
 private:
-    LayerManager() = default;
-    
     uint32_t m_canvasWidth = 0;
     uint32_t m_canvasHeight = 0;
     std::vector<Ref<Layer>> m_layers;
     size_t m_activeLayerIndex = 0;
     size_t m_soloLayerIndex = static_cast<size_t>(-1);
     bool m_compositeDirty = true;
+    HistoryManager* m_historyManager = nullptr;
     
     void CompositeTile(Render::Tile* outTile, uint32_t gridX, uint32_t gridY);
 };
 
-} // namespace VividPic
+} // namespace CloverPic

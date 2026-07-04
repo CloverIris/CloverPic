@@ -1,6 +1,6 @@
 #include "Core/Layer.h"
 
-namespace VividPic {
+namespace CloverPic {
 
 Layer::Layer(const String& name, LayerType type, uint32_t canvasWidth, uint32_t canvasHeight)
     : m_name(name), m_type(type), m_canvasWidth(canvasWidth), m_canvasHeight(canvasHeight) {
@@ -12,4 +12,4 @@ void Layer::InitializeGrid() {
     m_gridHeight = (m_canvasHeight + Render::TILE_SIZE - 1) / Render::TILE_SIZE;
 }
 
-} // namespace VividPic
+} // namespace CloverPic

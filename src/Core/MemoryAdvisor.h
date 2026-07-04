@@ -3,7 +3,7 @@
 #include "Utils/Types.h"
 #include <cstdint>
 
-namespace VividPic {
+namespace CloverPic {
 
 struct MemoryAdvice {
     size_t maxCanvasWidth = 0;
@@ -23,7 +23,7 @@ enum class MemoryStatus {
 
 class MemoryAdvisor {
 public:
-    static MemoryAdvisor& GetInstance();
+    MemoryAdvisor() = default;
     
     // Calculate memory advice based on current system state
     MemoryAdvice CalculateAdvice(uint32_t canvasWidth, uint32_t canvasHeight, 
@@ -40,11 +40,9 @@ public:
     static String FormatBytes(uint64_t bytes);
     
 private:
-    MemoryAdvisor() = default;
-    
     static constexpr double SAFETY_FACTOR = 0.80;
     static constexpr uint64_t SYSTEM_OVERHEAD = 512ULL * 1024 * 1024; // 512 MB
     static constexpr double LAYER_OVERHEAD_FACTOR = 1.20; // 20% extra for thumbnails/masks
 };
 
-} // namespace VividPic
+} // namespace CloverPic
