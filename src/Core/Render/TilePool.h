@@ -9,14 +9,16 @@ namespace CloverPic {
 namespace Render {
 
 constexpr uint32_t TILE_SIZE = 256;
-constexpr uint32_t TILE_BYTES = TILE_SIZE * TILE_SIZE * 4; // RGBA32
+constexpr uint32_t TILE_CHANNELS = 4;
+constexpr uint32_t TILE_PIXELS = TILE_SIZE * TILE_SIZE;
+constexpr uint32_t TILE_BYTES = TILE_PIXELS * TILE_CHANNELS * sizeof(uint16_t); // RGBA10 stored in uint16 lanes
 
 struct Tile {
-    alignas(32) uint8_t data[TILE_BYTES];
+    alignas(32) uint16_t data[TILE_PIXELS * TILE_CHANNELS];
     bool inUse = false;
     
-    void Clear(uint8_t r = 0, uint8_t g = 0, uint8_t b = 0, uint8_t a = 0) {
-        for (uint32_t i = 0; i < TILE_BYTES; i += 4) {
+    void Clear(uint16_t r = 0, uint16_t g = 0, uint16_t b = 0, uint16_t a = 0) {
+        for (uint32_t i = 0; i < TILE_PIXELS * TILE_CHANNELS; i += TILE_CHANNELS) {
             data[i] = r;
             data[i + 1] = g;
             data[i + 2] = b;

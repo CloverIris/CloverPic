@@ -67,7 +67,7 @@ bool TextLayer::HasTile(uint32_t gridX, uint32_t gridY) const {
 }
 
 Ref<Layer> TextLayer::Clone() const {
-    auto clone = MakeRef<TextLayer>(m_name + L" 鍓湰", m_canvasWidth, m_canvasHeight);
+    auto clone = MakeRef<TextLayer>(m_name + L" Copy", m_canvasWidth, m_canvasHeight);
     clone->m_text = m_text;
     clone->m_fontFamily = m_fontFamily;
     clone->m_fontSize = m_fontSize;

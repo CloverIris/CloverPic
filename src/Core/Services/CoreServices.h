@@ -20,6 +20,14 @@ struct DisplayInfo {
     String colorProfilePath;
 };
 
+struct ColorProfileInfo {
+    String id;
+    String displayName;
+    String path;
+    bool isDefault = false;
+    bool isCurrentDisplayProfile = false;
+};
+
 struct TextRasterRequest {
     String text;
     String fontFamily;
@@ -78,11 +86,18 @@ public:
     virtual bool WriteFileBytes(const String& filePath, const std::vector<uint8_t>& bytes) = 0;
 };
 
-class IImageEncoder {
+class IImageCodec {
 public:
-    virtual ~IImageEncoder() = default;
-    virtual bool EncodePngBgra(const String& filePath, uint32_t width, uint32_t height,
-                               const std::vector<uint8_t>& bgraPixels) = 0;
+    virtual ~IImageCodec() = default;
+    virtual bool EncodeDisplayPngBgra8ToFile(const String& filePath, uint32_t width, uint32_t height,
+                                             const std::vector<uint8_t>& bgraPixels) = 0;
+    virtual bool EncodePngRgba16ToBytes(uint32_t width, uint32_t height,
+                                        const std::vector<uint16_t>& rgba16Pixels,
+                                        std::vector<uint8_t>& outBytes) = 0;
+    virtual bool DecodePngRgba16FromBytes(const std::vector<uint8_t>& bytes,
+                                          uint32_t& outWidth,
+                                          uint32_t& outHeight,
+                                          std::vector<uint16_t>& outRgba16Pixels) = 0;
 };
 
 class IFileDialogService {
@@ -99,14 +114,31 @@ public:
     virtual PlatformFontCatalog LoadFontCatalog() = 0;
 };
 
+class IColorProfileProvider {
+public:
+    virtual ~IColorProfileProvider() = default;
+    virtual std::vector<ColorProfileInfo> EnumerateColorProfiles() = 0;
+    virtual ColorProfileInfo GetCurrentDisplayProfile() = 0;
+    virtual bool ReadProfileBytes(const String& path, std::vector<uint8_t>& outBytes) = 0;
+};
+
+class IAppSettingsStore {
+public:
+    virtual ~IAppSettingsStore() = default;
+    virtual bool LoadSettingsBytes(std::vector<uint8_t>& outBytes) = 0;
+    virtual bool SaveSettingsBytes(const std::vector<uint8_t>& bytes) = 0;
+};
+
 struct PlatformServices {
     Ref<IMemoryInfoProvider> memoryInfoProvider;
     Ref<IDisplayInfoProvider> displayInfoProvider;
     Ref<IRecentFilesStore> recentFilesStore;
     Ref<IPlatformFileSystem> fileSystem;
-    Ref<IImageEncoder> imageEncoder;
+    Ref<IImageCodec> imageCodec;
     Ref<IFileDialogService> fileDialogService;
     Ref<IPlatformFontCatalogProvider> fontCatalogProvider;
+    Ref<IColorProfileProvider> colorProfileProvider;
+    Ref<IAppSettingsStore> appSettingsStore;
 };
 
 class CoreServices {
@@ -116,9 +148,11 @@ public:
     static IDisplayInfoProvider* GetDisplayInfoProvider();
     static IRecentFilesStore* GetRecentFilesStore();
     static IPlatformFileSystem* GetFileSystem();
-    static IImageEncoder* GetImageEncoder();
+    static IImageCodec* GetImageCodec();
     static IFileDialogService* GetFileDialogService();
     static IPlatformFontCatalogProvider* GetFontCatalogProvider();
+    static IColorProfileProvider* GetColorProfileProvider();
+    static IAppSettingsStore* GetAppSettingsStore();
 };
 
 } // namespace CloverPic

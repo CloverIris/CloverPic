@@ -4,7 +4,10 @@ namespace CloverPic::Core {
 
 enum class ModalKind {
     None,
-    NewCanvas
+    NewCanvas,
+    Filters,
+    TextLayer,
+    ConfirmDeleteLayer
 };
 
 class ModalManager {

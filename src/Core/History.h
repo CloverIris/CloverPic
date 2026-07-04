@@ -19,7 +19,7 @@ public:
 
     explicit StrokeUndoItem(Layer* layer);
 
-    void CaptureTile(uint32_t gridX, uint32_t gridY, const uint8_t* data, size_t size);
+    void CaptureTile(uint32_t gridX, uint32_t gridY, const void* data, size_t size);
     bool HasTile(uint32_t gridX, uint32_t gridY) const;
     bool IsEmpty() const { return m_snapshots.empty(); }
     size_t GetMemorySize() const;

@@ -59,7 +59,7 @@ public:
     void UpdateThumbnail() override;
     void ImportTile(uint32_t gridX, uint32_t gridY, const uint8_t* srcData) override;
 
-    // VVP v2 payload
+    // Text/vector source payload stored as a .cloverpic resource.
     std::vector<uint8_t> SerializePayload() const override;
     void DeserializePayload(const uint8_t* data, size_t len) override;
 

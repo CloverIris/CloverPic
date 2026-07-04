@@ -9,7 +9,7 @@ namespace CloverPic {
 // StrokeUndoItem implementation
 StrokeUndoItem::StrokeUndoItem(Layer* layer) : m_layer(layer) {}
 
-void StrokeUndoItem::CaptureTile(uint32_t gridX, uint32_t gridY, const uint8_t* data, size_t size) {
+void StrokeUndoItem::CaptureTile(uint32_t gridX, uint32_t gridY, const void* data, size_t size) {
     uint32_t key = gridX | (gridY << 16);
     if (m_capturedSet.find(key) != m_capturedSet.end()) return;
 

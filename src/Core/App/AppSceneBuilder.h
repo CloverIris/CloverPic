@@ -18,14 +18,19 @@ public:
                       const EditorSession& session,
                       CanvasController& canvas,
                       const String& homeSearchQuery,
-                      CoreUI::UiScene& scene);
+                      CoreUI::UiScene& scene,
+                      const String& workspaceOpenMenu = L"");
 
 private:
     static void BuildHomeScene(const Size& viewport,
                                const EditorSession& session,
                                const String& searchQuery,
                                CoreUI::UiScene& scene);
-    static void BuildWorkspaceScene(const Size& viewport, CanvasController& canvas, CoreUI::UiScene& scene);
+    static void BuildWorkspaceScene(const Size& viewport,
+                                    const EditorSession& session,
+                                    CanvasController& canvas,
+                                    CoreUI::UiScene& scene,
+                                    const String& openMenu);
     static void BuildModalScene(ModalKind modal, const Size& viewport, const RgbaFrame& frame, CoreUI::UiScene& scene);
 };
 

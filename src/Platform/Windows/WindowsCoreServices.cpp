@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <set>
 #include <shlobj.h>
@@ -70,7 +71,9 @@ public:
 
         String line;
         while (std::getline(file, line)) {
-            if (!line.empty()) {
+            String lower = line;
+            for (auto& ch : lower) ch = static_cast<wchar_t>(std::towlower(ch));
+            if (!line.empty() && lower.ends_with(L".cloverpic")) {
                 files.push_back(line);
             }
         }
@@ -85,6 +88,9 @@ public:
         if (!file.is_open()) return;
 
         for (const auto& entry : files) {
+            String lower = entry;
+            for (auto& ch : lower) ch = static_cast<wchar_t>(std::towlower(ch));
+            if (!lower.ends_with(L".cloverpic")) continue;
             file << entry << L"\n";
         }
     }
@@ -105,13 +111,13 @@ private:
 
 class WindowsFileDialogService final : public IFileDialogService {
 public:
-    explicit WindowsFileDialogService(HWND ownerWindow) : m_ownerWindow(ownerWindow) {}
+    explicit WindowsFileDialogService(std::function<HWND()> ownerProvider) : m_ownerProvider(std::move(ownerProvider)) {}
 
     bool PickOpenProjectPath(String& outPath) override {
         return ShowDialog(
             outPath,
-            L"CloverPic Project (*.vvp)\0*.vvp\0",
-            L"vvp",
+            L"CloverPic Project (*.cloverpic)\0*.cloverpic\0",
+            L"cloverpic",
             OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
             false);
     }
@@ -119,8 +125,8 @@ public:
     bool PickSaveProjectPath(String& outPath) override {
         return ShowDialog(
             outPath,
-            L"CloverPic Project (*.vvp)\0*.vvp\0",
-            L"vvp",
+            L"CloverPic Project (*.cloverpic)\0*.cloverpic\0",
+            L"cloverpic",
             OFN_OVERWRITEPROMPT,
             true);
     }
@@ -135,7 +141,7 @@ public:
     }
 
 private:
-    HWND m_ownerWindow = nullptr;
+    std::function<HWND()> m_ownerProvider;
 
     bool ShowDialog(String& inOutPath,
                     const wchar_t* filter,
@@ -149,7 +155,7 @@ private:
 
         OPENFILENAMEW ofn = {};
         ofn.lStructSize = sizeof(ofn);
-        ofn.hwndOwner = m_ownerWindow;
+        ofn.hwndOwner = m_ownerProvider ? m_ownerProvider() : nullptr;
         ofn.lpstrFilter = filter;
         ofn.lpstrFile = buffer;
         ofn.nMaxFile = MAX_PATH;
@@ -254,17 +260,151 @@ private:
     }
 };
 
+class WindowsColorProfileProvider final : public IColorProfileProvider {
+public:
+    std::vector<ColorProfileInfo> EnumerateColorProfiles() override {
+        std::vector<ColorProfileInfo> profiles;
+        std::set<String> profilePaths;
+        const String currentPath = GetCurrentDisplayProfile().path;
+        AddDisplayIcmProfiles(profilePaths);
+        const String colorDir = GetColorDirectory();
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::path(colorDir))) {
+                if (!entry.is_regular_file()) continue;
+                const String path = entry.path().wstring();
+                const String lower = Lower(path);
+                if (!lower.ends_with(L".icc") && !lower.ends_with(L".icm")) continue;
+                profilePaths.insert(path);
+            }
+        } catch (...) {
+        }
+
+        for (const auto& path : profilePaths) {
+            String resolvedPath = path;
+            if (resolvedPath.find(L":\\") == String::npos && resolvedPath.find(L"\\\\") != 0) {
+                resolvedPath = colorDir + L"\\" + resolvedPath;
+            }
+            ColorProfileInfo info;
+            info.path = resolvedPath;
+            info.id = resolvedPath;
+            const size_t slash = resolvedPath.find_last_of(L"\\/");
+            info.displayName = slash == String::npos ? resolvedPath : resolvedPath.substr(slash + 1);
+            info.isCurrentDisplayProfile = !currentPath.empty() && Lower(currentPath) == Lower(resolvedPath);
+            info.isDefault = info.isCurrentDisplayProfile;
+            profiles.push_back(info);
+        }
+        if (profiles.empty()) {
+            ColorProfileInfo fallback;
+            fallback.id = L"srgb";
+            fallback.displayName = L"sRGB fallback";
+            fallback.isDefault = true;
+            profiles.push_back(fallback);
+        }
+        return profiles;
+    }
+
+    ColorProfileInfo GetCurrentDisplayProfile() override {
+        ColorProfileInfo info;
+        info.id = L"current-display";
+        info.displayName = L"Current display profile";
+        HDC hdc = GetDC(nullptr);
+        if (hdc) {
+            DWORD profileSize = 0;
+            if (!GetICMProfileW(hdc, &profileSize, nullptr) && profileSize > 0) {
+                std::vector<wchar_t> profile(profileSize + 1, L'\0');
+                if (GetICMProfileW(hdc, &profileSize, profile.data())) {
+                    info.path = profile.data();
+                    info.id = info.path;
+                    const size_t slash = info.path.find_last_of(L"\\/");
+                    info.displayName = slash == String::npos ? info.path : info.path.substr(slash + 1);
+                }
+            }
+            ReleaseDC(nullptr, hdc);
+        }
+        info.isCurrentDisplayProfile = true;
+        info.isDefault = true;
+        if (info.displayName.empty()) info.displayName = L"sRGB fallback";
+        return info;
+    }
+
+    bool ReadProfileBytes(const String& path, std::vector<uint8_t>& outBytes) override {
+        outBytes.clear();
+        if (path.empty()) return false;
+        WindowsFileSystem fileSystem;
+        return fileSystem.ReadFileBytes(path, outBytes);
+    }
+
+private:
+    static int CALLBACK EnumIcmProfileProc(LPWSTR profileName, LPARAM userData) {
+        if (!profileName || !userData) return TRUE;
+        auto* paths = reinterpret_cast<std::set<String>*>(userData);
+        String path = profileName;
+        if (!path.empty()) {
+            paths->insert(path);
+        }
+        return TRUE;
+    }
+
+    void AddDisplayIcmProfiles(std::set<String>& paths) const {
+        HDC hdc = GetDC(nullptr);
+        if (!hdc) return;
+        EnumICMProfilesW(hdc, EnumIcmProfileProc, reinterpret_cast<LPARAM>(&paths));
+        ReleaseDC(nullptr, hdc);
+    }
+
+    String GetColorDirectory() const {
+        wchar_t systemDir[MAX_PATH] = {};
+        if (GetSystemDirectoryW(systemDir, MAX_PATH) == 0) {
+            return L"C:\\Windows\\System32\\spool\\drivers\\color";
+        }
+        return String(systemDir) + L"\\spool\\drivers\\color";
+    }
+
+    String Lower(String value) const {
+        for (auto& ch : value) ch = static_cast<wchar_t>(std::towlower(ch));
+        return value;
+    }
+};
+
+class WindowsAppSettingsStore final : public IAppSettingsStore {
+public:
+    bool LoadSettingsBytes(std::vector<uint8_t>& outBytes) override {
+        WindowsFileSystem fileSystem;
+        return fileSystem.ReadFileBytes(GetStoragePath(), outBytes);
+    }
+
+    bool SaveSettingsBytes(const std::vector<uint8_t>& bytes) override {
+        WindowsFileSystem fileSystem;
+        return fileSystem.WriteFileBytes(GetStoragePath(), bytes);
+    }
+
+private:
+    String GetStoragePath() const {
+        wchar_t path[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, path))) {
+            String result = path;
+            result += L"\\CloverPic";
+            CreateDirectoryW(result.c_str(), nullptr);
+            result += L"\\settings.bin";
+            return result;
+        }
+        return L"settings.bin";
+    }
+};
+
 } // namespace
 
-void RegisterWindowsCoreServices(HWND ownerWindow) {
+void RegisterWindowsCoreServices(std::function<HWND()> ownerProvider) {
     PlatformServices services;
     services.memoryInfoProvider = MakeRef<WindowsMemoryInfoProvider>();
     services.displayInfoProvider = MakeRef<WindowsDisplayInfoProvider>();
     services.recentFilesStore = MakeRef<WindowsRecentFilesStore>();
     services.fileSystem = MakeRef<WindowsFileSystem>();
-    services.imageEncoder = MakeRef<WindowsImageEncoder>();
-    services.fileDialogService = MakeRef<WindowsFileDialogService>(ownerWindow);
+    services.imageCodec = MakeRef<WindowsImageCodec>();
+    services.fileDialogService = MakeRef<WindowsFileDialogService>(std::move(ownerProvider));
     services.fontCatalogProvider = MakeRef<WindowsFontCatalogProvider>();
+    services.colorProfileProvider = MakeRef<WindowsColorProfileProvider>();
+    services.appSettingsStore = MakeRef<WindowsAppSettingsStore>();
     CoreServices::InstallPlatformServices(std::move(services));
 }
 

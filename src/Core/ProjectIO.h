@@ -11,16 +11,16 @@ namespace CloverPic {
 class LayerManager;
 class Layer;
 
-// Custom platform-independent VVP v3 binary format.
-// Platform adapters provide only file bytes; core owns the project schema.
+// Core-owned CloverPic v1 chunked project container (.cloverpic).
+// Platform adapters provide only file bytes and image codec services.
 
 class ProjectSerializer {
 public:
-    // Save project with all layers to a .vvp file
+    // Save project with all layers to a .cloverpic file
     // Returns true on success
     static bool SaveProject(const String& filePath, Project* project, LayerManager* layerManager);
 
-    // Load project from a .vvp file
+    // Load project from a .cloverpic file
     // Returns nullptr on failure. On success, LayerManager is populated.
     static Ref<Project> LoadProject(const String& filePath, LayerManager* layerManager);
 

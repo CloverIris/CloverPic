@@ -22,6 +22,8 @@ struct Canvas {
     LayerType initialLayerType = LayerType::Transparent;
     String rgbProfile;
     String cmykProfile;
+    std::vector<uint8_t> rgbProfileBytes;
+    std::vector<uint8_t> cmykProfileBytes;
 };
 
 // LayerType is defined in Core/LayerType.h, BlendMode in Core/BlendMode.h, Layer in Core/Layer.h

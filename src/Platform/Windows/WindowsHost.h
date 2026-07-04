@@ -1,30 +1,40 @@
 #pragma once
 
-#include "Core/App/AppRuntime.h"
-#include "Core/Platform/PlatformInterfaces.h"
+#include "Core/App/ProjectManagerRuntime.h"
+#include "Core/App/WorkspaceRuntime.h"
+#include <memory>
 #include <windows.h>
 
 namespace CloverPic::Platform::Windows {
 
-class WindowsHost final : public Core::IPlatformHost, public Core::ISurfacePresenter {
+enum class SurfaceRole {
+    Home,
+    Workspace
+};
+
+class WindowsHost;
+
+class WindowsSurfaceWindow final {
 public:
-    WindowsHost();
-    ~WindowsHost() override;
+    WindowsSurfaceWindow(WindowsHost& owner, SurfaceRole role, Core::RuntimeSurface& runtime);
+    ~WindowsSurfaceWindow();
 
-    bool Initialize(HINSTANCE instance);
-    int Run();
+    bool Create(HINSTANCE instance, const wchar_t* title, int clientWidth, int clientHeight,
+                bool visible, HWND owner = nullptr, bool borderless = false);
+    void Destroy();
+    void Show(int command);
+    void Hide();
+    void RequestFrame();
 
-    Size GetViewportSize() const override { return m_viewport; }
-    float GetDpiScale() const override { return m_dpiScale; }
-    void RequestFrame() override;
-    void RequestQuit() override { m_running = false; PostQuitMessage(0); }
-    void Present(const Core::RgbaFrame& frame, const std::vector<Rect>& dirtyRects) override;
+    HWND GetHwnd() const { return m_hwnd; }
+    SurfaceRole GetRole() const { return m_role; }
+    bool IsClosed() const { return m_closed; }
 
 private:
     static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static void RegisterClass(HINSTANCE instance);
     LRESULT HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 
-    void RegisterClass();
     void ResizeFromClient();
     void Paint();
     void PresentToHdc(HDC hdc, const Core::RgbaFrame& frame, const std::vector<Rect>& dirtyRects);
@@ -33,17 +43,54 @@ private:
     uint32_t CurrentModifiers() const;
     bool TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEvent& outEvent) const;
     void UpdateDpiFromWindow();
+    void CheckRuntimeCloseRequest();
 
+    WindowsHost& m_owner;
+    SurfaceRole m_role;
+    Core::RuntimeSurface& m_runtime;
     HINSTANCE m_instance = nullptr;
     HWND m_hwnd = nullptr;
-    bool m_running = true;
+    bool m_closed = false;
+    bool m_borderless = false;
     float m_dpiScale = 1.0f;
     Size m_viewport;
-    Core::AppRuntime m_runtime;
     BITMAPINFO m_bitmapInfo = {};
 
-    static constexpr wchar_t ClassName[] = L"CloverPic_CoreSurfaceWindow";
+    static constexpr wchar_t ClassName[] = L"CloverPic_SurfaceWindow";
     static constexpr UINT FrameTimerId = 0x3110;
+};
+
+class WindowsHost final {
+public:
+    WindowsHost();
+    ~WindowsHost();
+
+    bool Initialize(HINSTANCE instance);
+    int Run();
+
+    HWND GetActiveDialogOwner() const;
+    void SetActiveDialogOwner(HWND hwnd);
+    void RequestQuit();
+    void OnSurfaceDestroyed(SurfaceRole role);
+    void OnProgramManagerCloseRequested();
+
+private:
+    void CreateHomeWindow();
+    void CreateWorkspaceWindow();
+    void OpenWorkspace(Core::WorkspaceLaunchRequest request);
+    void CloseWorkspaceAndReturnHome();
+    void PumpRuntimeRequests();
+    Size ComputeHomeClientSize() const;
+    Size ComputeWorkspaceClientSize() const;
+
+    HINSTANCE m_instance = nullptr;
+    HWND m_activeDialogOwner = nullptr;
+    bool m_running = true;
+    bool m_workspaceDestroyed = false;
+    std::unique_ptr<Core::ProjectManagerRuntime> m_homeRuntime;
+    std::unique_ptr<Core::WorkspaceRuntime> m_workspaceRuntime;
+    std::unique_ptr<WindowsSurfaceWindow> m_homeWindow;
+    std::unique_ptr<WindowsSurfaceWindow> m_workspaceWindow;
 };
 
 } // namespace CloverPic::Platform::Windows

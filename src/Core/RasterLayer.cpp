@@ -87,6 +87,14 @@ static float ComputeTipFalloff(float dx, float dy, float radius, CloverPic::Rend
 
 namespace CloverPic {
 
+namespace {
+constexpr uint16_t Max10 = 1023;
+
+uint16_t Clamp10(float value) {
+    return static_cast<uint16_t>(std::clamp(value, 0.0f, static_cast<float>(Max10)));
+}
+}
+
 RasterLayer::RasterLayer(const String& name, LayerType type, uint32_t canvasWidth, uint32_t canvasHeight)
     : Layer(name, type, canvasWidth, canvasHeight)
     , m_tileRefCount(std::make_shared<uint32_t>(1)) {
@@ -139,20 +147,24 @@ void RasterLayer::Clear() {
 }
 
 Color RasterLayer::GetPixel(uint32_t x, uint32_t y) const {
-    if (x >= m_canvasWidth || y >= m_canvasHeight) return Color(0, 0, 0, 0);
+    return GetPixel10(x, y).ToColor();
+}
+
+Color10 RasterLayer::GetPixel10(uint32_t x, uint32_t y) const {
+    if (x >= m_canvasWidth || y >= m_canvasHeight) return Color10(0, 0, 0, 0);
     
     uint32_t gridX = x / Render::TILE_SIZE;
     uint32_t gridY = y / Render::TILE_SIZE;
     uint32_t localX = x % Render::TILE_SIZE;
     uint32_t localY = y % Render::TILE_SIZE;
     
-    if (gridX >= m_gridWidth || gridY >= m_gridHeight) return Color(0, 0, 0, 0);
+    if (gridX >= m_gridWidth || gridY >= m_gridHeight) return Color10(0, 0, 0, 0);
     
     Render::Tile* tile = m_tiles[gridY][gridX];
-    if (!tile) return Color(0, 0, 0, 0);
+    if (!tile) return Color10(0, 0, 0, 0);
     
-    uint32_t idx = (localY * Render::TILE_SIZE + localX) * 4;
-    return Color(tile->data[idx + 2], tile->data[idx + 1], tile->data[idx], tile->data[idx + 3]);
+    uint32_t idx = (localY * Render::TILE_SIZE + localX) * Render::TILE_CHANNELS;
+    return Color10(tile->data[idx], tile->data[idx + 1], tile->data[idx + 2], tile->data[idx + 3]);
 }
 
 void RasterLayer::SetPixel(uint32_t x, uint32_t y, const Color& color) {
@@ -170,25 +182,64 @@ void RasterLayer::SetPixel(uint32_t x, uint32_t y, const Color& color) {
     Render::Tile* tile = AcquireTile(gridX, gridY);
     if (!tile) return;
     
-    uint32_t idx = (localY * Render::TILE_SIZE + localX) * 4;
+    uint32_t idx = (localY * Render::TILE_SIZE + localX) * Render::TILE_CHANNELS;
+    const Color10 src10 = Color10::FromColor(color);
+
+    if (color.a == 0 && !m_protectAlpha) {
+        tile->data[idx] = 0;
+        tile->data[idx + 1] = 0;
+        tile->data[idx + 2] = 0;
+        tile->data[idx + 3] = 0;
+        MarkDirty();
+        return;
+    }
     
     if (m_protectAlpha) {
         // Only change RGB, preserve existing alpha
-        uint8_t oldA = tile->data[idx + 3];
-        tile->data[idx + 2] = color.r;
-        tile->data[idx + 1] = color.g;
-        tile->data[idx] = color.b;
+        uint16_t oldA = tile->data[idx + 3];
+        tile->data[idx] = src10.r;
+        tile->data[idx + 1] = src10.g;
+        tile->data[idx + 2] = src10.b;
         tile->data[idx + 3] = oldA;
     } else {
         // Alpha blend
-        Color dst(tile->data[idx + 2], tile->data[idx + 1], tile->data[idx], tile->data[idx + 3]);
-        Color blended = BlendOperations::AlphaBlend(color, dst, 1.0f);
-        tile->data[idx + 2] = blended.r;
-        tile->data[idx + 1] = blended.g;
-        tile->data[idx] = blended.b;
-        tile->data[idx + 3] = blended.a;
+        const float sa = src10.a / 1023.0f;
+        const float da = tile->data[idx + 3] / 1023.0f;
+        const float outA = sa + da * (1.0f - sa);
+        if (outA <= 0.0001f) {
+            tile->data[idx] = 0;
+            tile->data[idx + 1] = 0;
+            tile->data[idx + 2] = 0;
+            tile->data[idx + 3] = 0;
+        } else {
+            tile->data[idx] = Clamp10((src10.r * sa + tile->data[idx] * da * (1.0f - sa)) / outA);
+            tile->data[idx + 1] = Clamp10((src10.g * sa + tile->data[idx + 1] * da * (1.0f - sa)) / outA);
+            tile->data[idx + 2] = Clamp10((src10.b * sa + tile->data[idx + 2] * da * (1.0f - sa)) / outA);
+            tile->data[idx + 3] = Clamp10(outA * 1023.0f);
+        }
     }
     
+    MarkDirty();
+}
+
+void RasterLayer::SetPixel10(uint32_t x, uint32_t y, const Color10& color) {
+    if (x >= m_canvasWidth || y >= m_canvasHeight || m_locked) return;
+
+    const uint32_t gridX = x / Render::TILE_SIZE;
+    const uint32_t gridY = y / Render::TILE_SIZE;
+    const uint32_t localX = x % Render::TILE_SIZE;
+    const uint32_t localY = y % Render::TILE_SIZE;
+    if (gridX >= m_gridWidth || gridY >= m_gridHeight) return;
+
+    DetachForWrite();
+    Render::Tile* tile = AcquireTile(gridX, gridY);
+    if (!tile) return;
+
+    const uint32_t idx = (localY * Render::TILE_SIZE + localX) * Render::TILE_CHANNELS;
+    tile->data[idx] = std::min<uint16_t>(color.r, Max10);
+    tile->data[idx + 1] = std::min<uint16_t>(color.g, Max10);
+    tile->data[idx + 2] = std::min<uint16_t>(color.b, Max10);
+    tile->data[idx + 3] = std::min<uint16_t>(color.a, Max10);
     MarkDirty();
 }
 
@@ -241,7 +292,8 @@ void RasterLayer::DrawBrushStamp(float cx, float cy, float radius, const Color& 
             float falloff = ComputeTipFalloff(dx, dy, radius, tipType, 1.0f);
             if (falloff <= 0.0f) continue;
 
-            float alpha = (color.a / 255.0f) * falloff * opacity * flow;
+            const bool eraseMode = color.a == 0 && !m_protectAlpha;
+            float alpha = (eraseMode ? 1.0f : (color.a / 255.0f)) * falloff * opacity * flow;
             if (alpha <= 0.01f) continue;
             if (alpha > 1.0f) alpha = 1.0f;
 
@@ -260,35 +312,45 @@ void RasterLayer::DrawBrushStamp(float cx, float cy, float radius, const Color& 
                 m_currentUndoItem->CaptureTile(gridX, gridY, tile->data, Render::TILE_BYTES);
             }
 
-            uint32_t idx = (localY * Render::TILE_SIZE + localX) * 4;
+            uint32_t idx = (localY * Render::TILE_SIZE + localX) * Render::TILE_CHANNELS;
 
             // Read destination
-            Color dst(tile->data[idx + 2], tile->data[idx + 1], tile->data[idx], tile->data[idx + 3]);
+            Color10 dst(tile->data[idx], tile->data[idx + 1], tile->data[idx + 2], tile->data[idx + 3]);
+
+            if (eraseMode) {
+                const float remaining = 1.0f - alpha;
+                const uint16_t outA = Clamp10((dst.a / 1023.0f) * remaining * 1023.0f);
+                tile->data[idx] = outA == 0 ? 0 : dst.r;
+                tile->data[idx + 1] = outA == 0 ? 0 : dst.g;
+                tile->data[idx + 2] = outA == 0 ? 0 : dst.b;
+                tile->data[idx + 3] = outA;
+                continue;
+            }
 
             // Wet mix: blend brush color with existing pixel color
-            Color src = color;
+            Color10 src = Color10::FromColor(color);
             if (wetMix > 0.0f && dst.a > 0) {
-                src.r = static_cast<uint8_t>(src.r * (1.0f - wetMix) + dst.r * wetMix);
-                src.g = static_cast<uint8_t>(src.g * (1.0f - wetMix) + dst.g * wetMix);
-                src.b = static_cast<uint8_t>(src.b * (1.0f - wetMix) + dst.b * wetMix);
+                src.r = Clamp10(src.r * (1.0f - wetMix) + dst.r * wetMix);
+                src.g = Clamp10(src.g * (1.0f - wetMix) + dst.g * wetMix);
+                src.b = Clamp10(src.b * (1.0f - wetMix) + dst.b * wetMix);
             }
 
             if (m_protectAlpha) {
-                uint8_t oldA = tile->data[idx + 3];
-                tile->data[idx + 2] = static_cast<uint8_t>(dst.r + (src.r - dst.r) * alpha);
-                tile->data[idx + 1] = static_cast<uint8_t>(dst.g + (src.g - dst.g) * alpha);
-                tile->data[idx]     = static_cast<uint8_t>(dst.b + (src.b - dst.b) * alpha);
+                uint16_t oldA = tile->data[idx + 3];
+                tile->data[idx] = Clamp10(dst.r + (src.r - dst.r) * alpha);
+                tile->data[idx + 1] = Clamp10(dst.g + (src.g - dst.g) * alpha);
+                tile->data[idx + 2] = Clamp10(dst.b + (src.b - dst.b) * alpha);
                 tile->data[idx + 3] = oldA;
             } else {
                 // Proper alpha blend
                 float sa = alpha;
-                float da = dst.a / 255.0f;
+                float da = dst.a / 1023.0f;
                 float outA = sa + da * (1.0f - sa);
                 if (outA > 0.001f) {
-                    tile->data[idx + 2] = static_cast<uint8_t>(std::clamp((src.r * sa + dst.r * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
-                    tile->data[idx + 1] = static_cast<uint8_t>(std::clamp((src.g * sa + dst.g * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
-                    tile->data[idx]     = static_cast<uint8_t>(std::clamp((src.b * sa + dst.b * da * (1.0f - sa)) / outA, 0.0f, 255.0f));
-                    tile->data[idx + 3] = static_cast<uint8_t>(std::clamp(outA * 255.0f, 0.0f, 255.0f));
+                    tile->data[idx] = Clamp10((src.r * sa + dst.r * da * (1.0f - sa)) / outA);
+                    tile->data[idx + 1] = Clamp10((src.g * sa + dst.g * da * (1.0f - sa)) / outA);
+                    tile->data[idx + 2] = Clamp10((src.b * sa + dst.b * da * (1.0f - sa)) / outA);
+                    tile->data[idx + 3] = Clamp10(outA * 1023.0f);
                 }
             }
         }
@@ -343,7 +405,7 @@ void RasterLayer::DetachForWrite() {
 }
 
 Ref<Layer> RasterLayer::Clone() const {
-    auto clone = MakeRef<RasterLayer>(m_name + L" 副本", m_type, m_canvasWidth, m_canvasHeight);
+    auto clone = MakeRef<RasterLayer>(m_name + L" Copy", m_type, m_canvasWidth, m_canvasHeight);
     clone->m_blendMode = m_blendMode;
     clone->m_opacity = m_opacity;
     clone->m_visible = m_visible;

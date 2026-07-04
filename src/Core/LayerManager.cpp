@@ -98,19 +98,20 @@ void LayerManager::MergeDown(size_t index) {
             
             for (uint32_t ty = 0; ty < Render::TILE_SIZE; ++ty) {
                 for (uint32_t tx = 0; tx < Render::TILE_SIZE; ++tx) {
-                    uint32_t idx = (ty * Render::TILE_SIZE + tx) * 4;
-                    Color src(upperTile->data[idx + 2], upperTile->data[idx + 1],
-                              upperTile->data[idx], upperTile->data[idx + 3]);
+                    uint32_t idx = (ty * Render::TILE_SIZE + tx) * Render::TILE_CHANNELS;
+                    Color src = Color10(upperTile->data[idx], upperTile->data[idx + 1],
+                                        upperTile->data[idx + 2], upperTile->data[idx + 3]).ToColor();
                     if (src.a == 0) continue;
                     
-                    Color dst(lowerTile->data[idx + 2], lowerTile->data[idx + 1],
-                              lowerTile->data[idx], lowerTile->data[idx + 3]);
+                    Color dst = Color10(lowerTile->data[idx], lowerTile->data[idx + 1],
+                                        lowerTile->data[idx + 2], lowerTile->data[idx + 3]).ToColor();
                     
                     Color blended = BlendOperations::BlendPixel(src, dst, mode, opacity);
-                    lowerTile->data[idx] = blended.b;
-                    lowerTile->data[idx + 1] = blended.g;
-                    lowerTile->data[idx + 2] = blended.r;
-                    lowerTile->data[idx + 3] = blended.a;
+                    Color10 blended10 = Color10::FromColor(blended);
+                    lowerTile->data[idx] = blended10.r;
+                    lowerTile->data[idx + 1] = blended10.g;
+                    lowerTile->data[idx + 2] = blended10.b;
+                    lowerTile->data[idx + 3] = blended10.a;
                 }
             }
         }
@@ -216,9 +217,9 @@ void LayerManager::CompositeToBuffer(uint8_t* outBuffer, uint32_t width, uint32_
                         if (canvasX >= width || canvasY >= height) continue;
                         if (canvasX >= m_canvasWidth || canvasY >= m_canvasHeight) continue;
                         
-                        uint32_t tileIdx = (ty * Render::TILE_SIZE + tx) * 4;
-                        Color src(tile->data[tileIdx + 2], tile->data[tileIdx + 1], 
-                                  tile->data[tileIdx], tile->data[tileIdx + 3]);
+                        uint32_t tileIdx = (ty * Render::TILE_SIZE + tx) * Render::TILE_CHANNELS;
+                        Color src = Color10(tile->data[tileIdx], tile->data[tileIdx + 1],
+                                            tile->data[tileIdx + 2], tile->data[tileIdx + 3]).ToColor();
                         
                         if (src.a == 0) continue;
                         

@@ -1,9 +1,17 @@
 #pragma once
 
+#include "Core/Presentation/IconPainter.h"
 #include "Core/Presentation/UiFrameGraph.h"
 #include <cstdint>
 
 namespace CloverPic::CoreUI {
+
+enum class IconPlacement {
+    None,
+    Leading,
+    Center,
+    Trailing
+};
 
 enum class UiNodeType {
     Panel,
@@ -17,7 +25,15 @@ enum class UiNodeType {
     SearchBox,
     RecentItem,
     ActionItem,
-    Tile
+    Tile,
+    MenuHeader,
+    MenuItem,
+    MenuSeparator,
+    ColorField,
+    HueStrip,
+    BrushPresetItem,
+    BrushSizeChip,
+    CheckBox
 };
 
 struct UiNode {
@@ -27,13 +43,20 @@ struct UiNode {
     Rect bounds;
     String label;
     String accessibilityLabel;
+    String tooltip;
+    Presentation::IconId iconId = Presentation::IconId::None;
+    IconPlacement iconPlacement = IconPlacement::None;
     uint32_t command = 0;
     uint64_t userData = 0;
     String payload;
+    String shortcut;
     std::vector<Presentation::UiNodeId> children;
     uint32_t flags = Presentation::UiNodeVisible | Presentation::UiNodeInteractive;
     int zOrder = 0;
     Presentation::RefreshClass refreshClass = Presentation::RefreshClass::Static;
+    bool checked = false;
+    bool disabled = false;
+    bool hasSubmenu = false;
 };
 
 class UiScene {

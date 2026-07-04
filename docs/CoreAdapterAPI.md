@@ -15,16 +15,17 @@ Adapters may include platform headers freely, but they must translate native con
 1. The platform executable starts first.
 2. The adapter initializes platform libraries required by its implementation, such as COM, image encoding, Win32 DPI awareness, native font enumeration, or browser canvas bindings.
 3. The adapter creates a `PlatformServices` bundle and installs it through `CoreServices::InstallPlatformServices`.
-4. The adapter creates the native window or surface and instantiates `Core::AppRuntime`.
-5. The adapter calls `AppRuntime::Initialize()`.
-6. During initialization, core requests platform facts and font file paths, then initializes its own soft text engine.
-7. Whenever viewport size or DPI changes, the adapter calls `AppRuntime::Resize(width, height, dpiScale)`.
-8. The adapter translates native input into `CloverPic::Input` events and calls `HandlePointer`, `HandleKey`, or `HandleWheel`.
-9. The core updates editor state, UI scene state, command state, and dirty regions.
-10. The adapter asks `AppRuntime::NeedsFrame(nowMs)` from its timer/message loop.
-11. When a frame is needed, the adapter calls `AppRuntime::Render(nowMs, dirtyRects)`.
-12. The adapter presents the returned `RgbaFrame` to the platform surface, clipping to `dirtyRects` where supported.
-13. The adapter exits only when core requests quit or the platform window is closed.
+4. The adapter creates the Workspace/MainWindow first and instantiates `WorkspaceRuntime` in `NoProject` state.
+5. The adapter creates an owned, borderless Program Manager popup and instantiates `ProjectManagerRuntime`.
+6. Program Manager can emit a `WorkspaceLaunchRequest`; the adapter hides Program Manager and passes the request into the existing `WorkspaceRuntime`.
+7. During initialization, core requests platform facts and font file paths, then initializes its own soft text engine.
+8. Whenever viewport size or DPI changes, the adapter calls `RuntimeSurface::Resize(width, height, dpiScale)`.
+9. The adapter translates native input into `CloverPic::Input` events and calls `HandlePointer`, `HandleKey`, or `HandleWheel`.
+10. The core updates editor state, UI scene state, command state, and dirty regions.
+11. The adapter asks `RuntimeSurface::NeedsFrame(nowMs)` from its timer/message loop.
+12. When a frame is needed, the adapter calls `RuntimeSurface::Render(nowMs, dirtyRects)`.
+13. The adapter presents the returned `RgbaFrame` to the platform surface, clipping to `dirtyRects` where supported.
+14. Closing MainWindow exits the process; closing Program Manager hides it when a project is open, or exits when no project exists.
 
 ## Adapter Responsibilities
 
@@ -42,11 +43,13 @@ Presentation:
 
 Storage, encoding, and dialogs:
 - Implement raw byte reads/writes through `IPlatformFileSystem`.
-- Implement PNG encoding through `IImageEncoder`.
+- Implement PNG/image codec operations through `IImageCodec`, including BGRA8 display PNG export and RGBA16 PNG resources for 10bit raster layers.
 - Implement platform file pickers through `IFileDialogService`.
 - Implement recent-file persistence through `IRecentFilesStore`.
 - Choose platform-appropriate app data locations.
-- Do not implement `.vvp` parsing in the adapter; core owns the project schema.
+- Do not implement `.cloverpic` parsing in the adapter; core owns the project schema.
+- Discover ICC/ICM color profiles through `IColorProfileProvider`.
+- Store opaque app settings bytes through `IAppSettingsStore`.
 
 Fonts:
 - Implement `IPlatformFontCatalogProvider`.
@@ -69,7 +72,7 @@ Tablet and pointer input:
 ## Core Responsibilities
 
 Application:
-- Own `AppRuntime`, `EditorSession`, current screen, modal state, and command dispatch.
+- Own `ProjectManagerRuntime`, `WorkspaceRuntime`, `EditorSession`, modal state, and command dispatch.
 - Own the `UiScene` tree, node z-order, hit testing, hover, capture, modal blocker, and focus policy.
 - Own commands such as new canvas, save, export, undo, redo, layer operations, tool selection, and modal actions.
 
@@ -102,15 +105,16 @@ Forbidden in core:
 The current Windows adapter is `Platform/Windows/WindowsHost`.
 
 It provides:
-- A single Win32 `HWND`.
+- A normal Win32 Workspace `HWND` plus an owned borderless Program Manager popup.
 - Win32 message pump and event translation.
 - Mouse, wheel, keyboard, touch, and Windows pointer pen translation.
 - BGRA frame presentation through `StretchDIBits`.
 - Dirty-rect clipping during presentation.
 - Win32 file dialogs.
 - `%AppData%/CloverPic/recent.txt` recent-file storage.
-- Raw file byte access for core-owned VVP project storage.
-- WIC-backed PNG export encoding.
+- Raw file byte access for core-owned `.cloverpic` project storage.
+- WIC-backed BGRA8 PNG export and RGBA16 PNG resource encoding/decoding.
+- Windows ICC/ICM color profile discovery and current display profile lookup.
 - System UI font discovery and installed font file enumeration.
 - Physical memory and primary display facts.
 
@@ -128,10 +132,10 @@ Create a new platform directory, for example `src/Platform/Linux`, `src/Platform
 The adapter must provide:
 - A host equivalent to `IPlatformHost`.
 - A presenter equivalent to `ISurfacePresenter`.
-- Implementations for `IMemoryInfoProvider`, `IDisplayInfoProvider`, `IRecentFilesStore`, `IPlatformFileSystem`, `IImageEncoder`, `IFileDialogService`, and `IPlatformFontCatalogProvider`.
-- A `PlatformServices` bundle installed before `AppRuntime::Initialize()`.
+- Implementations for `IMemoryInfoProvider`, `IDisplayInfoProvider`, `IRecentFilesStore`, `IPlatformFileSystem`, `IImageCodec`, `IFileDialogService`, `IPlatformFontCatalogProvider`, `IColorProfileProvider`, and `IAppSettingsStore`.
+- A `PlatformServices` bundle installed before any core runtime is initialized.
 - Native-event translation into `CloverPic::Input`.
-- A small executable entry point that registers services, creates the host, initializes `AppRuntime`, and runs the platform loop.
+- A small executable entry point that registers services, creates the host, initializes Workspace plus Program Manager, and runs the platform loop.
 
 If a platform cannot provide a capability, return a safe empty value or `Unknown`. Do not add platform conditionals to core for missing adapter features.
 

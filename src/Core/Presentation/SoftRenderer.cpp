@@ -7,12 +7,52 @@ namespace CloverPic::Presentation {
 
 namespace {
 
-Rect ClipRect(const Rect& rect, uint32_t width, uint32_t height) {
+Rect IntersectRect(const Rect& a, const Rect& b) {
+    return Rect(std::max(a.left, b.left),
+                std::max(a.top, b.top),
+                std::min(a.right, b.right),
+                std::min(a.bottom, b.bottom));
+}
+
+Rect ClipRect(const Rect& rect, uint32_t width, uint32_t height, const Rect& clip) {
     return Rect(
-        std::max<int32_t>(0, rect.left),
-        std::max<int32_t>(0, rect.top),
-        std::min<int32_t>(static_cast<int32_t>(width), rect.right),
-        std::min<int32_t>(static_cast<int32_t>(height), rect.bottom));
+        std::max<int32_t>(std::max<int32_t>(0, rect.left), clip.left),
+        std::max<int32_t>(std::max<int32_t>(0, rect.top), clip.top),
+        std::min<int32_t>(std::min<int32_t>(static_cast<int32_t>(width), rect.right), clip.right),
+        std::min<int32_t>(std::min<int32_t>(static_cast<int32_t>(height), rect.bottom), clip.bottom));
+}
+
+Color HsvToRgb(float hueDegrees, float saturation, float value, uint8_t alpha = 255) {
+    float h = std::fmod(hueDegrees, 360.0f);
+    if (h < 0.0f) h += 360.0f;
+    saturation = std::clamp(saturation, 0.0f, 1.0f);
+    value = std::clamp(value, 0.0f, 1.0f);
+
+    const float c = value * saturation;
+    const float x = c * (1.0f - std::fabs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+    const float m = value - c;
+    float r = 0.0f;
+    float g = 0.0f;
+    float b = 0.0f;
+    if (h < 60.0f) {
+        r = c; g = x;
+    } else if (h < 120.0f) {
+        r = x; g = c;
+    } else if (h < 180.0f) {
+        g = c; b = x;
+    } else if (h < 240.0f) {
+        g = x; b = c;
+    } else if (h < 300.0f) {
+        r = x; b = c;
+    } else {
+        r = c; b = x;
+    }
+
+    return Color(
+        static_cast<uint8_t>(std::clamp((r + m) * 255.0f, 0.0f, 255.0f)),
+        static_cast<uint8_t>(std::clamp((g + m) * 255.0f, 0.0f, 255.0f)),
+        static_cast<uint8_t>(std::clamp((b + m) * 255.0f, 0.0f, 255.0f)),
+        alpha);
 }
 
 uint8_t FontBits(wchar_t ch, int row) {
@@ -67,14 +107,16 @@ uint8_t FontBits(wchar_t ch, int row) {
 
 } // namespace
 
-SoftRenderer::SoftRenderer(Core::RgbaFrame& frame) : m_frame(frame) {}
+SoftRenderer::SoftRenderer(Core::RgbaFrame& frame)
+    : m_frame(frame),
+      m_clipRect(0, 0, static_cast<int32_t>(frame.width), static_cast<int32_t>(frame.height)) {}
 
 void SoftRenderer::Clear(const Color& color) {
     FillRect(Rect(0, 0, static_cast<int32_t>(m_frame.width), static_cast<int32_t>(m_frame.height)), color);
 }
 
 void SoftRenderer::FillRect(const Rect& rect, const Color& color) {
-    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height);
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
     for (int y = clipped.top; y < clipped.bottom; ++y) {
         for (int x = clipped.left; x < clipped.right; ++x) {
             BlendPixel(x, y, color);
@@ -91,6 +133,55 @@ void SoftRenderer::StrokeRect(const Rect& rect, const Color& color, int thicknes
     }
 }
 
+void SoftRenderer::FillVerticalGradient(const Rect& rect, const Color& top, const Color& bottom) {
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
+    const int height = std::max(1, rect.Height() - 1);
+    for (int y = clipped.top; y < clipped.bottom; ++y) {
+        const float t = std::clamp((y - rect.top) / static_cast<float>(height), 0.0f, 1.0f);
+        const Color c = Color::Interpolate(top, bottom, t);
+        for (int x = clipped.left; x < clipped.right; ++x) {
+            BlendPixel(x, y, c);
+        }
+    }
+}
+
+void SoftRenderer::FillHorizontalGradient(const Rect& rect, const Color& left, const Color& right) {
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
+    const int width = std::max(1, rect.Width() - 1);
+    for (int x = clipped.left; x < clipped.right; ++x) {
+        const float t = std::clamp((x - rect.left) / static_cast<float>(width), 0.0f, 1.0f);
+        const Color c = Color::Interpolate(left, right, t);
+        for (int y = clipped.top; y < clipped.bottom; ++y) {
+            BlendPixel(x, y, c);
+        }
+    }
+}
+
+void SoftRenderer::DrawHsvSquare(const Rect& rect, float hueDegrees) {
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
+    const int width = std::max(1, rect.Width() - 1);
+    const int height = std::max(1, rect.Height() - 1);
+    for (int y = clipped.top; y < clipped.bottom; ++y) {
+        const float value = 1.0f - std::clamp((y - rect.top) / static_cast<float>(height), 0.0f, 1.0f);
+        for (int x = clipped.left; x < clipped.right; ++x) {
+            const float saturation = std::clamp((x - rect.left) / static_cast<float>(width), 0.0f, 1.0f);
+            BlendPixel(x, y, HsvToRgb(hueDegrees, saturation, value));
+        }
+    }
+}
+
+void SoftRenderer::DrawHueStrip(const Rect& rect) {
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
+    const int height = std::max(1, rect.Height() - 1);
+    for (int y = clipped.top; y < clipped.bottom; ++y) {
+        const float hue = std::clamp((y - rect.top) / static_cast<float>(height), 0.0f, 1.0f) * 360.0f;
+        const Color c = HsvToRgb(hue, 1.0f, 1.0f);
+        for (int x = clipped.left; x < clipped.right; ++x) {
+            BlendPixel(x, y, c);
+        }
+    }
+}
+
 void SoftRenderer::FillCircle(int cx, int cy, int radius, const Color& color) {
     const int r2 = radius * radius;
     for (int y = cy - radius; y <= cy + radius; ++y) {
@@ -101,6 +192,21 @@ void SoftRenderer::FillCircle(int cx, int cy, int radius, const Color& color) {
                 BlendPixel(x, y, color);
             }
         }
+    }
+}
+
+void SoftRenderer::StrokeCircle(int cx, int cy, int radius, const Color& color, int thickness) {
+    if (radius <= 0) return;
+    const int segments = std::max(24, radius * 4);
+    int lastX = cx + radius;
+    int lastY = cy;
+    for (int i = 1; i <= segments; ++i) {
+        const float angle = static_cast<float>(i) * 6.28318530718f / static_cast<float>(segments);
+        const int x = cx + static_cast<int>(std::round(std::cos(angle) * radius));
+        const int y = cy + static_cast<int>(std::round(std::sin(angle) * radius));
+        DrawLine(lastX, lastY, x, y, color, thickness);
+        lastX = x;
+        lastY = y;
     }
 }
 
@@ -124,7 +230,7 @@ void SoftRenderer::DrawText(int x, int y, const String& text, const Color& color
     TextRasterRequest request;
     request.text = text;
     request.fontFamily = CoreText::CoreTextEngine::Get().GetSystemUiFamily();
-    request.fontSize = static_cast<float>(std::max(1, scale) * 7);
+    request.fontSize = scale <= 1 ? 10.5f : static_cast<float>(std::max(1, scale) * 7);
     request.color = color;
     request.maxWidth = m_frame.width > static_cast<uint32_t>(std::max(0, x)) ? m_frame.width - static_cast<uint32_t>(std::max(0, x)) : 0;
     request.maxHeight = m_frame.height > static_cast<uint32_t>(std::max(0, y)) ? m_frame.height - static_cast<uint32_t>(std::max(0, y)) : 0;
@@ -155,7 +261,7 @@ void SoftRenderer::BlitBgra(const Rect& dstRect, const uint8_t* srcPixels, uint3
         return;
     }
 
-    const Rect clipped = ClipRect(dstRect, m_frame.width, m_frame.height);
+    const Rect clipped = ClipRect(dstRect, m_frame.width, m_frame.height, m_clipRect);
     for (int y = clipped.top; y < clipped.bottom; ++y) {
         const uint32_t sy = static_cast<uint32_t>((static_cast<int64_t>(y - dstRect.top) * srcHeight) / dstRect.Height());
         for (int x = clipped.left; x < clipped.right; ++x) {
@@ -168,7 +274,7 @@ void SoftRenderer::BlitBgra(const Rect& dstRect, const uint8_t* srcPixels, uint3
 }
 
 void SoftRenderer::DrawCheckerboard(const Rect& rect, int cellSize, const Color& a, const Color& b) {
-    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height);
+    const Rect clipped = ClipRect(rect, m_frame.width, m_frame.height, m_clipRect);
     for (int y = clipped.top; y < clipped.bottom; ++y) {
         for (int x = clipped.left; x < clipped.right; ++x) {
             const bool even = (((x - rect.left) / cellSize) + ((y - rect.top) / cellSize)) % 2 == 0;
@@ -177,8 +283,25 @@ void SoftRenderer::DrawCheckerboard(const Rect& rect, int cellSize, const Color&
     }
 }
 
+void SoftRenderer::PushClip(const Rect& rect) {
+    m_clipStack.push_back(m_clipRect);
+    m_clipRect = IntersectRect(m_clipRect, rect);
+}
+
+void SoftRenderer::PopClip() {
+    if (m_clipStack.empty()) {
+        m_clipRect = Rect(0, 0, static_cast<int32_t>(m_frame.width), static_cast<int32_t>(m_frame.height));
+        return;
+    }
+    m_clipRect = m_clipStack.back();
+    m_clipStack.pop_back();
+}
+
 void SoftRenderer::BlendPixel(int x, int y, const Color& color) {
     if (x < 0 || y < 0 || x >= static_cast<int>(m_frame.width) || y >= static_cast<int>(m_frame.height)) {
+        return;
+    }
+    if (!m_clipRect.Contains(Point(x, y))) {
         return;
     }
     const size_t idx = (static_cast<size_t>(y) * m_frame.width + x) * 4;

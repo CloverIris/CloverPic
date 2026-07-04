@@ -8,6 +8,15 @@
 
 namespace CloverPic {
 
+namespace {
+constexpr uint32_t TileSampleCount = Render::TILE_PIXELS * Render::TILE_CHANNELS;
+constexpr float Max10 = 1023.0f;
+
+uint16_t Clamp10(float value) {
+    return static_cast<uint16_t>(std::clamp(value, 0.0f, Max10));
+}
+}
+
 // ------------------------------------------------------------------
 // Color space helpers
 // ------------------------------------------------------------------
@@ -89,7 +98,7 @@ void Filters::BuildGaussianKernel(int radius, std::vector<float>& kernel) {
 void Filters::ApplyBrightnessContrast(Layer* layer, int brightness, int contrast) {
     if (!layer) return;
 
-    float b = brightness / 100.0f * 255.0f;
+    float b = brightness / 100.0f * Max10;
     float c = (contrast + 100.0f) / 100.0f;
 
     uint32_t gw = layer->GetGridWidth();
@@ -100,18 +109,18 @@ void Filters::ApplyBrightnessContrast(Layer* layer, int brightness, int contrast
             Render::Tile* tile = layer->GetTile(gx, gy);
             if (!tile) continue;
 
-            for (uint32_t i = 0; i < Render::TILE_BYTES; i += 4) {
-                float bf = tile->data[i];
+            for (uint32_t i = 0; i < TileSampleCount; i += Render::TILE_CHANNELS) {
+                float rf = tile->data[i];
                 float gf = tile->data[i + 1];
-                float rf = tile->data[i + 2];
+                float bf = tile->data[i + 2];
                 // Apply contrast then brightness
-                bf = (bf - 128.0f) * c + 128.0f + b;
-                gf = (gf - 128.0f) * c + 128.0f + b;
-                rf = (rf - 128.0f) * c + 128.0f + b;
+                bf = (bf - 512.0f) * c + 512.0f + b;
+                gf = (gf - 512.0f) * c + 512.0f + b;
+                rf = (rf - 512.0f) * c + 512.0f + b;
 
-                tile->data[i]     = static_cast<uint8_t>(std::clamp(bf, 0.0f, 255.0f));
-                tile->data[i + 1] = static_cast<uint8_t>(std::clamp(gf, 0.0f, 255.0f));
-                tile->data[i + 2] = static_cast<uint8_t>(std::clamp(rf, 0.0f, 255.0f));
+                tile->data[i]     = Clamp10(rf);
+                tile->data[i + 1] = Clamp10(gf);
+                tile->data[i + 2] = Clamp10(bf);
                 // Alpha unchanged
             }
         }
@@ -133,10 +142,10 @@ void Filters::ApplyHueSaturation(Layer* layer, int hueShift, int saturation) {
             Render::Tile* tile = layer->GetTile(gx, gy);
             if (!tile) continue;
 
-            for (uint32_t i = 0; i < Render::TILE_BYTES; i += 4) {
-                uint8_t b = tile->data[i];
-                uint8_t g = tile->data[i + 1];
-                uint8_t r = tile->data[i + 2];
+            for (uint32_t i = 0; i < TileSampleCount; i += Render::TILE_CHANNELS) {
+                uint8_t r = Color10::To8(tile->data[i]);
+                uint8_t g = Color10::To8(tile->data[i + 1]);
+                uint8_t b = Color10::To8(tile->data[i + 2]);
                 float h, s, v;
                 RGBToHSV(r, g, b, h, s, v);
 
@@ -146,9 +155,9 @@ void Filters::ApplyHueSaturation(Layer* layer, int hueShift, int saturation) {
 
                 HSVToRGB(h, s, v, r, g, b);
 
-                tile->data[i]     = b;
-                tile->data[i + 1] = g;
-                tile->data[i + 2] = r;
+                tile->data[i]     = Color10::From8(r);
+                tile->data[i + 1] = Color10::From8(g);
+                tile->data[i + 2] = Color10::From8(b);
                 // Alpha unchanged
             }
         }
@@ -168,10 +177,10 @@ void Filters::ApplyInvert(Layer* layer) {
             Render::Tile* tile = layer->GetTile(gx, gy);
             if (!tile) continue;
 
-            for (uint32_t i = 0; i < Render::TILE_BYTES; i += 4) {
-                tile->data[i]     = 255 - tile->data[i];     // B
-                tile->data[i + 1] = 255 - tile->data[i + 1]; // G
-                tile->data[i + 2] = 255 - tile->data[i + 2]; // R
+            for (uint32_t i = 0; i < TileSampleCount; i += Render::TILE_CHANNELS) {
+                tile->data[i]     = 1023 - tile->data[i];     // R
+                tile->data[i + 1] = 1023 - tile->data[i + 1]; // G
+                tile->data[i + 2] = 1023 - tile->data[i + 2]; // B
                 // Alpha unchanged
             }
         }
@@ -191,14 +200,15 @@ void Filters::ApplyThreshold(Layer* layer, uint8_t threshold) {
             Render::Tile* tile = layer->GetTile(gx, gy);
             if (!tile) continue;
 
-            for (uint32_t i = 0; i < Render::TILE_BYTES; i += 4) {
-                uint8_t b = tile->data[i];
-                uint8_t g = tile->data[i + 1];
-                uint8_t r = tile->data[i + 2];
+            const uint16_t threshold10 = Color10::From8(threshold);
+            for (uint32_t i = 0; i < TileSampleCount; i += Render::TILE_CHANNELS) {
+                uint16_t r = tile->data[i];
+                uint16_t g = tile->data[i + 1];
+                uint16_t b = tile->data[i + 2];
 
                 // Luminance
-                uint8_t lum = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
-                uint8_t val = (lum > threshold) ? 255 : 0;
+                uint16_t lum = Clamp10(0.299f * r + 0.587f * g + 0.114f * b);
+                uint16_t val = (lum > threshold10) ? 1023 : 0;
 
                 tile->data[i]     = val;
                 tile->data[i + 1] = val;
@@ -212,110 +222,65 @@ void Filters::ApplyThreshold(Layer* layer, uint8_t threshold) {
 }
 
 // ------------------------------------------------------------------
-// Convolution helpers
-// ------------------------------------------------------------------
-
-// Fill a padded buffer from layer pixels (clamp-to-edge for boundaries)
-static void FillPaddedBuffer(Layer* layer, uint32_t tileGX, uint32_t tileGY,
-                             int radius, uint8_t* padded, int paddedSize) {
-    uint32_t canvasW = layer->GetCanvasWidth();
-    uint32_t canvasH = layer->GetCanvasHeight();
-
-    for (int py = 0; py < paddedSize; ++py) {
-        for (int px = 0; px < paddedSize; ++px) {
-            int canvasX = static_cast<int>(tileGX * Render::TILE_SIZE) + px - radius;
-            int canvasY = static_cast<int>(tileGY * Render::TILE_SIZE) + py - radius;
-
-            // Clamp to canvas bounds
-            if (canvasX < 0) canvasX = 0;
-            if (canvasY < 0) canvasY = 0;
-            if (canvasX >= static_cast<int>(canvasW)) canvasX = static_cast<int>(canvasW) - 1;
-            if (canvasY >= static_cast<int>(canvasH)) canvasY = static_cast<int>(canvasH) - 1;
-
-            Color c = layer->GetPixel(static_cast<uint32_t>(canvasX), static_cast<uint32_t>(canvasY));
-            int idx = (py * paddedSize + px) * 4;
-            padded[idx]     = c.b;
-            padded[idx + 1] = c.g;
-            padded[idx + 2] = c.r;
-            padded[idx + 3] = c.a;
-        }
-    }
-}
-
-// Separable Gaussian blur on a padded buffer, writes result back to center region
-static void GaussianBlurPadded(const uint8_t* padded, uint8_t* temp, int paddedSize,
-                               int radius, const std::vector<float>& kernel,
-                               uint8_t* outTile) {
-    // Horizontal pass: padded -> temp
-    for (int y = 0; y < paddedSize; ++y) {
-        for (int x = radius; x < paddedSize - radius; ++x) {
-            float b = 0, g = 0, r = 0;
-            for (int k = -radius; k <= radius; ++k) {
-                int idx = (y * paddedSize + (x + k)) * 4;
-                float w = kernel[k + radius];
-                b += padded[idx] * w;
-                g += padded[idx + 1] * w;
-                r += padded[idx + 2] * w;
-            }
-            int outIdx = (y * paddedSize + x) * 4;
-            temp[outIdx]     = static_cast<uint8_t>(std::clamp(b, 0.0f, 255.0f));
-            temp[outIdx + 1] = static_cast<uint8_t>(std::clamp(g, 0.0f, 255.0f));
-            temp[outIdx + 2] = static_cast<uint8_t>(std::clamp(r, 0.0f, 255.0f));
-            temp[outIdx + 3] = padded[outIdx + 3]; // Alpha unchanged
-        }
-    }
-
-    // Vertical pass: temp -> outTile (center region only)
-    for (int ty = 0; ty < static_cast<int>(Render::TILE_SIZE); ++ty) {
-        for (int tx = 0; tx < static_cast<int>(Render::TILE_SIZE); ++tx) {
-            float b = 0, g = 0, r = 0;
-            int srcY = ty + radius;
-            int srcX = tx + radius;
-            for (int k = -radius; k <= radius; ++k) {
-                int idx = ((srcY + k) * paddedSize + srcX) * 4;
-                float w = kernel[k + radius];
-                b += temp[idx] * w;
-                g += temp[idx + 1] * w;
-                r += temp[idx + 2] * w;
-            }
-            int outIdx = (ty * Render::TILE_SIZE + tx) * 4;
-            outTile[outIdx]     = static_cast<uint8_t>(std::clamp(b, 0.0f, 255.0f));
-            outTile[outIdx + 1] = static_cast<uint8_t>(std::clamp(g, 0.0f, 255.0f));
-            outTile[outIdx + 2] = static_cast<uint8_t>(std::clamp(r, 0.0f, 255.0f));
-            // Alpha unchanged
-        }
-    }
-}
-
-// ------------------------------------------------------------------
 // Gaussian Blur
 // ------------------------------------------------------------------
 
 void Filters::ApplyGaussianBlur(Layer* layer, int radius) {
     if (!layer || radius < 1) return;
 
-    uint32_t gw = layer->GetGridWidth();
-    uint32_t gh = layer->GetGridHeight();
+    const uint32_t width = layer->GetCanvasWidth();
+    const uint32_t height = layer->GetCanvasHeight();
+    if (width == 0 || height == 0) return;
+
+    radius = std::clamp(radius, 1, 24);
+    std::vector<Color> source(static_cast<size_t>(width) * height);
+    std::vector<Color> temp(source.size());
+    std::vector<Color> result(source.size());
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            source[static_cast<size_t>(y) * width + x] = layer->GetPixel(x, y);
+        }
+    }
 
     std::vector<float> kernel;
     BuildGaussianKernel(radius, kernel);
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            float r = 0, g = 0, b = 0, a = 0;
+            for (int k = -radius; k <= radius; ++k) {
+                const int sx = std::clamp<int>(static_cast<int>(x) + k, 0, static_cast<int>(width) - 1);
+                const Color c = source[static_cast<size_t>(y) * width + static_cast<uint32_t>(sx)];
+                const float w = kernel[static_cast<size_t>(k + radius)];
+                r += c.r * w; g += c.g * w; b += c.b * w; a += c.a * w;
+            }
+            temp[static_cast<size_t>(y) * width + x] = Color(
+                static_cast<uint8_t>(std::clamp(r, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a, 0.0f, 255.0f)));
+        }
+    }
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            float r = 0, g = 0, b = 0, a = 0;
+            for (int k = -radius; k <= radius; ++k) {
+                const int sy = std::clamp<int>(static_cast<int>(y) + k, 0, static_cast<int>(height) - 1);
+                const Color c = temp[static_cast<size_t>(static_cast<uint32_t>(sy)) * width + x];
+                const float w = kernel[static_cast<size_t>(k + radius)];
+                r += c.r * w; g += c.g * w; b += c.b * w; a += c.a * w;
+            }
+            result[static_cast<size_t>(y) * width + x] = Color(
+                static_cast<uint8_t>(std::clamp(r, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(g, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(b, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(a, 0.0f, 255.0f)));
+        }
+    }
 
-    int paddedSize = static_cast<int>(Render::TILE_SIZE) + 2 * radius;
-    size_t paddedBytes = static_cast<size_t>(paddedSize) * paddedSize * 4;
-    std::vector<uint8_t> padded(paddedBytes);
-    std::vector<uint8_t> temp(paddedBytes);
-    std::vector<uint8_t> result(Render::TILE_BYTES);
-
-    for (uint32_t gy = 0; gy < gh; ++gy) {
-        for (uint32_t gx = 0; gx < gw; ++gx) {
-            Render::Tile* tile = layer->GetTile(gx, gy);
-            if (!tile) continue;
-
-            FillPaddedBuffer(layer, gx, gy, radius, padded.data(), paddedSize);
-            GaussianBlurPadded(padded.data(), temp.data(), paddedSize, radius, kernel, result.data());
-
-            // Copy result back to tile
-            std::memcpy(tile->data, result.data(), Render::TILE_BYTES);
+    layer->Clear();
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            layer->SetPixel(x, y, result[static_cast<size_t>(y) * width + x]);
         }
     }
 
@@ -329,53 +294,37 @@ void Filters::ApplyGaussianBlur(Layer* layer, int radius) {
 void Filters::ApplySharpen(Layer* layer, int amount) {
     if (!layer || amount <= 0) return;
 
-    uint32_t gw = layer->GetGridWidth();
-    uint32_t gh = layer->GetGridHeight();
+    const uint32_t width = layer->GetCanvasWidth();
+    const uint32_t height = layer->GetCanvasHeight();
+    if (width == 0 || height == 0) return;
 
-    int radius = 1;
-    std::vector<float> kernel;
-    BuildGaussianKernel(radius, kernel);
+    std::vector<Color> original(static_cast<size_t>(width) * height);
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            original[static_cast<size_t>(y) * width + x] = layer->GetPixel(x, y);
+        }
+    }
+    ApplyGaussianBlur(layer, 1);
 
-    int paddedSize = static_cast<int>(Render::TILE_SIZE) + 2 * radius;
-    size_t paddedBytes = static_cast<size_t>(paddedSize) * paddedSize * 4;
-    std::vector<uint8_t> padded(paddedBytes);
-    std::vector<uint8_t> temp(paddedBytes);
-    std::vector<uint8_t> blurred(Render::TILE_BYTES);
-
-    float amt = amount / 100.0f;
-
-    for (uint32_t gy = 0; gy < gh; ++gy) {
-        for (uint32_t gx = 0; gx < gw; ++gx) {
-            Render::Tile* tile = layer->GetTile(gx, gy);
-            if (!tile) continue;
-
-            // Get original
-            uint8_t original[Render::TILE_BYTES];
-            std::memcpy(original, tile->data, Render::TILE_BYTES);
-
-            // Blur
-            FillPaddedBuffer(layer, gx, gy, radius, padded.data(), paddedSize);
-            GaussianBlurPadded(padded.data(), temp.data(), paddedSize, radius, kernel, blurred.data());
-
-            // Unsharp mask: result = original + (original - blurred) * amount
-            for (uint32_t i = 0; i < Render::TILE_BYTES; i += 4) {
-                float bOrig = original[i];
-                float gOrig = original[i + 1];
-                float rOrig = original[i + 2];
-
-                float bBlur = blurred[i];
-                float gBlur = blurred[i + 1];
-                float rBlur = blurred[i + 2];
-
-                float bResult = bOrig + (bOrig - bBlur) * amt;
-                float gResult = gOrig + (gOrig - gBlur) * amt;
-                float rResult = rOrig + (rOrig - rBlur) * amt;
-
-                tile->data[i]     = static_cast<uint8_t>(std::clamp(bResult, 0.0f, 255.0f));
-                tile->data[i + 1] = static_cast<uint8_t>(std::clamp(gResult, 0.0f, 255.0f));
-                tile->data[i + 2] = static_cast<uint8_t>(std::clamp(rResult, 0.0f, 255.0f));
-                // Alpha unchanged
-            }
+    const float amt = amount / 100.0f;
+    std::vector<Color> blurred(static_cast<size_t>(width) * height);
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            blurred[static_cast<size_t>(y) * width + x] = layer->GetPixel(x, y);
+        }
+    }
+    layer->Clear();
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const size_t idx = static_cast<size_t>(y) * width + x;
+            const Color o = original[idx];
+            const Color bl = blurred[idx];
+            Color out(
+                static_cast<uint8_t>(std::clamp(o.r + (o.r - bl.r) * amt, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(o.g + (o.g - bl.g) * amt, 0.0f, 255.0f)),
+                static_cast<uint8_t>(std::clamp(o.b + (o.b - bl.b) * amt, 0.0f, 255.0f)),
+                o.a);
+            layer->SetPixel(x, y, out);
         }
     }
 

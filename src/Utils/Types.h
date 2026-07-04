@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <memory>
@@ -118,6 +119,38 @@ struct Color {
             static_cast<uint8_t>(a.b + (b.b - a.b) * t),
             static_cast<uint8_t>(a.a + (b.a - a.a) * t)
         );
+    }
+};
+
+enum class PixelFormat {
+    Bgra8Unorm,
+    Rgba10Unorm
+};
+
+struct Color10 {
+    uint16_t r = 0;
+    uint16_t g = 0;
+    uint16_t b = 0;
+    uint16_t a = 1023;
+
+    Color10() = default;
+    Color10(uint16_t r_, uint16_t g_, uint16_t b_, uint16_t a_ = 1023)
+        : r(r_), g(g_), b(b_), a(a_) {}
+
+    static uint16_t From8(uint8_t value) {
+        return static_cast<uint16_t>((static_cast<uint32_t>(value) * 1023u + 127u) / 255u);
+    }
+
+    static uint8_t To8(uint16_t value) {
+        return static_cast<uint8_t>((std::min<uint16_t>(value, 1023) * 255u + 511u) / 1023u);
+    }
+
+    static Color10 FromColor(const Color& color) {
+        return Color10(From8(color.r), From8(color.g), From8(color.b), From8(color.a));
+    }
+
+    Color ToColor() const {
+        return Color(To8(r), To8(g), To8(b), To8(a));
     }
 };
 

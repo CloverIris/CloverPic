@@ -38,7 +38,8 @@ file(GLOB_RECURSE WINDOWS_ADAPTER_HEADERS
     src/Platform/Windows/*.h
 )
 
-# The MVP refactor is driven by Core::AppRuntime + Platform/Windows/WindowsHost.
+# The MVP refactor is driven by separate project-manager and workspace runtimes
+# hosted by Platform/Windows/WindowsHost.
 # CloverPicCore must stay platform-neutral; Windows-only code enters only the executable.
 add_library(CloverPicCore STATIC ${CORE_SOURCES} ${CORE_HEADERS})
 

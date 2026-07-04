@@ -1,13 +1,11 @@
 #include "Platform/Windows/WindowsHost.h"
 #include "Platform/Windows/WindowsCoreServices.h"
 #include "Platform/Windows/RenderBackend.h"
-#include <gdiplus.h>
 #include <shellscalingapi.h>
 #include <windowsx.h>
 #include <algorithm>
 #include <chrono>
 #include <cstring>
-#include <iostream>
 
 namespace CloverPic::Platform::Windows {
 
@@ -18,72 +16,79 @@ uint64_t NowMs() {
     return static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
 }
 
-} // namespace
-
-WindowsHost::WindowsHost() = default;
-
-WindowsHost::~WindowsHost() {
-    if (m_hwnd) {
-        DestroyWindow(m_hwnd);
-        m_hwnd = nullptr;
-    }
-    Render::RenderBackend::GetInstance().Shutdown();
-    CoUninitialize();
-}
-
-bool WindowsHost::Initialize(HINSTANCE instance) {
-    m_instance = instance;
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    Render::RenderBackend::GetInstance().Initialize();
-
-    if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
-        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE)) {
-            SetProcessDPIAware();
-        }
-    }
-
-    RegisterClass();
-
+Size WorkAreaSize() {
     RECT workArea = {};
     if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0)) {
-        workArea = { 0, 0, 1280, 960 };
+        return Size(1280, 960);
     }
-    const int workW = std::max<LONG>(800, workArea.right - workArea.left);
-    const int workH = std::max<LONG>(600, workArea.bottom - workArea.top);
-    int clientH = std::clamp(static_cast<int>(workH * 0.76f), 720, 1080);
-    int clientW = clientH * 4 / 3;
-    const int maxW = static_cast<int>(workW * 0.86f);
-    if (clientW > maxW) {
-        clientW = std::max(900, maxW);
-        clientH = clientW * 3 / 4;
-    }
+    return Size(std::max<LONG>(800, workArea.right - workArea.left), std::max<LONG>(600, workArea.bottom - workArea.top));
+}
 
-    RECT rc = { 0, 0, clientW, clientH };
-    AdjustWindowRectEx(&rc, WS_OVERLAPPEDWINDOW, FALSE, 0);
+Point WorkAreaOrigin() {
+    RECT workArea = {};
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0)) {
+        return Point(0, 0);
+    }
+    return Point(workArea.left, workArea.top);
+}
+
+void CenterWindow(HWND hwnd, int clientWidth, int clientHeight, bool borderless) {
+    RECT rc = {0, 0, clientWidth, clientHeight};
+    if (!borderless) {
+        AdjustWindowRectEx(&rc, WS_OVERLAPPEDWINDOW, FALSE, 0);
+    }
     const int windowW = rc.right - rc.left;
     const int windowH = rc.bottom - rc.top;
-    const int windowX = workArea.left + std::max(0, (workW - windowW) / 2);
-    const int windowY = workArea.top + std::max(0, (workH - windowH) / 2);
+    const Size work = WorkAreaSize();
+    const Point origin = WorkAreaOrigin();
+    SetWindowPos(hwnd, nullptr,
+                 origin.x + std::max(0, (work.width - windowW) / 2),
+                 origin.y + std::max(0, (work.height - windowH) / 2),
+                 windowW, windowH,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+} // namespace
+
+WindowsSurfaceWindow::WindowsSurfaceWindow(WindowsHost& owner, SurfaceRole role, Core::RuntimeSurface& runtime)
+    : m_owner(owner), m_role(role), m_runtime(runtime) {}
+
+WindowsSurfaceWindow::~WindowsSurfaceWindow() {
+    Destroy();
+}
+
+bool WindowsSurfaceWindow::Create(HINSTANCE instance, const wchar_t* title, int clientWidth, int clientHeight,
+                                  bool visible, HWND owner, bool borderless) {
+    m_instance = instance;
+    m_borderless = borderless;
+    RegisterClass(instance);
+    RECT rc = {0, 0, clientWidth, clientHeight};
+    const DWORD style = borderless ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+    const DWORD exStyle = borderless ? WS_EX_TOOLWINDOW : 0;
+    if (!borderless) {
+        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+    }
+    const int windowW = rc.right - rc.left;
+    const int windowH = rc.bottom - rc.top;
+    const Point origin = WorkAreaOrigin();
+    const Size work = WorkAreaSize();
     m_hwnd = CreateWindowExW(
-        0,
+        exStyle,
         ClassName,
-        L"CloverPic",
-        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-        windowX,
-        windowY,
+        title,
+        style | (visible ? WS_VISIBLE : 0),
+        origin.x + std::max(0, (work.width - windowW) / 2),
+        origin.y + std::max(0, (work.height - windowH) / 2),
         windowW,
         windowH,
-        nullptr,
+        owner,
         nullptr,
         m_instance,
         this);
+    if (!m_hwnd) return false;
 
-    if (!m_hwnd) {
-        return false;
-    }
-
+    CenterWindow(m_hwnd, clientWidth, clientHeight, borderless);
     UpdateDpiFromWindow();
-    RegisterWindowsCoreServices(m_hwnd);
     m_runtime.Initialize();
     ResizeFromClient();
     SetTimer(m_hwnd, FrameTimerId, 16, nullptr);
@@ -91,84 +96,74 @@ bool WindowsHost::Initialize(HINSTANCE instance) {
     return true;
 }
 
-int WindowsHost::Run() {
-    MSG msg = {};
-    while (m_running && GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-    return static_cast<int>(msg.wParam);
-}
-
-void WindowsHost::RequestFrame() {
+void WindowsSurfaceWindow::Destroy() {
     if (m_hwnd) {
-        InvalidateRect(m_hwnd, nullptr, FALSE);
+        DestroyWindow(m_hwnd);
     }
 }
 
-void WindowsHost::Present(const Core::RgbaFrame& frame, const std::vector<Rect>& dirtyRects) {
-    if (!m_hwnd || frame.IsEmpty()) {
-        return;
-    }
-
-    HDC hdc = GetDC(m_hwnd);
-    PresentToHdc(hdc, frame, dirtyRects);
-    ReleaseDC(m_hwnd, hdc);
+void WindowsSurfaceWindow::Show(int command) {
+    if (!m_hwnd) return;
+    ShowWindow(m_hwnd, command);
+    UpdateWindow(m_hwnd);
+    RequestFrame();
 }
 
-void WindowsHost::PresentToHdc(HDC hdc, const Core::RgbaFrame& frame, const std::vector<Rect>& dirtyRects) {
-    if (!hdc || frame.IsEmpty()) {
-        return;
-    }
-
-    const auto blitRect = [&](const Rect& rect) {
-        StretchDIBits(
-            hdc,
-            rect.left,
-            rect.top,
-            rect.Width(),
-            rect.Height(),
-            rect.left,
-            rect.top,
-            rect.Width(),
-            rect.Height(),
-            frame.pixels.data(),
-            &m_bitmapInfo,
-            DIB_RGB_COLORS,
-            SRCCOPY);
-    };
-
-    if (dirtyRects.empty()) {
-        blitRect(Rect(0, 0, static_cast<int32_t>(frame.width), static_cast<int32_t>(frame.height)));
-    } else {
-        for (const auto& rect : dirtyRects) {
-            if (rect.Width() > 0 && rect.Height() > 0) {
-                blitRect(rect);
-            }
-        }
-    }
+void WindowsSurfaceWindow::Hide() {
+    if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
 }
 
-LRESULT CALLBACK WindowsHost::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    WindowsHost* host = nullptr;
+void WindowsSurfaceWindow::RequestFrame() {
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+LRESULT CALLBACK WindowsSurfaceWindow::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    WindowsSurfaceWindow* surface = nullptr;
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
-        host = static_cast<WindowsHost*>(cs->lpCreateParams);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(host));
-        host->m_hwnd = hwnd;
+        surface = static_cast<WindowsSurfaceWindow*>(cs->lpCreateParams);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(surface));
+        surface->m_hwnd = hwnd;
     } else {
-        host = reinterpret_cast<WindowsHost*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        surface = reinterpret_cast<WindowsSurfaceWindow*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     }
-    return host ? host->HandleMessage(msg, wParam, lParam) : DefWindowProcW(hwnd, msg, wParam, lParam);
+    return surface ? surface->HandleMessage(msg, wParam, lParam) : DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
-LRESULT WindowsHost::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+void WindowsSurfaceWindow::RegisterClass(HINSTANCE instance) {
+    static bool registered = false;
+    if (registered) return;
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = WindowProc;
+    wc.hInstance = instance;
+    wc.lpszClassName = ClassName;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = nullptr;
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+    RegisterClassExW(&wc);
+    registered = true;
+}
+
+LRESULT WindowsSurfaceWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
+        case WM_NCHITTEST:
+            if (m_borderless) {
+                POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+                ScreenToClient(m_hwnd, &pt);
+                if (m_runtime.IsWindowDragRegion(Point(pt.x, pt.y))) {
+                    return HTCAPTION;
+                }
+                return HTCLIENT;
+            }
+            break;
+        case WM_SETFOCUS:
+            m_owner.SetActiveDialogOwner(m_hwnd);
+            return 0;
         case WM_SIZE:
             ResizeFromClient();
             RequestFrame();
             return 0;
-
         case WM_DPICHANGED: {
             m_dpiScale = std::max(1.0f, static_cast<float>(HIWORD(wParam)) / 96.0f);
             if (auto* suggested = reinterpret_cast<RECT*>(lParam)) {
@@ -181,26 +176,26 @@ LRESULT WindowsHost::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             RequestFrame();
             return 0;
         }
-
         case WM_PAINT:
             Paint();
+            CheckRuntimeCloseRequest();
             return 0;
-
         case WM_TIMER:
             if (wParam == FrameTimerId && m_runtime.NeedsFrame(NowMs())) {
                 RequestFrame();
                 return 0;
             }
             break;
-
         case WM_LBUTTONDOWN:
             SetCapture(m_hwnd);
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Down, lParam, MouseButton::Left));
+            CheckRuntimeCloseRequest();
             RequestFrame();
             return 0;
         case WM_LBUTTONUP:
             ReleaseCapture();
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Up, lParam, MouseButton::Left));
+            CheckRuntimeCloseRequest();
             RequestFrame();
             return 0;
         case WM_RBUTTONDOWN:
@@ -226,13 +221,12 @@ LRESULT WindowsHost::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             RequestFrame();
             return 0;
         case WM_MOUSEWHEEL: {
-            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
             ScreenToClient(m_hwnd, &pt);
             m_runtime.HandleWheel(GET_WHEEL_DELTA_WPARAM(wParam), Point(pt.x, pt.y));
             RequestFrame();
             return 0;
         }
-
         case WM_POINTERDOWN:
         case WM_POINTERUPDATE:
         case WM_POINTERUP: {
@@ -244,50 +238,40 @@ LRESULT WindowsHost::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
             }
             break;
         }
-
         case WM_KEYDOWN:
             m_runtime.HandleKey(MakeKeyEvent(Input::KeyAction::Down, wParam, lParam));
-            if (m_runtime.WantsQuit()) RequestQuit();
+            CheckRuntimeCloseRequest();
             RequestFrame();
             return 0;
         case WM_KEYUP:
             m_runtime.HandleKey(MakeKeyEvent(Input::KeyAction::Up, wParam, lParam));
             RequestFrame();
             return 0;
-
         case WM_CLOSE:
-            RequestQuit();
+            if (m_role == SurfaceRole::Home) {
+                m_owner.OnProgramManagerCloseRequested();
+            } else {
+                DestroyWindow(m_hwnd);
+            }
             return 0;
         case WM_DESTROY:
-            m_running = false;
-            PostQuitMessage(0);
+            m_closed = true;
+            KillTimer(m_hwnd, FrameTimerId);
+            m_hwnd = nullptr;
+            m_owner.OnSurfaceDestroyed(m_role);
             return 0;
         case WM_ERASEBKGND:
             return 1;
     }
-
     return DefWindowProcW(m_hwnd, msg, wParam, lParam);
 }
 
-void WindowsHost::RegisterClass() {
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(wc);
-    wc.lpfnWndProc = WindowProc;
-    wc.hInstance = m_instance;
-    wc.lpszClassName = ClassName;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = nullptr;
-    wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-    RegisterClassExW(&wc);
-}
-
-void WindowsHost::ResizeFromClient() {
+void WindowsSurfaceWindow::ResizeFromClient() {
     if (!m_hwnd) return;
     RECT rc = {};
     GetClientRect(m_hwnd, &rc);
     m_viewport = Size(std::max(1L, rc.right - rc.left), std::max(1L, rc.bottom - rc.top));
     m_runtime.Resize(static_cast<uint32_t>(m_viewport.width), static_cast<uint32_t>(m_viewport.height), m_dpiScale);
-
     m_bitmapInfo = {};
     m_bitmapInfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     m_bitmapInfo.bmiHeader.biWidth = m_viewport.width;
@@ -297,17 +281,33 @@ void WindowsHost::ResizeFromClient() {
     m_bitmapInfo.bmiHeader.biCompression = BI_RGB;
 }
 
-void WindowsHost::Paint() {
+void WindowsSurfaceWindow::Paint() {
+    if (!m_hwnd) return;
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(m_hwnd, &ps);
-
     std::vector<Rect> dirtyRects;
     const auto& frame = m_runtime.Render(NowMs(), dirtyRects);
     PresentToHdc(hdc, frame, dirtyRects);
     EndPaint(m_hwnd, &ps);
 }
 
-Input::PointerEvent WindowsHost::MakeMouseEvent(Input::PointerAction action, LPARAM lParam, MouseButton button) const {
+void WindowsSurfaceWindow::PresentToHdc(HDC hdc, const Core::RgbaFrame& frame, const std::vector<Rect>& dirtyRects) {
+    if (!hdc || frame.IsEmpty()) return;
+    const auto blitRect = [&](const Rect& rect) {
+        StretchDIBits(hdc, rect.left, rect.top, rect.Width(), rect.Height(),
+                      rect.left, rect.top, rect.Width(), rect.Height(),
+                      frame.pixels.data(), &m_bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    };
+    if (m_role == SurfaceRole::Workspace || dirtyRects.empty()) {
+        blitRect(Rect(0, 0, static_cast<int32_t>(frame.width), static_cast<int32_t>(frame.height)));
+    } else {
+        for (const auto& rect : dirtyRects) {
+            if (rect.Width() > 0 && rect.Height() > 0) blitRect(rect);
+        }
+    }
+}
+
+Input::PointerEvent WindowsSurfaceWindow::MakeMouseEvent(Input::PointerAction action, LPARAM lParam, MouseButton button) const {
     Input::PointerEvent event;
     event.device = Input::PointerDeviceType::Mouse;
     event.action = action;
@@ -320,7 +320,7 @@ Input::PointerEvent WindowsHost::MakeMouseEvent(Input::PointerAction action, LPA
     return event;
 }
 
-Input::KeyEvent WindowsHost::MakeKeyEvent(Input::KeyAction action, WPARAM wParam, LPARAM lParam) const {
+Input::KeyEvent WindowsSurfaceWindow::MakeKeyEvent(Input::KeyAction action, WPARAM wParam, LPARAM lParam) const {
     Input::KeyEvent event;
     event.action = action;
     event.keyCode = static_cast<uint32_t>(wParam);
@@ -329,7 +329,7 @@ Input::KeyEvent WindowsHost::MakeKeyEvent(Input::KeyAction action, WPARAM wParam
     return event;
 }
 
-uint32_t WindowsHost::CurrentModifiers() const {
+uint32_t WindowsSurfaceWindow::CurrentModifiers() const {
     uint32_t modifiers = Input::ModifierNone;
     if ((GetKeyState(VK_SHIFT) & 0x8000) != 0) modifiers |= Input::ModifierShift;
     if ((GetKeyState(VK_CONTROL) & 0x8000) != 0) modifiers |= Input::ModifierControl;
@@ -337,26 +337,18 @@ uint32_t WindowsHost::CurrentModifiers() const {
     return modifiers;
 }
 
-bool WindowsHost::TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEvent& outEvent) const {
+bool WindowsSurfaceWindow::TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEvent& outEvent) const {
     POINTER_INPUT_TYPE pointerType;
-    if (!GetPointerType(GET_POINTERID_WPARAM(wParam), &pointerType)) {
-        return false;
-    }
-    if (pointerType != PT_PEN && pointerType != PT_TOUCH) {
-        return false;
-    }
+    if (!GetPointerType(GET_POINTERID_WPARAM(wParam), &pointerType)) return false;
+    if (pointerType != PT_PEN && pointerType != PT_TOUCH) return false;
 
     if (pointerType == PT_TOUCH) {
         POINTER_INFO pointerInfo = {};
-        if (!GetPointerInfo(GET_POINTERID_WPARAM(wParam), &pointerInfo)) {
-            return false;
-        }
-        POINT pt = { pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y };
+        if (!GetPointerInfo(GET_POINTERID_WPARAM(wParam), &pointerInfo)) return false;
+        POINT pt = {pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y};
         ScreenToClient(m_hwnd, &pt);
         outEvent.device = Input::PointerDeviceType::Touch;
-        outEvent.action = msg == WM_POINTERDOWN
-            ? Input::PointerAction::Down
-            : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
+        outEvent.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
         outEvent.position = Point(pt.x, pt.y);
         outEvent.button = MouseButton::Left;
         outEvent.pressure = 1.0f;
@@ -366,16 +358,11 @@ bool WindowsHost::TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEve
     }
 
     POINTER_PEN_INFO penInfo = {};
-    if (!GetPointerPenInfo(GET_POINTERID_WPARAM(wParam), &penInfo)) {
-        return false;
-    }
-
-    POINT pt = { penInfo.pointerInfo.ptPixelLocation.x, penInfo.pointerInfo.ptPixelLocation.y };
+    if (!GetPointerPenInfo(GET_POINTERID_WPARAM(wParam), &penInfo)) return false;
+    POINT pt = {penInfo.pointerInfo.ptPixelLocation.x, penInfo.pointerInfo.ptPixelLocation.y};
     ScreenToClient(m_hwnd, &pt);
     outEvent.device = Input::PointerDeviceType::Pen;
-    outEvent.action = msg == WM_POINTERDOWN
-        ? Input::PointerAction::Down
-        : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
+    outEvent.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
     outEvent.position = Point(pt.x, pt.y);
     outEvent.button = MouseButton::Left;
     outEvent.pressure = std::clamp(static_cast<float>(penInfo.pressure) / 1024.0f, 0.0f, 1.0f);
@@ -388,7 +375,7 @@ bool WindowsHost::TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEve
     return true;
 }
 
-void WindowsHost::UpdateDpiFromWindow() {
+void WindowsSurfaceWindow::UpdateDpiFromWindow() {
     UINT dpi = 96;
     if (m_hwnd) {
         if (HMODULE hUser32 = GetModuleHandleW(L"user32.dll")) {
@@ -401,6 +388,162 @@ void WindowsHost::UpdateDpiFromWindow() {
         }
     }
     m_dpiScale = std::max(1.0f, dpi / 96.0f);
+}
+
+void WindowsSurfaceWindow::CheckRuntimeCloseRequest() {
+    if (!m_runtime.WantsQuit()) return;
+    if (m_role == SurfaceRole::Home) {
+        m_owner.OnProgramManagerCloseRequested();
+    } else if (m_hwnd) {
+        DestroyWindow(m_hwnd);
+    }
+}
+
+WindowsHost::WindowsHost() = default;
+
+WindowsHost::~WindowsHost() {
+    m_workspaceWindow.reset();
+    m_homeWindow.reset();
+    Render::RenderBackend::GetInstance().Shutdown();
+    CoUninitialize();
+}
+
+bool WindowsHost::Initialize(HINSTANCE instance) {
+    m_instance = instance;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    Render::RenderBackend::GetInstance().Initialize();
+    if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE)) {
+            SetProcessDPIAware();
+        }
+    }
+    RegisterWindowsCoreServices([this]() { return GetActiveDialogOwner(); });
+    CreateWorkspaceWindow();
+    CreateHomeWindow();
+    return m_workspaceWindow && m_workspaceWindow->GetHwnd() && m_homeWindow && m_homeWindow->GetHwnd();
+}
+
+int WindowsHost::Run() {
+    MSG msg = {};
+    while (m_running && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+        PumpRuntimeRequests();
+    }
+    return static_cast<int>(msg.wParam);
+}
+
+HWND WindowsHost::GetActiveDialogOwner() const {
+    if (m_activeDialogOwner && IsWindow(m_activeDialogOwner)) return m_activeDialogOwner;
+    if (m_workspaceWindow && m_workspaceWindow->GetHwnd()) return m_workspaceWindow->GetHwnd();
+    return m_homeWindow ? m_homeWindow->GetHwnd() : nullptr;
+}
+
+void WindowsHost::SetActiveDialogOwner(HWND hwnd) {
+    m_activeDialogOwner = hwnd;
+}
+
+void WindowsHost::RequestQuit() {
+    m_running = false;
+    PostQuitMessage(0);
+}
+
+void WindowsHost::OnProgramManagerCloseRequested() {
+    if (m_workspaceRuntime && m_workspaceRuntime->HasProject()) {
+        if (m_homeRuntime) m_homeRuntime->ClearQuitRequest();
+        if (m_homeWindow) m_homeWindow->Hide();
+        m_activeDialogOwner = m_workspaceWindow ? m_workspaceWindow->GetHwnd() : nullptr;
+        return;
+    }
+    RequestQuit();
+}
+
+void WindowsHost::OnSurfaceDestroyed(SurfaceRole role) {
+    if (role == SurfaceRole::Workspace) {
+        RequestQuit();
+    } else {
+        RequestQuit();
+    }
+}
+
+void WindowsHost::CreateHomeWindow() {
+    m_homeRuntime = std::make_unique<Core::ProjectManagerRuntime>();
+    m_homeWindow = std::make_unique<WindowsSurfaceWindow>(*this, SurfaceRole::Home, *m_homeRuntime);
+    const Size client = ComputeHomeClientSize();
+    const HWND owner = m_workspaceWindow ? m_workspaceWindow->GetHwnd() : nullptr;
+    m_homeWindow->Create(m_instance, L"CloverPic Program Manager", client.width, client.height, true, owner, true);
+    m_activeDialogOwner = m_homeWindow->GetHwnd();
+}
+
+void WindowsHost::CreateWorkspaceWindow() {
+    m_workspaceRuntime = std::make_unique<Core::WorkspaceRuntime>(Core::WorkspaceLaunchRequest{});
+    m_workspaceWindow = std::make_unique<WindowsSurfaceWindow>(*this, SurfaceRole::Workspace, *m_workspaceRuntime);
+    const Size client = ComputeWorkspaceClientSize();
+    m_workspaceWindow->Create(m_instance, L"CloverPic Workspace", client.width, client.height, true);
+    m_activeDialogOwner = m_workspaceWindow->GetHwnd();
+}
+
+void WindowsHost::OpenWorkspace(Core::WorkspaceLaunchRequest request) {
+    if (!m_workspaceRuntime || !m_workspaceWindow) {
+        CreateWorkspaceWindow();
+    }
+    m_workspaceRuntime->AcceptWorkspaceLaunchRequest(std::move(request));
+    m_workspaceWindow->Show(SW_SHOW);
+    if (m_homeWindow) m_homeWindow->Hide();
+    m_activeDialogOwner = m_workspaceWindow->GetHwnd();
+}
+
+void WindowsHost::CloseWorkspaceAndReturnHome() {
+    m_workspaceWindow.reset();
+    m_workspaceRuntime.reset();
+    m_workspaceDestroyed = false;
+    if (m_homeRuntime) m_homeRuntime->RefreshRecentFiles();
+    if (m_homeWindow) {
+        m_homeWindow->Show(SW_SHOW);
+        m_activeDialogOwner = m_homeWindow->GetHwnd();
+    }
+}
+
+void WindowsHost::PumpRuntimeRequests() {
+    if (m_workspaceDestroyed) {
+        CloseWorkspaceAndReturnHome();
+    }
+    if (m_workspaceRuntime && m_workspaceRuntime->ConsumeProgramManagerRequest()) {
+        const bool showSettings = m_workspaceRuntime->ConsumeProgramManagerSettingsRequest();
+        if (m_homeRuntime) {
+            m_homeRuntime->RefreshRecentFiles();
+            if (showSettings) {
+                m_homeRuntime->ShowSettingsPage();
+            }
+        }
+        if (m_homeWindow) {
+            m_homeWindow->Show(SW_SHOW);
+            m_activeDialogOwner = m_homeWindow->GetHwnd();
+        }
+    }
+    if (m_homeRuntime && m_homeRuntime->HasLaunchRequest()) {
+        OpenWorkspace(m_homeRuntime->ConsumeLaunchRequest());
+    }
+}
+
+Size WindowsHost::ComputeHomeClientSize() const {
+    const Size work = WorkAreaSize();
+    int clientH = std::clamp(static_cast<int>(work.height * 0.62f), 570, 840);
+    int clientW = clientH * 4 / 3;
+    const int maxW = std::min(1120, static_cast<int>(work.width * 0.78f));
+    if (clientW > maxW) {
+        clientW = std::max(760, maxW);
+        clientH = clientW * 3 / 4;
+    }
+    clientW = std::clamp(clientW, 760, 1120);
+    clientH = std::clamp(clientH, 570, 840);
+    return Size(clientW, clientH);
+}
+
+Size WindowsHost::ComputeWorkspaceClientSize() const {
+    const Size work = WorkAreaSize();
+    return Size(std::clamp(static_cast<int>(work.width * 0.88f), 1180, 1920),
+                std::clamp(static_cast<int>(work.height * 0.86f), 780, 1280));
 }
 
 } // namespace CloverPic::Platform::Windows

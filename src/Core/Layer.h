@@ -80,7 +80,7 @@ public:
     // Direct tile import for deserialization
     virtual void ImportTile(uint32_t gridX, uint32_t gridY, const uint8_t* srcData) = 0;
 
-    // Extensible payload for VVP v2 (source data for text/vector layers)
+    // Extensible source payload for text/vector layer resources in .cloverpic.
     virtual std::vector<uint8_t> SerializePayload() const { return {}; }
     virtual void DeserializePayload(const uint8_t*, size_t) {}
 

@@ -8,7 +8,7 @@ The project now uses a **core-driven single-surface** architecture. Core owns pr
 
 - Provide the main illustration workflow: new canvas, drawing, eraser, colors, layers, undo/redo, save, open, and export.
 - Keep UI self-rendered by core so buttons, panels, project manager, workspace, hit testing, focus, and dirty refresh are platform-neutral.
-- Keep `.vvp` project serialization in core so project files behave consistently across platforms.
+- Keep `.cloverpic` project serialization in core so project files behave consistently across platforms.
 - Make new platforms implement adapters instead of rewriting editor logic.
 - Keep Windows as the first adapter, not as the architecture.
 
@@ -17,7 +17,7 @@ The project now uses a **core-driven single-surface** architecture. Core owns pr
 ```text
 src/
   Core/
-    App/              # AppRuntime, scene builder, command dispatcher, canvas controller
+    App/              # ProjectManagerRuntime, WorkspaceRuntime, scene builder, command dispatcher
     Input/            # Platform-neutral input events
     Platform/         # Core-visible host / presenter boundaries
     Presentation/     # Soft renderer, frame scheduler, UI frame graph
@@ -37,15 +37,15 @@ src/
 - Core does not create native child windows, read Win32 messages, call file dialogs, call image encoders, or call platform text APIs.
 - Adapter does not understand buttons, panels, menus, layer UI, layout semantics, or app commands. It only translates input into core-coordinate events and presents `RgbaFrame`.
 - Adapter provides font discovery through `IPlatformFontCatalogProvider`; core owns font parsing, glyph lookup, kerning, glyph cache, and grayscale soft rasterization.
-- `.vvp` serialization/deserialization is owned by core. Adapter only provides byte reads/writes.
-- PNG/JPEG encoding, recent-file storage, file dialogs, display facts, and memory facts are platform services.
+- `.cloverpic` serialization/deserialization is owned by core. Adapter only provides byte reads/writes.
+- PNG16/PNG8 image codec services, recent-file storage, file dialogs, color profile discovery, display facts, and memory facts are platform services.
 - See [docs/CoreAdapterAPI.md](docs/CoreAdapterAPI.md) for the full boundary contract.
 
 ## MVP Features
 
 - Metro-inspired Program Manager with recent projects, search, quick actions, and tile placeholders for future announcements or thumbnails.
 - Single-window, single-surface self-rendered UI with dirty-rect refresh scheduling.
-- Preset canvas creation, `.vvp` open/save, and PNG export.
+- Program Manager hosted canvas creation, `.cloverpic` open/save, and PNG export.
 - Canvas zoom/pan, brush, eraser, color switching, layer selection, add/delete, and visibility toggles.
 - Raster layer and Text layer data models.
 - Core-owned soft text rendering based on supported TrueType/OpenType `glyf` fonts discovered by the adapter.

@@ -19,6 +19,8 @@ public:
     void Clear() override;
     Color GetPixel(uint32_t x, uint32_t y) const override;
     void SetPixel(uint32_t x, uint32_t y, const Color& color) override;
+    Color10 GetPixel10(uint32_t x, uint32_t y) const;
+    void SetPixel10(uint32_t x, uint32_t y, const Color10& color);
 
     // Brush stamp
     void DrawBrushStamp(float cx, float cy, float radius, const Color& color, float opacity,
