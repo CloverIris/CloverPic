@@ -73,8 +73,10 @@ public:
     void RequestQuit();
     void OnSurfaceDestroyed(SurfaceRole role);
     void OnProgramManagerCloseRequested();
+    void OnWorkspaceCloseRequested();
 
 private:
+    bool ConfirmWorkspaceDestructiveAction(const String& actionLabel);
     void CreateHomeWindow();
     void CreateWorkspaceWindow();
     void OpenWorkspace(Core::WorkspaceLaunchRequest request);

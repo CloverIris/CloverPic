@@ -9,7 +9,9 @@
 #include "Core/Text/CoreTextEngine.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
+#include <string>
 
 namespace CloverPic::Core {
 
@@ -22,9 +24,14 @@ constexpr int StatusBarH = 24;
 constexpr int ToolBarW = 64;
 constexpr int LeftPanelW = 292;
 constexpr int RightPanelW = 312;
+constexpr int EdgeTabW = 18;
 constexpr uint32_t KeyBracketLeft = 0xDB;
 constexpr uint32_t KeyBracketRight = 0xDD;
 constexpr Presentation::UiNodeId CanvasAnimationRegionId = 1;
+constexpr const wchar_t* CanvasSizeWidthPayload = L"canvas-size-width";
+constexpr const wchar_t* CanvasSizeHeightPayload = L"canvas-size-height";
+constexpr const wchar_t* CanvasAnchorPayload = L"canvas-anchor";
+constexpr const char* WorkspaceUiSettingsMagic = "CLVPIC_WORKSPACE_UI_V1";
 
 struct Hsv {
     float h = 0.0f;
@@ -133,6 +140,47 @@ String BlendName(BlendMode mode) {
     }
 }
 
+String CanvasAnchorName(uint32_t anchorIndex) {
+    switch (anchorIndex) {
+        case 0: return L"Top Left";
+        case 1: return L"Top Center";
+        case 2: return L"Top Right";
+        case 3: return L"Middle Left";
+        case 4: return L"Center";
+        case 5: return L"Middle Right";
+        case 6: return L"Bottom Left";
+        case 7: return L"Bottom Center";
+        case 8: return L"Bottom Right";
+        default: return L"Center";
+    }
+}
+
+String JoinResizeDirections(const std::vector<String>& values) {
+    if (values.empty()) {
+        return L"None";
+    }
+    String result = values.front();
+    for (size_t i = 1; i < values.size(); ++i) {
+        result += L", ";
+        result += values[i];
+    }
+    return result;
+}
+
+String SnapModeName(SnapModeId mode) {
+    switch (mode) {
+        case SnapModeId::Off: return L"SNAP OFF";
+        case SnapModeId::Parallel: return L"SNAP PARALLEL";
+        case SnapModeId::Crisscross: return L"SNAP CRISSCROSS";
+        case SnapModeId::VanishingPoint: return L"SNAP VANISH";
+        case SnapModeId::Radial: return L"SNAP RADIAL";
+        case SnapModeId::Circle: return L"SNAP CIRCLE";
+        case SnapModeId::Curve: return L"SNAP CURVE";
+        case SnapModeId::CurvedLineEllipse: return L"SNAP ELLIPSE";
+        default: return L"SNAP";
+    }
+}
+
 } // namespace
 
 WorkspaceRuntime::WorkspaceRuntime(WorkspaceLaunchRequest launchRequest) : m_launchRequest(std::move(launchRequest)) {}
@@ -147,6 +195,7 @@ bool WorkspaceRuntime::Initialize() {
     } else {
         m_status = L"NO PROJECT";
     }
+    LoadWorkspaceUiSettings();
 
     BuildScene();
     MarkDirty(FullRect());
@@ -171,6 +220,7 @@ bool WorkspaceRuntime::OpenLaunchRequest(const WorkspaceLaunchRequest& launchReq
                            launchRequest.rgbProfilePath, launchRequest.cmykProfilePath,
                            launchRequest.rgbProfileBytes, launchRequest.cmykProfileBytes);
         m_session.AttachProject(m_canvas.GetProject());
+        m_session.MarkDirty();
         m_canvas.ResizeViewport(CanvasRect());
         m_status = L"NEW CANVAS";
         return true;
@@ -227,17 +277,6 @@ const RgbaFrame& WorkspaceRuntime::Render(uint64_t nowMs, std::vector<Rect>& out
 void WorkspaceRuntime::HandlePointer(const Input::PointerEvent& event) {
     if (m_frame.IsEmpty()) return;
 
-    if (!m_modals.HasModal() && m_openMenu.empty() && CanvasRect().Contains(event.position)) {
-        m_canvas.HandlePointer(event, CanvasRect());
-        if (m_canvas.IsInteracting()) {
-            m_scheduler.SetAnimatedRegion(CanvasAnimationRegionId, CanvasRect(), 60);
-        } else {
-            m_scheduler.ClearAnimatedRegion(CanvasAnimationRegionId);
-        }
-        MarkDirty(CanvasRect());
-        return;
-    }
-
     if (event.action == Input::PointerAction::Move && m_scene.GetCapture() != 0) {
         auto* captured = m_scene.Find(m_scene.GetCapture());
         if (captured && captured->type == CoreUI::UiNodeType::Slider) {
@@ -257,6 +296,20 @@ void WorkspaceRuntime::HandlePointer(const Input::PointerEvent& event) {
         }
     }
 
+    if (!m_modals.HasModal() && m_openMenu.empty() && CanvasRect().Contains(event.position)) {
+        const bool changed = m_canvas.HandlePointer(event, CanvasRect());
+        if (changed) {
+            MarkProjectDirty();
+        }
+        if (m_canvas.IsInteracting()) {
+            m_scheduler.SetAnimatedRegion(CanvasAnimationRegionId, CanvasRect(), 60);
+        } else {
+            m_scheduler.ClearAnimatedRegion(CanvasAnimationRegionId);
+        }
+        MarkDirty(CanvasRect());
+        return;
+    }
+
     auto* hit = m_scene.HitTest(event.position);
     const Presentation::UiNodeId hitId = hit ? hit->id : 0;
     if (event.action == Input::PointerAction::Move && hitId != m_scene.GetHover()) {
@@ -266,6 +319,10 @@ void WorkspaceRuntime::HandlePointer(const Input::PointerEvent& event) {
     if (event.action == Input::PointerAction::Down) {
         m_scene.SetCapture(hitId);
         m_scene.SetFocus(hitId);
+        if (hit && hit->type == CoreUI::UiNodeType::SearchBox) {
+            if (hit->payload == CanvasSizeWidthPayload) m_canvasSizeField = CanvasSizeField::Width;
+            else if (hit->payload == CanvasSizeHeightPayload) m_canvasSizeField = CanvasSizeField::Height;
+        }
         MarkDirty(FullRect());
     } else if (event.action == Input::PointerAction::Up) {
         if (hit && hit->id == m_scene.GetCapture()) {
@@ -296,6 +353,9 @@ void WorkspaceRuntime::HandlePointer(const Input::PointerEvent& event) {
 
 void WorkspaceRuntime::HandleKey(const Input::KeyEvent& event) {
     if (event.action != Input::KeyAction::Down) return;
+    if (m_modals.Current() == ModalKind::CanvasSize && HandleCanvasSizeKey(event)) {
+        return;
+    }
     const bool ctrl = (event.modifiers & Input::ModifierControl) != 0;
     const bool shift = (event.modifiers & Input::ModifierShift) != 0;
     if (event.keyCode == 0x1B) {
@@ -359,7 +419,168 @@ bool WorkspaceRuntime::NeedsFrame(uint64_t nowMs) const {
 }
 
 void WorkspaceRuntime::BuildScene() {
-    AppSceneBuilder::Build(AppScreen::Workspace, m_modals.Current(), m_viewport, m_frame, m_session, m_canvas, L"", m_scene, m_openMenu);
+    const ModalKind sceneModal = m_modals.Current() == ModalKind::CanvasSize ? ModalKind::None : m_modals.Current();
+    AppSceneBuilder::Build(AppScreen::Workspace, sceneModal, m_viewport, m_frame, m_session, m_canvas, L"", m_scene, m_openMenu);
+    if (m_modals.Current() == ModalKind::CanvasSize) {
+        BuildCanvasSizeModalNodes();
+    }
+}
+
+void WorkspaceRuntime::LoadWorkspaceUiSettings() {
+    auto* store = CoreServices::GetAppSettingsStore();
+    if (!store) {
+        return;
+    }
+    std::vector<uint8_t> bytes;
+    if (!store->LoadSettingsBytes(bytes) || bytes.empty()) {
+        return;
+    }
+    const std::string magic = WorkspaceUiSettingsMagic;
+    auto it = std::search(bytes.begin(), bytes.end(), magic.begin(), magic.end());
+    if (it == bytes.end()) {
+        return;
+    }
+    const size_t payloadOffset = static_cast<size_t>(std::distance(bytes.begin(), it)) + magic.size();
+    const std::string payload(payloadOffset < bytes.size()
+                                  ? reinterpret_cast<const char*>(bytes.data() + payloadOffset)
+                                  : "",
+                              bytes.size() - std::min(payloadOffset, bytes.size()));
+    auto contains = [&](const std::string& key, const std::string& value) {
+        return payload.find("\"" + key + "\":" + value) != std::string::npos;
+    };
+    auto loadBool = [&](const std::string& key, bool fallback) {
+        if (contains(key, "false")) return false;
+        if (contains(key, "true")) return true;
+        return fallback;
+    };
+    m_canvas.SetLeftSidebarExpanded(!contains("leftSidebarExpanded", "false"));
+    m_canvas.SetRightSidebarExpanded(!contains("rightSidebarExpanded", "false"));
+    m_canvas.SetPanelVisible(WorkspacePanelId::Color, loadBool("panelColor", m_canvas.IsPanelVisible(WorkspacePanelId::Color)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::BrushPreview, loadBool("panelBrushPreview", m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::BrushControl, loadBool("panelBrushControl", m_canvas.IsPanelVisible(WorkspacePanelId::BrushControl)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::BrushPresets, loadBool("panelBrushPresets", m_canvas.IsPanelVisible(WorkspacePanelId::BrushPresets)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::Navigator, loadBool("panelNavigator", m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::Layer, loadBool("panelLayer", m_canvas.IsPanelVisible(WorkspacePanelId::Layer)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::BrushSize, loadBool("panelBrushSize", m_canvas.IsPanelVisible(WorkspacePanelId::BrushSize)));
+    m_canvas.SetPanelVisible(WorkspacePanelId::StatusBar, loadBool("panelStatusBar", m_canvas.IsPanelVisible(WorkspacePanelId::StatusBar)));
+}
+
+void WorkspaceRuntime::SaveWorkspaceUiSettings() {
+    auto* store = CoreServices::GetAppSettingsStore();
+    if (!store) {
+        return;
+    }
+    std::vector<uint8_t> bytes;
+    if (!store->LoadSettingsBytes(bytes) || bytes.empty()) {
+        bytes.resize(sizeof(uint32_t) * 2, 0);
+    }
+    const std::string magic = WorkspaceUiSettingsMagic;
+    auto it = std::search(bytes.begin(), bytes.end(), magic.begin(), magic.end());
+    if (it != bytes.end()) {
+        bytes.erase(it, bytes.end());
+    }
+    std::ostringstream json;
+    json << WorkspaceUiSettingsMagic
+         << "{\"workspace\":{\"leftSidebarExpanded\":"
+         << (m_canvas.IsLeftSidebarExpanded() ? "true" : "false")
+         << ",\"rightSidebarExpanded\":"
+         << (m_canvas.IsRightSidebarExpanded() ? "true" : "false")
+         << ",\"panelColor\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::Color) ? "true" : "false")
+         << ",\"panelBrushPreview\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview) ? "true" : "false")
+         << ",\"panelBrushControl\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::BrushControl) ? "true" : "false")
+         << ",\"panelBrushPresets\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::BrushPresets) ? "true" : "false")
+         << ",\"panelNavigator\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::Navigator) ? "true" : "false")
+         << ",\"panelLayer\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::Layer) ? "true" : "false")
+         << ",\"panelBrushSize\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::BrushSize) ? "true" : "false")
+         << ",\"panelStatusBar\":" << (m_canvas.IsPanelVisible(WorkspacePanelId::StatusBar) ? "true" : "false")
+         << "}}";
+    const std::string data = json.str();
+    bytes.insert(bytes.end(), data.begin(), data.end());
+    store->SaveSettingsBytes(bytes);
+}
+
+void WorkspaceRuntime::BuildCanvasSizeModalNodes() {
+    CoreUI::UiNode blocker;
+    blocker.type = CoreUI::UiNodeType::Panel;
+    blocker.bounds = FullRect();
+    blocker.command = static_cast<uint32_t>(AppCommand::None);
+    blocker.zOrder = 90;
+    blocker.flags = Presentation::UiNodeVisible | Presentation::UiNodeInteractive;
+    blocker.accessibilityLabel = L"Canvas size modal blocker";
+    const auto blockerId = m_scene.AddNode(std::move(blocker));
+    m_scene.PushModal(blockerId);
+
+    const int modalW = 660;
+    const int modalH = 392;
+    const int left = std::max(20, m_viewport.width / 2 - modalW / 2);
+    const int top = std::max(20, m_viewport.height / 2 - modalH / 2);
+
+    auto addNode = [&](CoreUI::UiNodeType type, const Rect& rect, String label, AppCommand command = AppCommand::None,
+                       uint64_t userData = 0, String payload = L"", bool interactive = true) {
+        CoreUI::UiNode node;
+        node.parentId = blockerId;
+        node.type = type;
+        node.bounds = rect;
+        node.label = std::move(label);
+        node.accessibilityLabel = node.label;
+        node.command = static_cast<uint32_t>(command);
+        node.userData = userData;
+        node.payload = std::move(payload);
+        node.zOrder = 100;
+        node.flags = Presentation::UiNodeVisible | (interactive ? static_cast<uint32_t>(Presentation::UiNodeInteractive) : 0u);
+        return m_scene.AddNode(std::move(node));
+    };
+
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 50, left + 200, top + 72),
+            L"Current canvas size", AppCommand::None, 0, L"", false);
+    if (auto project = m_canvas.GetProject()) {
+        std::wstringstream summary;
+        summary << project->GetCanvas().widthPx << L" x " << project->GetCanvas().heightPx << L" px";
+        addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 74, left + 220, top + 96),
+                summary.str(), AppCommand::None, 0, L"", false);
+    }
+
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 112, left + 150, top + 134), L"Width", AppCommand::None, 0, L"", false);
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 160, left + 150, top + 182), L"Height", AppCommand::None, 0, L"", false);
+    const auto widthId = addNode(CoreUI::UiNodeType::SearchBox, Rect(left + 132, top + 102, left + 252, top + 138),
+                                 std::to_wstring(m_canvasResizeWidth), AppCommand::None, 0, CanvasSizeWidthPayload);
+    const auto heightId = addNode(CoreUI::UiNodeType::SearchBox, Rect(left + 132, top + 150, left + 252, top + 186),
+                                  std::to_wstring(m_canvasResizeHeight), AppCommand::None, 0, CanvasSizeHeightPayload);
+
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 268, top + 102, left + 354, top + 138), L"Swap",
+            AppCommand::SwapCanvasOrientation);
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 206, left + 150, top + 228), L"Anchor", AppCommand::None, 0, L"", false);
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 230, left + 320, top + 250),
+            L"Choose what stays fixed while resizing.", AppCommand::None, 0, L"", false);
+
+    const int anchorLeft = left + 132;
+    const int anchorTop = top + 236;
+    for (uint32_t row = 0; row < 3; ++row) {
+        for (uint32_t col = 0; col < 3; ++col) {
+            const uint32_t index = row * 3 + col;
+            String label = (m_canvasAnchor == static_cast<CanvasAnchor>(index)) ? L"*" : L"";
+            addNode(CoreUI::UiNodeType::Button,
+                    Rect(anchorLeft + static_cast<int>(col) * 32, anchorTop + static_cast<int>(row) * 32,
+                         anchorLeft + static_cast<int>(col) * 32 + 28, anchorTop + static_cast<int>(row) * 32 + 28),
+                    label, AppCommand::SetCanvasAnchor, index, CanvasAnchorPayload);
+        }
+    }
+
+    addNode(CoreUI::UiNodeType::Text, Rect(left + 28, top + 332, left + 210, top + 350), L"Quick presets", AppCommand::None, 0, L"", false);
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 132, top + 350, left + 252, top + 382), L"1600 x 1000", AppCommand::CreateCanvasPreset, PackCanvasPreset(1600, 1000));
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 258, top + 350, left + 378, top + 382), L"1920 x 1080", AppCommand::CreateCanvasPreset, PackCanvasPreset(1920, 1080));
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 384, top + 350, left + 504, top + 382), L"A4 2480 x 3508", AppCommand::CreateCanvasPreset, PackCanvasPreset(2480, 3508));
+
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 524, top + 348, left + 588, top + 382), L"Apply",
+            AppCommand::CreateCanvasFromForm);
+    addNode(CoreUI::UiNodeType::Button, Rect(left + 594, top + 348, left + 658, top + 382), L"Cancel",
+            AppCommand::CloseModal);
+
+    if (m_canvasSizeField == CanvasSizeField::Width) {
+        m_scene.SetFocus(widthId);
+    } else if (m_canvasSizeField == CanvasSizeField::Height) {
+        m_scene.SetFocus(heightId);
+    }
 }
 
 void WorkspaceRuntime::MarkDirty(const Rect& rect) {
@@ -367,7 +588,9 @@ void WorkspaceRuntime::MarkDirty(const Rect& rect) {
 }
 
 Rect WorkspaceRuntime::CanvasRect() const {
-    return Rect(ToolBarW + LeftPanelW, TopBarH, m_viewport.width - RightPanelW, m_viewport.height - StatusBarH);
+    const int leftDockW = m_canvas.IsLeftSidebarExpanded() ? LeftPanelW : EdgeTabW;
+    const int rightDockW = m_canvas.IsRightSidebarExpanded() ? RightPanelW : EdgeTabW;
+    return Rect(ToolBarW + leftDockW, TopBarH, m_viewport.width - rightDockW, m_viewport.height - StatusBarH);
 }
 
 void WorkspaceRuntime::DispatchCommand(AppCommand command, uint64_t userData, const String& payload) {
@@ -379,9 +602,11 @@ void WorkspaceRuntime::RenderWorkspace(Presentation::SoftRenderer& renderer) {
     renderer.FillRect(Rect(0, 0, m_viewport.width, MenuBarH), Color(27, 29, 31));
     renderer.FillRect(Rect(0, MenuBarH, m_viewport.width, TopBarH), Color(35, 37, 40));
     renderer.StrokeRect(Rect(0, 0, m_viewport.width, TopBarH), Color(75, 80, 86), 1);
+    const int leftDockW = m_canvas.IsLeftSidebarExpanded() ? LeftPanelW : EdgeTabW;
+    const int rightDockW = m_canvas.IsRightSidebarExpanded() ? RightPanelW : EdgeTabW;
     renderer.FillRect(Rect(0, TopBarH, ToolBarW, m_viewport.height - StatusBarH), Color(29, 31, 34));
-    renderer.FillRect(Rect(ToolBarW, TopBarH, ToolBarW + LeftPanelW, m_viewport.height - StatusBarH), Color(36, 38, 40));
-    renderer.FillRect(Rect(m_viewport.width - RightPanelW, TopBarH, m_viewport.width, m_viewport.height - StatusBarH), Color(36, 38, 40));
+    renderer.FillRect(Rect(ToolBarW, TopBarH, ToolBarW + leftDockW, m_viewport.height - StatusBarH), Color(36, 38, 40));
+    renderer.FillRect(Rect(m_viewport.width - rightDockW, TopBarH, m_viewport.width, m_viewport.height - StatusBarH), Color(36, 38, 40));
     if (m_canvas.IsPanelVisible(WorkspacePanelId::StatusBar)) {
         renderer.FillRect(Rect(0, m_viewport.height - StatusBarH, m_viewport.width, m_viewport.height), Color(28, 30, 32));
     }
@@ -402,6 +627,7 @@ void WorkspaceRuntime::RenderWorkspace(Presentation::SoftRenderer& renderer) {
         else if (node.type == CoreUI::UiNodeType::Swatch) RenderSwatch(renderer, node);
         else if (node.type == CoreUI::UiNodeType::LayerItem) RenderLayerItem(renderer, node);
         else if (node.type == CoreUI::UiNodeType::Slider) RenderSlider(renderer, node);
+        else if (node.type == CoreUI::UiNodeType::SearchBox) RenderSearchBox(renderer, node);
         else if (node.type == CoreUI::UiNodeType::ColorField) RenderColorField(renderer, node);
         else if (node.type == CoreUI::UiNodeType::HueStrip) RenderHueStrip(renderer, node);
         else if (node.type == CoreUI::UiNodeType::BrushPresetItem) RenderBrushPresetItem(renderer, node);
@@ -419,6 +645,9 @@ void WorkspaceRuntime::RenderWorkspace(Presentation::SoftRenderer& renderer) {
 }
 
 void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& renderer) {
+    if (!m_canvas.IsLeftSidebarExpanded() && !m_canvas.IsRightSidebarExpanded()) {
+        return;
+    }
     const int leftPanelLeft = ToolBarW + 4;
     const int leftPanelRight = ToolBarW + LeftPanelW - 4;
     const int navLeft = m_viewport.width - RightPanelW + 8;
@@ -433,31 +662,31 @@ void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& rendere
     const int layerToolsY = m_viewport.height - StatusBarH - 226;
     const int sizeTop = m_viewport.height - StatusBarH - 156;
 
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Color)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Color)) {
         RenderPanel(renderer, Rect(leftPanelLeft, colorTop, leftPanelRight, colorTop + colorFieldSize + 104), L"Color");
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview)) {
         RenderPanel(renderer, Rect(leftPanelLeft, brushPreviewTop, leftPanelRight, brushPreviewTop + 118), L"Brush Preview");
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::BrushControl)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::BrushControl)) {
         RenderPanel(renderer, Rect(leftPanelLeft, brushControlTop, leftPanelRight, presetTop - 8), L"Brush Control");
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::BrushPresets)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::BrushPresets)) {
         RenderPanel(renderer, Rect(leftPanelLeft, presetTop - 28, leftPanelRight, m_viewport.height - StatusBarH - 4), L"Brush: Pen");
     }
 
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) {
+    if (m_canvas.IsRightSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) {
         RenderPanel(renderer, Rect(navLeft, TopBarH + 4, navRight, TopBarH + 198), L"Navigator");
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Layer)) {
+    if (m_canvas.IsRightSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Layer)) {
         RenderPanel(renderer, Rect(navLeft, layerTop, navRight, layerToolsY + 62), L"Layer");
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::BrushSize)) {
+    if (m_canvas.IsRightSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::BrushSize)) {
         RenderPanel(renderer, Rect(navLeft, sizeTop, navRight, m_viewport.height - StatusBarH - 4), L"Brush Size");
     }
 
     const Color current = m_canvas.GetColor();
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Color)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Color)) {
         renderer.FillRect(Rect(leftPanelLeft + 12, colorTop + 38, leftPanelLeft + 44, colorTop + 70), current);
         renderer.StrokeRect(Rect(leftPanelLeft + 12, colorTop + 38, leftPanelLeft + 44, colorTop + 70), Color(235, 238, 240), 2);
         renderer.FillRect(Rect(leftPanelLeft + 22, colorTop + 60, leftPanelLeft + 54, colorTop + 92), Color(255, 255, 255));
@@ -468,7 +697,7 @@ void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& rendere
         renderer.DrawText(leftPanelLeft + 12, colorFieldTop + colorFieldSize + 58, rgb.str(), Color(202, 210, 216), 2);
     }
 
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview)) {
+    if (m_canvas.IsLeftSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::BrushPreview)) {
         const Rect preview(leftPanelLeft + 10, brushPreviewTop + 28, leftPanelRight - 10, brushPreviewTop + 108);
         renderer.DrawCheckerboard(preview, 8, Color(230, 230, 230), Color(204, 204, 204));
         renderer.StrokeRect(preview, Color(78, 84, 88), 1);
@@ -483,10 +712,10 @@ void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& rendere
     }
 
     const Rect navPreview(navLeft + 16, TopBarH + 38, navRight - 16, TopBarH + 154);
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) {
+    if (m_canvas.IsRightSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) {
         renderer.DrawCheckerboard(navPreview, 10, Color(78, 80, 84), Color(65, 67, 71));
     }
-    if (m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) if (auto project = m_canvas.GetProject()) {
+    if (m_canvas.IsRightSidebarExpanded() && m_canvas.IsPanelVisible(WorkspacePanelId::Navigator)) if (auto project = m_canvas.GetProject()) {
         const auto& canvas = project->GetCanvas();
         const float aspect = canvas.heightPx == 0 ? 1.0f : static_cast<float>(canvas.widthPx) / canvas.heightPx;
         int miniW = navPreview.Width() - 28;
@@ -505,8 +734,8 @@ void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& rendere
 
 void WorkspaceRuntime::RenderModal(Presentation::SoftRenderer& renderer) {
     renderer.FillRect(FullRect(), Color(0, 0, 0, 112));
-    const int modalW = 460;
-    const int modalH = 300;
+    const int modalW = m_modals.Current() == ModalKind::CanvasSize ? 660 : 460;
+    const int modalH = m_modals.Current() == ModalKind::CanvasSize ? 392 : 300;
     const int left = std::max(20, m_viewport.width / 2 - modalW / 2);
     const int top = std::max(20, m_viewport.height / 2 - modalH / 2);
     renderer.FillRect(Rect(left, top, left + modalW, top + modalH), Color(40, 45, 51));
@@ -515,17 +744,189 @@ void WorkspaceRuntime::RenderModal(Presentation::SoftRenderer& renderer) {
     if (m_modals.Current() == ModalKind::Filters) title = L"FILTERS";
     if (m_modals.Current() == ModalKind::TextLayer) title = L"TEXT LAYER";
     if (m_modals.Current() == ModalKind::NewCanvas) title = L"NEW CANVAS";
+    if (m_modals.Current() == ModalKind::CanvasSize) title = L"CANVAS SIZE";
     renderer.DrawText(left + 30, top + 28, title, Color(242, 246, 248), 3);
+    if (m_modals.Current() == ModalKind::CanvasSize) {
+        RenderCanvasSizePreview(renderer, Rect(left + 392, top + 82, left + 632, top + 298));
+    }
     for (const auto& node : m_scene.Nodes()) {
-        if (node.zOrder >= 100 && node.type == CoreUI::UiNodeType::Button) {
-            RenderButton(renderer, node);
+        if (node.zOrder >= 100) {
+            if (node.type == CoreUI::UiNodeType::Button) RenderButton(renderer, node);
+            else if (node.type == CoreUI::UiNodeType::SearchBox) RenderSearchBox(renderer, node);
+            else if (node.type == CoreUI::UiNodeType::Text) renderer.DrawText(node.bounds.left, node.bounds.top, node.label, Color(210, 216, 220), 2);
         }
     }
+}
+
+void WorkspaceRuntime::RenderCanvasSizePreview(Presentation::SoftRenderer& renderer, const Rect& rect) {
+    renderer.FillRect(rect, Color(31, 34, 38));
+    renderer.FillRect(Rect(rect.left, rect.top, rect.right, rect.top + 28), Color(36, 40, 45));
+    renderer.StrokeRect(rect, Color(86, 92, 98), 1);
+    renderer.DrawText(rect.left + 10, rect.top + 8, L"Resize Preview", Color(232, 238, 242), 2);
+
+    const auto project = m_canvas.GetProject();
+    if (!project || m_canvasResizeWidth == 0 || m_canvasResizeHeight == 0) {
+        renderer.DrawText(rect.left + 10, rect.top + 42, L"Enter a target width and height.", Color(170, 176, 182), 2);
+        return;
+    }
+
+    const auto& canvas = project->GetCanvas();
+    const uint32_t currentWidth = std::max<uint32_t>(1, canvas.widthPx);
+    const uint32_t currentHeight = std::max<uint32_t>(1, canvas.heightPx);
+    const uint32_t targetWidth = std::max<uint32_t>(1, m_canvasResizeWidth);
+    const uint32_t targetHeight = std::max<uint32_t>(1, m_canvasResizeHeight);
+    const uint32_t anchorIndex = static_cast<uint32_t>(m_canvasAnchor);
+    const uint32_t anchorX = anchorIndex % 3;
+    const uint32_t anchorY = anchorIndex / 3;
+
+    const uint32_t srcStartX = currentWidth > targetWidth ? (anchorX * (currentWidth - targetWidth)) / 2u : 0u;
+    const uint32_t srcStartY = currentHeight > targetHeight ? (anchorY * (currentHeight - targetHeight)) / 2u : 0u;
+    const uint32_t dstStartX = targetWidth > currentWidth ? (anchorX * (targetWidth - currentWidth)) / 2u : 0u;
+    const uint32_t dstStartY = targetHeight > currentHeight ? (anchorY * (targetHeight - currentHeight)) / 2u : 0u;
+    const uint32_t cropLeftPx = currentWidth > targetWidth ? srcStartX : 0u;
+    const uint32_t cropTopPx = currentHeight > targetHeight ? srcStartY : 0u;
+    const uint32_t cropRightPx = currentWidth > targetWidth ? (currentWidth - targetWidth - srcStartX) : 0u;
+    const uint32_t cropBottomPx = currentHeight > targetHeight ? (currentHeight - targetHeight - srcStartY) : 0u;
+    const uint32_t expandLeftPx = targetWidth > currentWidth ? dstStartX : 0u;
+    const uint32_t expandTopPx = targetHeight > currentHeight ? dstStartY : 0u;
+    const uint32_t expandRightPx = targetWidth > currentWidth ? (targetWidth - currentWidth - dstStartX) : 0u;
+    const uint32_t expandBottomPx = targetHeight > currentHeight ? (targetHeight - currentHeight - dstStartY) : 0u;
+
+    const uint32_t spaceWidth = std::max(currentWidth, targetWidth);
+    const uint32_t spaceHeight = std::max(currentHeight, targetHeight);
+    const Rect previewRect(rect.left + 14, rect.top + 40, rect.right - 14, rect.bottom - 76);
+    renderer.DrawCheckerboard(previewRect, 8, Color(67, 70, 74), Color(59, 62, 66));
+    renderer.StrokeRect(previewRect, Color(20, 22, 24), 1);
+
+    const float scale = std::min(
+        static_cast<float>(std::max(1, previewRect.Width() - 12)) / static_cast<float>(spaceWidth),
+        static_cast<float>(std::max(1, previewRect.Height() - 12)) / static_cast<float>(spaceHeight));
+    const int scaledSpaceW = std::max(8, static_cast<int>(std::round(spaceWidth * scale)));
+    const int scaledSpaceH = std::max(8, static_cast<int>(std::round(spaceHeight * scale)));
+    const int unionLeft = previewRect.left + (previewRect.Width() - scaledSpaceW) / 2;
+    const int unionTop = previewRect.top + (previewRect.Height() - scaledSpaceH) / 2;
+
+    const int currentLeft = unionLeft + static_cast<int>(std::round((targetWidth >= currentWidth ? dstStartX : 0u) * scale));
+    const int currentTop = unionTop + static_cast<int>(std::round((targetHeight >= currentHeight ? dstStartY : 0u) * scale));
+    const int currentRight = currentLeft + std::max(8, static_cast<int>(std::round(currentWidth * scale)));
+    const int currentBottom = currentTop + std::max(8, static_cast<int>(std::round(currentHeight * scale)));
+
+    const int targetLeft = unionLeft + static_cast<int>(std::round((targetWidth >= currentWidth ? 0u : srcStartX) * scale));
+    const int targetTop = unionTop + static_cast<int>(std::round((targetHeight >= currentHeight ? 0u : srcStartY) * scale));
+    const int targetRight = targetLeft + std::max(8, static_cast<int>(std::round(targetWidth * scale)));
+    const int targetBottom = targetTop + std::max(8, static_cast<int>(std::round(targetHeight * scale)));
+
+    const Rect currentRect(currentLeft, currentTop, currentRight, currentBottom);
+    const Rect targetRect(targetLeft, targetTop, targetRight, targetBottom);
+    const Rect overlapRect(std::max(currentRect.left, targetRect.left),
+                           std::max(currentRect.top, targetRect.top),
+                           std::min(currentRect.right, targetRect.right),
+                           std::min(currentRect.bottom, targetRect.bottom));
+
+    const bool cropLeft = targetRect.left > currentRect.left;
+    const bool cropTop = targetRect.top > currentRect.top;
+    const bool cropRight = targetRect.right < currentRect.right;
+    const bool cropBottom = targetRect.bottom < currentRect.bottom;
+    const bool expandLeft = targetRect.left < currentRect.left;
+    const bool expandTop = targetRect.top < currentRect.top;
+    const bool expandRight = targetRect.right > currentRect.right;
+    const bool expandBottom = targetRect.bottom > currentRect.bottom;
+    const int widthDelta = static_cast<int>(targetWidth) - static_cast<int>(currentWidth);
+    const int heightDelta = static_cast<int>(targetHeight) - static_cast<int>(currentHeight);
+
+    auto drawArrow = [&](int x0, int y0, int x1, int y1, const Color& color) {
+        renderer.DrawLine(x0, y0, x1, y1, color, 1);
+        const float dx = static_cast<float>(x1 - x0);
+        const float dy = static_cast<float>(y1 - y0);
+        const float length = std::max(1.0f, std::sqrt(dx * dx + dy * dy));
+        const float ux = dx / length;
+        const float uy = dy / length;
+        const int arrowX1 = static_cast<int>(std::round(x1 - ux * 6.0f - uy * 4.0f));
+        const int arrowY1 = static_cast<int>(std::round(y1 - uy * 6.0f + ux * 4.0f));
+        const int arrowX2 = static_cast<int>(std::round(x1 - ux * 6.0f + uy * 4.0f));
+        const int arrowY2 = static_cast<int>(std::round(y1 - uy * 6.0f - ux * 4.0f));
+        renderer.DrawLine(x1, y1, arrowX1, arrowY1, color, 1);
+        renderer.DrawLine(x1, y1, arrowX2, arrowY2, color, 1);
+    };
+
+    auto signedDeltaText = [](int delta) {
+        std::wstringstream text;
+        if (delta > 0) {
+            text << L"+";
+        }
+        text << delta << L" px";
+        return text.str();
+    };
+
+    renderer.FillRect(currentRect, Color(92, 54, 54, 210));
+    renderer.FillRect(targetRect, Color(46, 78, 116, 210));
+    if (overlapRect.right > overlapRect.left && overlapRect.bottom > overlapRect.top) {
+        renderer.FillRect(overlapRect, Color(238, 242, 245, 255));
+        renderer.StrokeRect(overlapRect, Color(24, 28, 32), 1);
+    }
+    renderer.StrokeRect(currentRect, Color(226, 146, 122), 1);
+    renderer.StrokeRect(targetRect, Color(112, 186, 255), 2);
+
+    if (cropLeft) {
+        drawArrow(currentRect.left + 2, currentRect.top + currentRect.Height() / 2, targetRect.left - 3, currentRect.top + currentRect.Height() / 2, Color(250, 208, 188));
+        renderer.DrawText(currentRect.left + 6, currentRect.top + currentRect.Height() / 2 - 18, L"-" + std::to_wstring(cropLeftPx), Color(250, 208, 188), 1);
+    }
+    if (cropRight) {
+        drawArrow(currentRect.right - 2, currentRect.top + currentRect.Height() / 2, targetRect.right + 3, currentRect.top + currentRect.Height() / 2, Color(250, 208, 188));
+        renderer.DrawText(currentRect.right - 28, currentRect.top + currentRect.Height() / 2 - 18, L"-" + std::to_wstring(cropRightPx), Color(250, 208, 188), 1);
+    }
+    if (cropTop) {
+        drawArrow(currentRect.left + currentRect.Width() / 2, currentRect.top + 2, currentRect.left + currentRect.Width() / 2, targetRect.top - 3, Color(250, 208, 188));
+        renderer.DrawText(currentRect.left + currentRect.Width() / 2 - 12, currentRect.top + 6, L"-" + std::to_wstring(cropTopPx), Color(250, 208, 188), 1);
+    }
+    if (cropBottom) {
+        drawArrow(currentRect.left + currentRect.Width() / 2, currentRect.bottom - 2, currentRect.left + currentRect.Width() / 2, targetRect.bottom + 3, Color(250, 208, 188));
+        renderer.DrawText(currentRect.left + currentRect.Width() / 2 - 12, currentRect.bottom - 18, L"-" + std::to_wstring(cropBottomPx), Color(250, 208, 188), 1);
+    }
+    if (expandLeft) {
+        drawArrow(currentRect.left - 2, currentRect.top + currentRect.Height() / 2, targetRect.left + 3, currentRect.top + currentRect.Height() / 2, Color(220, 240, 255));
+        renderer.DrawText(targetRect.left + 6, currentRect.top + currentRect.Height() / 2 - 18, L"+" + std::to_wstring(expandLeftPx), Color(220, 240, 255), 1);
+    }
+    if (expandRight) {
+        drawArrow(currentRect.right + 2, currentRect.top + currentRect.Height() / 2, targetRect.right - 3, currentRect.top + currentRect.Height() / 2, Color(220, 240, 255));
+        renderer.DrawText(targetRect.right - 28, currentRect.top + currentRect.Height() / 2 - 18, L"+" + std::to_wstring(expandRightPx), Color(220, 240, 255), 1);
+    }
+    if (expandTop) {
+        drawArrow(currentRect.left + currentRect.Width() / 2, currentRect.top - 2, currentRect.left + currentRect.Width() / 2, targetRect.top + 3, Color(220, 240, 255));
+        renderer.DrawText(targetRect.left + targetRect.Width() / 2 - 12, targetRect.top + 6, L"+" + std::to_wstring(expandTopPx), Color(220, 240, 255), 1);
+    }
+    if (expandBottom) {
+        drawArrow(currentRect.left + currentRect.Width() / 2, currentRect.bottom + 2, currentRect.left + currentRect.Width() / 2, targetRect.bottom - 3, Color(220, 240, 255));
+        renderer.DrawText(targetRect.left + targetRect.Width() / 2 - 12, targetRect.bottom - 18, L"+" + std::to_wstring(expandBottomPx), Color(220, 240, 255), 1);
+    }
+
+    std::vector<String> cropDirections;
+    std::vector<String> expandDirections;
+    if (cropLeft) cropDirections.push_back(L"Left");
+    if (cropTop) cropDirections.push_back(L"Top");
+    if (cropRight) cropDirections.push_back(L"Right");
+    if (cropBottom) cropDirections.push_back(L"Bottom");
+    if (expandLeft) expandDirections.push_back(L"Left");
+    if (expandTop) expandDirections.push_back(L"Top");
+    if (expandRight) expandDirections.push_back(L"Right");
+    if (expandBottom) expandDirections.push_back(L"Bottom");
+
+    renderer.DrawText(rect.left + 10, rect.bottom - 60, L"Anchor: " + CanvasAnchorName(anchorIndex), Color(214, 220, 224), 2);
+    renderer.DrawText(rect.left + 10, rect.bottom - 42,
+                      L"Delta: W " + signedDeltaText(widthDelta) + L"  H " + signedDeltaText(heightDelta),
+                      Color(198, 206, 212), 1);
+    renderer.DrawText(rect.left + 10, rect.bottom - 24,
+                      L"Crop: " + JoinResizeDirections(cropDirections) + L"  Expand: " + JoinResizeDirections(expandDirections),
+                      Color(174, 182, 188), 1);
 }
 
 void WorkspaceRuntime::RenderButton(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, bool active) {
     const bool hovered = node.id == m_scene.GetHover();
     const bool disabled = node.disabled || (node.flags & Presentation::UiNodeInteractive) == 0;
+    if (m_modals.Current() == ModalKind::CanvasSize && node.payload == CanvasAnchorPayload &&
+        node.userData == static_cast<uint64_t>(m_canvasAnchor)) {
+        active = true;
+    }
     if (node.type == CoreUI::UiNodeType::ToolbarItem) {
         const Color railFill = disabled ? Color(29, 31, 34)
                              : active ? Color(0, 120, 215)
@@ -676,6 +1077,19 @@ void WorkspaceRuntime::RenderSlider(Presentation::SoftRenderer& renderer, const 
     renderer.DrawText(node.bounds.right - 38, node.bounds.top + 2, valueText.str(), Color(198, 204, 208), 2);
 }
 
+void WorkspaceRuntime::RenderSearchBox(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node) {
+    const bool focused = node.id == m_scene.GetFocus();
+    const bool hovered = node.id == m_scene.GetHover();
+    renderer.FillRect(node.bounds, Color(29, 32, 35));
+    renderer.StrokeRect(node.bounds,
+                        focused ? Color(0, 120, 215)
+                                : hovered ? Color(114, 126, 138)
+                                          : Color(82, 88, 94),
+                        focused ? 2 : 1);
+    const String value = node.label.empty() ? L"0" : node.label;
+    renderer.DrawText(node.bounds.left + 10, node.bounds.top + 10, value, Color(236, 240, 242), 2);
+}
+
 void WorkspaceRuntime::RenderColorField(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node) {
     const Hsv hsv = RgbToHsv(m_canvas.GetColor());
     renderer.DrawHsvSquare(node.bounds, hsv.h);
@@ -769,22 +1183,27 @@ void WorkspaceRuntime::ApplyHueStripAtPoint(const CoreUI::UiNode& node, const Po
     OnSetColor(HsvToRgb(current.h, current.s, current.v, m_canvas.GetColor().a));
 }
 
-void WorkspaceRuntime::SaveProject(bool saveAs) {
+bool WorkspaceRuntime::SaveCurrentProjectInteractive(bool saveAs) {
+    return SaveProject(saveAs);
+}
+
+bool WorkspaceRuntime::SaveProject(bool saveAs) {
     if (!m_session.HasProject()) {
         SetStatus(L"NO PROJECT TO SAVE");
-        return;
+        return false;
     }
     bool ok = false;
     if (saveAs || m_session.GetCurrentFilePath().empty()) {
         auto* dialogs = CoreServices::GetFileDialogService();
-        if (!dialogs) return;
+        if (!dialogs) return false;
         String path = m_session.GetCurrentFilePath();
-        if (!dialogs->PickSaveProjectPath(path)) return;
+        if (!dialogs->PickSaveProjectPath(path)) return false;
         ok = m_session.SaveProjectAs(path, m_canvas.GetLayerManager());
     } else {
         ok = m_session.SaveProject(m_canvas.GetLayerManager());
     }
     SetStatus(ok ? L"SAVED" : L"SAVE FAILED");
+    return ok;
 }
 
 void WorkspaceRuntime::ExportPng() {
@@ -809,6 +1228,80 @@ void WorkspaceRuntime::SetStatus(const String& status) {
     TouchWorkspace();
 }
 
+void WorkspaceRuntime::MarkProjectDirty() {
+    m_session.MarkDirty();
+}
+
+bool WorkspaceRuntime::ConfirmAbandonUnsavedChanges(const String& actionLabel) {
+    if (!m_session.HasProject() || !m_session.HasUnsavedChanges()) {
+        return true;
+    }
+    auto* dialogs = CoreServices::GetFileDialogService();
+    if (!dialogs) {
+        SetStatus(L"UNSAVED CHANGES");
+        return false;
+    }
+    switch (dialogs->PromptUnsavedChanges(actionLabel)) {
+        case UnsavedChangesChoice::Save:
+            if (SaveProject(false)) {
+                return true;
+            }
+            SetStatus(L"SAVE CANCELLED");
+            return false;
+        case UnsavedChangesChoice::Discard:
+            return true;
+        case UnsavedChangesChoice::Cancel:
+        default:
+            break;
+    }
+    SetStatus(L"CANCELLED");
+    return false;
+}
+
+bool WorkspaceRuntime::HandleCanvasSizeKey(const Input::KeyEvent& event) {
+    if (event.keyCode == 0x1B) {
+        OnCloseModal();
+        return true;
+    }
+    if (event.keyCode == 0x0D) {
+        OnCreateCanvasFromForm();
+        return true;
+    }
+    if (event.keyCode == 0x09) {
+        m_canvasSizeField = m_canvasSizeField == CanvasSizeField::Height ? CanvasSizeField::Width : CanvasSizeField::Height;
+        TouchWorkspace();
+        return true;
+    }
+
+    if (m_canvasSizeField == CanvasSizeField::None) {
+        return false;
+    }
+
+    auto* value = m_canvasSizeField == CanvasSizeField::Width ? &m_canvasResizeWidth : &m_canvasResizeHeight;
+    if (event.keyCode >= '0' && event.keyCode <= '9') {
+        const uint32_t digit = static_cast<uint32_t>(event.keyCode - '0');
+        *value = std::min<uint32_t>(*value * 10 + digit, 65535u);
+        TouchWorkspace();
+        return true;
+    }
+    if (event.keyCode == 0x08) {
+        *value /= 10;
+        TouchWorkspace();
+        return true;
+    }
+    if (event.keyCode == 0x26) {
+        *value = std::min<uint32_t>(*value + 1, 65535u);
+        TouchWorkspace();
+        return true;
+    }
+    if (event.keyCode == 0x28) {
+        *value = *value > 1 ? *value - 1 : 1;
+        TouchWorkspace();
+        return true;
+    }
+    return false;
+}
+
 void WorkspaceRuntime::TouchWorkspace() {
     BuildScene();
     MarkDirty(FullRect());
@@ -821,24 +1314,74 @@ void WorkspaceRuntime::OnShowSettingsModal() {
     m_wantsProgramManagerSettings = true;
     TouchWorkspace();
 }
+void WorkspaceRuntime::OnCreateCanvasFromForm() {
+    if (m_modals.Current() != ModalKind::CanvasSize || !m_session.HasProject()) {
+        return;
+    }
+    const uint32_t width = std::clamp<uint32_t>(m_canvasResizeWidth, 1, 65535);
+    const uint32_t height = std::clamp<uint32_t>(m_canvasResizeHeight, 1, 65535);
+    const uint32_t anchorIndex = static_cast<uint32_t>(m_canvasAnchor);
+    const uint32_t anchorX = anchorIndex % 3;
+    const uint32_t anchorY = anchorIndex / 3;
+    if (m_canvas.ResizeCanvas(width, height, anchorX, anchorY)) {
+        MarkProjectDirty();
+        m_modals.Close();
+        m_canvasSizeField = CanvasSizeField::None;
+        m_canvas.ResizeViewport(CanvasRect());
+        SetStatus(L"CANVAS RESIZED");
+    } else {
+        SetStatus(L"CANVAS RESIZE FAILED");
+    }
+}
+void WorkspaceRuntime::OnSwapCanvasOrientation() {
+    if (m_modals.Current() != ModalKind::CanvasSize) {
+        return;
+    }
+    std::swap(m_canvasResizeWidth, m_canvasResizeHeight);
+    TouchWorkspace();
+}
+void WorkspaceRuntime::OnSetCanvasAnchor(uint32_t anchor) {
+    m_canvasAnchor = static_cast<CanvasAnchor>(std::min<uint32_t>(anchor, 8));
+    TouchWorkspace();
+}
 void WorkspaceRuntime::OnCreateCanvasPreset(uint32_t width, uint32_t height) {
+    if (m_modals.Current() == ModalKind::CanvasSize) {
+        m_canvasResizeWidth = std::clamp<uint32_t>(width, 1, 65535);
+        m_canvasResizeHeight = std::clamp<uint32_t>(height, 1, 65535);
+        TouchWorkspace();
+        return;
+    }
     m_canvas.NewCanvas(width, height, 350.0f, true);
     m_session.AttachProject(m_canvas.GetProject());
+    m_session.MarkDirty();
     m_modals.Close();
     m_canvas.ResizeViewport(CanvasRect());
     SetStatus(L"NEW CANVAS");
 }
-void WorkspaceRuntime::OnCloseModal() { m_modals.Close(); TouchWorkspace(); }
+void WorkspaceRuntime::OnCloseModal() {
+    m_canvasSizeField = CanvasSizeField::None;
+    m_modals.Close();
+    TouchWorkspace();
+}
 void WorkspaceRuntime::OnOpenProject() {
+    if (!ConfirmAbandonUnsavedChanges(L"opening another project")) return;
     auto* dialogs = CoreServices::GetFileDialogService();
     if (!dialogs) return;
     String path;
     if (!dialogs->PickOpenProjectPath(path)) return;
-    OnOpenRecentProject(path);
+    if (path.empty()) return;
+    if (m_session.OpenProject(path, m_canvas.GetLayerManager())) {
+        m_canvas.AttachLoadedProject(m_session.GetProject());
+        m_canvas.ResizeViewport(CanvasRect());
+        SetStatus(L"OPENED");
+    } else {
+        SetStatus(L"OPEN FAILED");
+    }
 }
 
 void WorkspaceRuntime::OnOpenRecentProject(const String& path) {
     if (path.empty()) return;
+    if (!ConfirmAbandonUnsavedChanges(L"opening another project")) return;
     if (m_session.OpenProject(path, m_canvas.GetLayerManager())) {
         m_canvas.AttachLoadedProject(m_session.GetProject());
         m_canvas.ResizeViewport(CanvasRect());
@@ -851,29 +1394,42 @@ void WorkspaceRuntime::OnShowFiltersModal() { m_modals.Show(ModalKind::Filters);
 void WorkspaceRuntime::OnShowTextLayerModal() { m_modals.Show(ModalKind::TextLayer); TouchWorkspace(); }
 void WorkspaceRuntime::OnSaveProject(bool saveAs) { SaveProject(saveAs); }
 void WorkspaceRuntime::OnExportPng() { ExportPng(); }
-void WorkspaceRuntime::OnUndo() { m_canvas.GetHistoryManager()->Undo(); MarkDirty(CanvasRect()); SetStatus(L"UNDO"); }
-void WorkspaceRuntime::OnRedo() { m_canvas.GetHistoryManager()->Redo(); MarkDirty(CanvasRect()); SetStatus(L"REDO"); }
-void WorkspaceRuntime::OnShowCanvasSizeModal() { OnShowNewCanvasModal(); }
-void WorkspaceRuntime::OnFlipLayerHorizontal() { m_canvas.FlipActiveLayerHorizontal(); SetStatus(L"FLIP HORIZONTAL"); }
-void WorkspaceRuntime::OnFlipLayerVertical() { m_canvas.FlipActiveLayerVertical(); SetStatus(L"FLIP VERTICAL"); }
-void WorkspaceRuntime::OnRotateLayerLeft() { m_canvas.RotateActiveLayerLeft(); SetStatus(L"ROTATE LEFT"); }
-void WorkspaceRuntime::OnRotateLayerRight() { m_canvas.RotateActiveLayerRight(); SetStatus(L"ROTATE RIGHT"); }
+void WorkspaceRuntime::OnUndo() { m_canvas.GetHistoryManager()->Undo(); MarkProjectDirty(); MarkDirty(CanvasRect()); SetStatus(L"UNDO"); }
+void WorkspaceRuntime::OnRedo() { m_canvas.GetHistoryManager()->Redo(); MarkProjectDirty(); MarkDirty(CanvasRect()); SetStatus(L"REDO"); }
+void WorkspaceRuntime::OnShowCanvasSizeModal() {
+    if (!m_session.HasProject()) {
+        SetStatus(L"NO PROJECT");
+        return;
+    }
+    if (auto project = m_canvas.GetProject()) {
+        m_canvasResizeWidth = project->GetCanvas().widthPx;
+        m_canvasResizeHeight = project->GetCanvas().heightPx;
+    }
+    m_canvasAnchor = CanvasAnchor::Center;
+    m_canvasSizeField = CanvasSizeField::Width;
+    m_modals.Show(ModalKind::CanvasSize);
+    TouchWorkspace();
+}
+void WorkspaceRuntime::OnFlipLayerHorizontal() { m_canvas.FlipActiveLayerHorizontal(); MarkProjectDirty(); SetStatus(L"FLIP HORIZONTAL"); }
+void WorkspaceRuntime::OnFlipLayerVertical() { m_canvas.FlipActiveLayerVertical(); MarkProjectDirty(); SetStatus(L"FLIP VERTICAL"); }
+void WorkspaceRuntime::OnRotateLayerLeft() { m_canvas.RotateActiveLayerLeft(); MarkProjectDirty(); SetStatus(L"ROTATE LEFT"); }
+void WorkspaceRuntime::OnRotateLayerRight() { m_canvas.RotateActiveLayerRight(); MarkProjectDirty(); SetStatus(L"ROTATE RIGHT"); }
 void WorkspaceRuntime::OnSelectAll() { m_canvas.SelectAll(); SetStatus(L"SELECT ALL"); }
 void WorkspaceRuntime::OnClearSelection() { m_canvas.ClearSelection(); SetStatus(L"SELECTION CLEARED"); }
 void WorkspaceRuntime::OnInvertSelection() { m_canvas.InvertSelection(); SetStatus(L"SELECTION INVERTED"); }
 void WorkspaceRuntime::OnQuit() { m_wantsClose = true; }
 void WorkspaceRuntime::OnSelectTool(ToolType tool) { SwitchTool(tool); }
 void WorkspaceRuntime::OnSetColor(const Color& color) { m_canvas.SetColor(color); SetStatus(L"COLOR"); }
-void WorkspaceRuntime::OnAddLayer() { m_canvas.AddRasterLayer(); SetStatus(L"LAYER ADDED"); }
-void WorkspaceRuntime::OnDeleteLayer() { m_canvas.DeleteActiveLayer(); SetStatus(L"LAYER DELETED"); }
-void WorkspaceRuntime::OnToggleActiveLayerVisibility() { m_canvas.ToggleActiveLayerVisibility(); SetStatus(L"VISIBILITY"); }
-void WorkspaceRuntime::OnToggleActiveLayerLock() { m_canvas.ToggleActiveLayerLock(); SetStatus(L"LOCK"); }
-void WorkspaceRuntime::OnToggleActiveLayerProtectAlpha() { m_canvas.ToggleActiveLayerProtectAlpha(); SetStatus(L"PROTECT ALPHA"); }
-void WorkspaceRuntime::OnToggleActiveLayerSolo() { m_canvas.ToggleActiveLayerSolo(); SetStatus(L"SOLO"); }
-void WorkspaceRuntime::OnDuplicateLayer() { m_canvas.DuplicateActiveLayer(); SetStatus(L"DUPLICATED"); }
-void WorkspaceRuntime::OnMergeLayerDown() { m_canvas.MergeActiveLayerDown(); SetStatus(L"MERGED"); }
-void WorkspaceRuntime::OnSetLayerOpacity(uint8_t opacity) { m_canvas.SetActiveLayerOpacity(opacity); SetStatus(L"OPACITY"); }
-void WorkspaceRuntime::OnSetBlendMode(uint32_t mode) { m_canvas.SetActiveLayerBlendMode(static_cast<BlendMode>(mode)); SetStatus(BlendName(static_cast<BlendMode>(mode))); }
+void WorkspaceRuntime::OnAddLayer() { m_canvas.AddRasterLayer(); MarkProjectDirty(); SetStatus(L"LAYER ADDED"); }
+void WorkspaceRuntime::OnDeleteLayer() { m_canvas.DeleteActiveLayer(); MarkProjectDirty(); SetStatus(L"LAYER DELETED"); }
+void WorkspaceRuntime::OnToggleActiveLayerVisibility() { m_canvas.ToggleActiveLayerVisibility(); MarkProjectDirty(); SetStatus(L"VISIBILITY"); }
+void WorkspaceRuntime::OnToggleActiveLayerLock() { m_canvas.ToggleActiveLayerLock(); MarkProjectDirty(); SetStatus(L"LOCK"); }
+void WorkspaceRuntime::OnToggleActiveLayerProtectAlpha() { m_canvas.ToggleActiveLayerProtectAlpha(); MarkProjectDirty(); SetStatus(L"PROTECT ALPHA"); }
+void WorkspaceRuntime::OnToggleActiveLayerSolo() { m_canvas.ToggleActiveLayerSolo(); MarkProjectDirty(); SetStatus(L"SOLO"); }
+void WorkspaceRuntime::OnDuplicateLayer() { m_canvas.DuplicateActiveLayer(); MarkProjectDirty(); SetStatus(L"DUPLICATED"); }
+void WorkspaceRuntime::OnMergeLayerDown() { m_canvas.MergeActiveLayerDown(); MarkProjectDirty(); SetStatus(L"MERGED"); }
+void WorkspaceRuntime::OnSetLayerOpacity(uint8_t opacity) { m_canvas.SetActiveLayerOpacity(opacity); MarkProjectDirty(); SetStatus(L"OPACITY"); }
+void WorkspaceRuntime::OnSetBlendMode(uint32_t mode) { m_canvas.SetActiveLayerBlendMode(static_cast<BlendMode>(mode)); MarkProjectDirty(); SetStatus(BlendName(static_cast<BlendMode>(mode))); }
 void WorkspaceRuntime::OnSelectLayer(size_t index) { m_canvas.SelectLayer(index); SetStatus(L"LAYER SELECTED"); }
 void WorkspaceRuntime::OnSetBrushParam(BrushParamId param, uint16_t value) { m_canvas.SetBrushParam(param, value); SetStatus(L"BRUSH PARAM"); }
 void WorkspaceRuntime::OnSetBrushTip(uint32_t tip) { m_canvas.SetBrushTip(static_cast<Render::BrushTipType>(tip)); SetStatus(TipName(static_cast<Render::BrushTipType>(tip))); }
@@ -881,7 +1437,7 @@ void WorkspaceRuntime::OnSetBrushPreset(uint16_t size, uint16_t tip) {
     m_canvas.ApplyBrushPreset(size, tip);
     SetStatus(L"BRUSH PRESET");
 }
-void WorkspaceRuntime::OnApplyFilter(FilterCommandId filter, uint16_t value) { m_canvas.ApplyFilter(filter, value); m_modals.Close(); SetStatus(L"FILTER"); }
+void WorkspaceRuntime::OnApplyFilter(FilterCommandId filter, uint16_t value) { m_canvas.ApplyFilter(filter, value); MarkProjectDirty(); m_modals.Close(); SetStatus(L"FILTER"); }
 void WorkspaceRuntime::OnCreateTextLayer(const String& text) {
     String content = text;
     float size = 36.0f;
@@ -896,6 +1452,7 @@ void WorkspaceRuntime::OnCreateTextLayer(const String& text) {
         }
     }
     m_canvas.AddTextLayer(content, size);
+    MarkProjectDirty();
     m_modals.Close();
     SetStatus(L"TEXT LAYER");
 }
@@ -905,11 +1462,35 @@ void WorkspaceRuntime::OnZoomOut() { m_canvas.ZoomBy(0.8f); SetStatus(L"ZOOM OUT
 void WorkspaceRuntime::OnFitCanvas() { m_canvas.FitCanvas(); SetStatus(L"FIT"); }
 void WorkspaceRuntime::OnResetView() { m_canvas.ResetView(); SetStatus(L"RESET VIEW"); }
 void WorkspaceRuntime::OnToggleViewOption(ViewOptionId option) { m_canvas.ToggleViewOption(option); SetStatus(L"VIEW OPTION"); }
-void WorkspaceRuntime::OnSetSnapMode(SnapModeId mode) { m_canvas.SetSnapMode(mode); SetStatus(mode == SnapModeId::Off ? L"SNAP OFF" : L"SNAP MODE MVP"); }
-void WorkspaceRuntime::OnTogglePanel(WorkspacePanelId panel) { m_canvas.TogglePanel(panel); SetStatus(L"PANEL TOGGLED"); }
-void WorkspaceRuntime::OnInitializeLayout() { m_canvas.InitializeWorkspaceLayout(); SetStatus(L"LAYOUT INITIALIZED"); }
+void WorkspaceRuntime::OnSetSnapMode(SnapModeId mode) { m_canvas.SetSnapMode(mode); SetStatus(SnapModeName(mode)); }
+void WorkspaceRuntime::OnTogglePanel(WorkspacePanelId panel) {
+    m_canvas.TogglePanel(panel);
+    SaveWorkspaceUiSettings();
+    SetStatus(L"PANEL TOGGLED");
+}
+void WorkspaceRuntime::OnToggleLeftSidebar() {
+    m_canvas.ToggleLeftSidebar();
+    m_canvas.ResizeViewport(CanvasRect());
+    SaveWorkspaceUiSettings();
+    TouchWorkspace();
+    SetStatus(m_canvas.IsLeftSidebarExpanded() ? L"LEFT PANEL OPEN" : L"LEFT PANEL CLOSED");
+}
+void WorkspaceRuntime::OnToggleRightSidebar() {
+    m_canvas.ToggleRightSidebar();
+    m_canvas.ResizeViewport(CanvasRect());
+    SaveWorkspaceUiSettings();
+    TouchWorkspace();
+    SetStatus(m_canvas.IsRightSidebarExpanded() ? L"RIGHT PANEL OPEN" : L"RIGHT PANEL CLOSED");
+}
+void WorkspaceRuntime::OnInitializeLayout() {
+    m_canvas.InitializeWorkspaceLayout();
+    m_canvas.ResizeViewport(CanvasRect());
+    SaveWorkspaceUiSettings();
+    SetStatus(L"LAYOUT INITIALIZED");
+}
 void WorkspaceRuntime::OnShowUnavailable() { SetStatus(L"NOT AVAILABLE IN MVP"); }
 void WorkspaceRuntime::OnCloseWorkspace() {
+    if (!ConfirmAbandonUnsavedChanges(L"closing the current project")) return;
     m_canvas.CloseProject();
     m_session.AttachProject(nullptr);
     m_wantsProgramManager = true;

@@ -23,13 +23,37 @@ public:
     bool NeedsFrame(uint64_t nowMs) const override;
     bool WantsQuit() const override { return m_wantsClose; }
     bool HasProject() const { return m_canvas.HasProject(); }
+    bool HasUnsavedChanges() const { return m_session.HasUnsavedChanges(); }
+    void ClearQuitRequest() { m_wantsClose = false; }
+    bool SaveCurrentProjectInteractive(bool saveAs = false);
     void AcceptWorkspaceLaunchRequest(WorkspaceLaunchRequest launchRequest);
     bool ConsumeProgramManagerRequest();
     bool ConsumeProgramManagerSettingsRequest();
 
 private:
+    enum class CanvasSizeField {
+        None,
+        Width,
+        Height
+    };
+
+    enum class CanvasAnchor {
+        TopLeft,
+        TopCenter,
+        TopRight,
+        MiddleLeft,
+        Center,
+        MiddleRight,
+        BottomLeft,
+        BottomCenter,
+        BottomRight
+    };
+
     bool OpenLaunchRequest(const WorkspaceLaunchRequest& launchRequest);
     void BuildScene();
+    void BuildCanvasSizeModalNodes();
+    void LoadWorkspaceUiSettings();
+    void SaveWorkspaceUiSettings();
     void MarkDirty(const Rect& rect);
     Rect FullRect() const { return Rect(0, 0, static_cast<int32_t>(m_frame.width), static_cast<int32_t>(m_frame.height)); }
     Rect CanvasRect() const;
@@ -43,6 +67,7 @@ private:
     void RenderLayerItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
     void RenderSwatch(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
     void RenderSlider(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
+    void RenderSearchBox(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
     void RenderColorField(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
     void RenderHueStrip(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
     void RenderBrushPresetItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
@@ -50,12 +75,16 @@ private:
     void RenderCheckBox(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, bool checked);
     void RenderPanel(Presentation::SoftRenderer& renderer, const Rect& rect, const String& title);
     void RenderWorkspacePanels(Presentation::SoftRenderer& renderer);
+    void RenderCanvasSizePreview(Presentation::SoftRenderer& renderer, const Rect& rect);
 
-    void SaveProject(bool saveAs);
+    bool SaveProject(bool saveAs);
     void ExportPng();
     void SwitchTool(ToolType tool);
     void SetStatus(const String& status);
     void TouchWorkspace();
+    void MarkProjectDirty();
+    bool ConfirmAbandonUnsavedChanges(const String& actionLabel);
+    bool HandleCanvasSizeKey(const Input::KeyEvent& event);
     void ApplySliderAtPoint(const CoreUI::UiNode& node, const Point& position);
     void ApplyColorFieldAtPoint(const CoreUI::UiNode& node, const Point& position);
     void ApplyHueStripAtPoint(const CoreUI::UiNode& node, const Point& position);
@@ -63,7 +92,10 @@ private:
     void OnGoHome() override;
     void OnShowNewCanvasModal() override;
     void OnShowSettingsModal() override;
+    void OnCreateCanvasFromForm() override;
+    void OnSwapCanvasOrientation() override;
     void OnCreateCanvasPreset(uint32_t width, uint32_t height) override;
+    void OnSetCanvasAnchor(uint32_t anchor) override;
     void OnCloseModal() override;
     void OnOpenProject() override;
     void OnOpenRecentProject(const String& path) override;
@@ -109,6 +141,8 @@ private:
     void OnToggleViewOption(ViewOptionId option) override;
     void OnSetSnapMode(SnapModeId mode) override;
     void OnTogglePanel(WorkspacePanelId panel) override;
+    void OnToggleLeftSidebar() override;
+    void OnToggleRightSidebar() override;
     void OnInitializeLayout() override;
     void OnShowUnavailable() override;
     void OnCloseWorkspace() override;
@@ -128,6 +162,10 @@ private:
     bool m_wantsProgramManagerSettings = false;
     String m_status = L"READY";
     String m_openMenu;
+    CanvasSizeField m_canvasSizeField = CanvasSizeField::None;
+    uint32_t m_canvasResizeWidth = 0;
+    uint32_t m_canvasResizeHeight = 0;
+    CanvasAnchor m_canvasAnchor = CanvasAnchor::Center;
 };
 
 } // namespace CloverPic::Core

@@ -61,6 +61,124 @@ bool CanvasController::AttachLoadedProject(Ref<Project> project) {
     return true;
 }
 
+bool CanvasController::ResizeCanvas(uint32_t width, uint32_t height, uint32_t anchorX, uint32_t anchorY) {
+    if (!m_project || width == 0 || height == 0) {
+        return false;
+    }
+    anchorX = std::min<uint32_t>(anchorX, 2);
+    anchorY = std::min<uint32_t>(anchorY, 2);
+
+    const auto& oldCanvas = m_project->GetCanvas();
+    if (oldCanvas.widthPx == width && oldCanvas.heightPx == height) {
+        return true;
+    }
+
+    std::vector<Ref<Layer>> oldLayers;
+    oldLayers.reserve(m_layerManager.GetLayerCount());
+    for (size_t i = 0; i < m_layerManager.GetLayerCount(); ++i) {
+        oldLayers.push_back(m_layerManager.GetLayer(i));
+    }
+    const size_t oldActiveLayer = m_layerManager.GetActiveLayerIndex();
+    const size_t oldSoloLayer = m_layerManager.GetSoloLayerIndex();
+    auto oldSelection = std::move(m_selection);
+
+    LayerManager resizedManager;
+    resizedManager.SetHistoryManager(&m_history);
+    resizedManager.Initialize(width, height);
+
+    const uint32_t copyWidth = std::min(oldCanvas.widthPx, width);
+    const uint32_t copyHeight = std::min(oldCanvas.heightPx, height);
+    const uint32_t srcStartX = oldCanvas.widthPx > width ? (anchorX * (oldCanvas.widthPx - width)) / 2u : 0u;
+    const uint32_t srcStartY = oldCanvas.heightPx > height ? (anchorY * (oldCanvas.heightPx - height)) / 2u : 0u;
+    const uint32_t dstStartX = width > oldCanvas.widthPx ? (anchorX * (width - oldCanvas.widthPx)) / 2u : 0u;
+    const uint32_t dstStartY = height > oldCanvas.heightPx ? (anchorY * (height - oldCanvas.heightPx)) / 2u : 0u;
+    const int32_t positionShiftX = static_cast<int32_t>(dstStartX) - static_cast<int32_t>(srcStartX);
+    const int32_t positionShiftY = static_cast<int32_t>(dstStartY) - static_cast<int32_t>(srcStartY);
+
+    for (const auto& source : oldLayers) {
+        if (!source) {
+            continue;
+        }
+
+        Ref<Layer> resizedLayer;
+        if (source->GetType() == LayerType::Text) {
+            auto textLayer = MakeRef<TextLayer>(source->GetName(), width, height);
+            const auto payload = source->SerializePayload();
+            if (!payload.empty()) {
+                textLayer->DeserializePayload(payload.data(), payload.size());
+            }
+            const Point pos = textLayer->GetPosition();
+            textLayer->SetPosition(Point(pos.x + positionShiftX, pos.y + positionShiftY));
+            resizedLayer = textLayer;
+            resizedLayer->RasterizeIfNeeded();
+        } else {
+            auto rasterLayer = MakeRef<RasterLayer>(source->GetName(), source->GetType(), width, height);
+            if (auto sourceRaster = std::dynamic_pointer_cast<RasterLayer>(source)) {
+                for (uint32_t y = 0; y < copyHeight; ++y) {
+                    for (uint32_t x = 0; x < copyWidth; ++x) {
+                        const Color10 pixel = sourceRaster->GetPixel10(srcStartX + x, srcStartY + y);
+                        if (pixel.r == 0 && pixel.g == 0 && pixel.b == 0 && pixel.a == 0) {
+                            continue;
+                        }
+                        rasterLayer->SetPixel10(dstStartX + x, dstStartY + y, pixel);
+                    }
+                }
+            } else {
+                for (uint32_t y = 0; y < copyHeight; ++y) {
+                    for (uint32_t x = 0; x < copyWidth; ++x) {
+                        const Color pixel = source->GetPixel(srcStartX + x, srcStartY + y);
+                        if (pixel.a == 0) {
+                            continue;
+                        }
+                        rasterLayer->SetPixel(dstStartX + x, dstStartY + y, pixel);
+                    }
+                }
+            }
+            resizedLayer = rasterLayer;
+        }
+
+        resizedLayer->SetName(source->GetName());
+        resizedLayer->SetBlendMode(source->GetBlendMode());
+        resizedLayer->SetOpacity(source->GetOpacity());
+        resizedLayer->SetVisible(source->IsVisible());
+        resizedLayer->SetLocked(source->IsLocked());
+        resizedLayer->SetProtectAlpha(source->IsProtectAlpha());
+        resizedLayer->SetDirty(true);
+        resizedManager.AddLayer(resizedLayer);
+    }
+
+    if (!oldLayers.empty()) {
+        resizedManager.SetActiveLayer(std::min(oldActiveLayer, oldLayers.size() - 1));
+        if (oldSoloLayer != static_cast<size_t>(-1) && oldSoloLayer < oldLayers.size()) {
+            resizedManager.ToggleSolo(oldSoloLayer);
+        }
+    }
+
+    m_history.Clear();
+    m_layerManager = std::move(resizedManager);
+    m_layerManager.SetHistoryManager(&m_history);
+
+    m_project->GetCanvas().widthPx = width;
+    m_project->GetCanvas().heightPx = height;
+
+    m_selection = MakeScope<SelectionMask>(width, height);
+    if (oldSelection) {
+        for (uint32_t y = 0; y < copyHeight; ++y) {
+            for (uint32_t x = 0; x < copyWidth; ++x) {
+                const uint8_t value = oldSelection->GetPixel(srcStartX + x, srcStartY + y);
+                if (value > 0) {
+                    m_selection->SetPixel(dstStartX + x, dstStartY + y, value);
+                }
+            }
+        }
+    }
+
+    EnsureCompositeBuffer();
+    m_layerManager.MarkCompositeDirty();
+    FitToViewport(m_lastViewport);
+    return true;
+}
+
 void CanvasController::CloseProject() {
     m_project.reset();
     m_layerManager.Shutdown();
@@ -71,6 +189,7 @@ void CanvasController::CloseProject() {
     m_panning = false;
     m_selecting = false;
     m_shapeDrawing = false;
+    m_snapGuideActive = false;
     m_zoom = 1.0f;
     m_panX = 0.0f;
     m_panY = 0.0f;
@@ -122,6 +241,7 @@ void CanvasController::Render(Presentation::SoftRenderer& renderer, const Rect& 
     }
 
     RenderSelection(renderer, viewport);
+    RenderSnapGuide(renderer, viewport);
 
     if (m_selecting || m_shapeDrawing) {
         float canvasX = 0.0f;
@@ -129,6 +249,7 @@ void CanvasController::Render(Presentation::SoftRenderer& renderer, const Rect& 
         ScreenToCanvas(m_lastPointer, viewport, canvasX, canvasY);
         const float startX = m_selecting ? m_selectionStartX : m_shapeStartX;
         const float startY = m_selecting ? m_selectionStartY : m_shapeStartY;
+        ApplySnap(startX, startY, canvasX, canvasY);
         const int left = viewport.left + static_cast<int>(m_panX + std::min(startX, canvasX) * m_zoom);
         const int top = viewport.top + static_cast<int>(m_panY + std::min(startY, canvasY) * m_zoom);
         const int right = viewport.left + static_cast<int>(m_panX + std::max(startX, canvasX) * m_zoom);
@@ -160,90 +281,129 @@ void CanvasController::ResizeViewport(const Rect& viewport) {
     }
 }
 
-void CanvasController::HandlePointer(const Input::PointerEvent& event, const Rect& viewport) {
+bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rect& viewport) {
+    bool changed = false;
     const Point previousPointer = m_lastPointer;
     m_lastPointer = event.position;
     if (!m_project) {
-        return;
+        return false;
     }
 
     if (event.action == Input::PointerAction::Down && event.button == MouseButton::Middle) {
         m_panning = true;
-        return;
+        m_snapGuideActive = false;
+        return false;
     }
     if (event.action == Input::PointerAction::Up && event.button == MouseButton::Middle) {
         m_panning = false;
-        return;
+        m_snapGuideActive = false;
+        return false;
     }
     if (event.action == Input::PointerAction::Move && m_panning) {
         m_panX += event.position.x - previousPointer.x;
         m_panY += event.position.y - previousPointer.y;
-        return;
+        return false;
     }
 
     float canvasX = 0;
     float canvasY = 0;
     ScreenToCanvas(event.position, viewport, canvasX, canvasY);
+    float snappedPointX = canvasX;
+    float snappedPointY = canvasY;
+    SnapPointToMode(snappedPointX, snappedPointY);
 
     if (event.action == Input::PointerAction::Down && event.button == MouseButton::Left) {
         if (m_tool == ToolType::Move) {
             m_panning = true;
-            return;
+            m_snapGuideActive = false;
+            return false;
         }
         if (m_tool == ToolType::Eyedropper) {
             if (auto layer = m_layerManager.GetActiveLayer()) {
-                const auto x = static_cast<uint32_t>(std::clamp(canvasX, 0.0f, static_cast<float>(layer->GetCanvasWidth() - 1)));
-                const auto y = static_cast<uint32_t>(std::clamp(canvasY, 0.0f, static_cast<float>(layer->GetCanvasHeight() - 1)));
+                const auto x = static_cast<uint32_t>(std::clamp(snappedPointX, 0.0f, static_cast<float>(layer->GetCanvasWidth() - 1)));
+                const auto y = static_cast<uint32_t>(std::clamp(snappedPointY, 0.0f, static_cast<float>(layer->GetCanvasHeight() - 1)));
                 const Color picked = layer->GetPixel(x, y);
                 if (picked.a > 0) SetColor(picked);
             }
-            return;
+            return false;
         }
         if (m_tool == ToolType::Fill) {
-            if (canvasX >= 0 && canvasY >= 0) {
-                FloodFill(static_cast<uint32_t>(canvasX), static_cast<uint32_t>(canvasY), m_color);
+            if (snappedPointX >= 0 && snappedPointY >= 0) {
+                FloodFill(static_cast<uint32_t>(snappedPointX), static_cast<uint32_t>(snappedPointY), m_color);
+                changed = true;
             }
-            return;
+            return changed;
         }
         if (m_tool == ToolType::RectSelect) {
             m_selecting = true;
-            m_selectionStartX = canvasX;
-            m_selectionStartY = canvasY;
-            return;
+            m_selectionStartX = snappedPointX;
+            m_selectionStartY = snappedPointY;
+            m_snapGuideActive = true;
+            m_snapGuideAnchorX = snappedPointX;
+            m_snapGuideAnchorY = snappedPointY;
+            m_snapGuideTargetX = snappedPointX;
+            m_snapGuideTargetY = snappedPointY;
+            return false;
         }
         if (m_tool == ToolType::Shape) {
             m_shapeDrawing = true;
-            m_shapeStartX = canvasX;
-            m_shapeStartY = canvasY;
-            return;
+            m_shapeStartX = snappedPointX;
+            m_shapeStartY = snappedPointY;
+            m_snapGuideActive = true;
+            m_snapGuideAnchorX = snappedPointX;
+            m_snapGuideAnchorY = snappedPointY;
+            m_snapGuideTargetX = snappedPointX;
+            m_snapGuideTargetY = snappedPointY;
+            return false;
         }
         if (m_tool == ToolType::Brush || m_tool == ToolType::Eraser) {
             m_drawing = true;
             if (auto layer = m_layerManager.GetActiveLayer()) {
                 layer->BeginStroke();
             }
-            m_lastCanvasX = canvasX;
-            m_lastCanvasY = canvasY;
+            m_lastCanvasX = snappedPointX;
+            m_lastCanvasY = snappedPointY;
             m_lastPressure = std::max(0.05f, event.pressure);
-            ApplyBrush(canvasX, canvasY, m_lastPressure);
+            m_snapGuideActive = true;
+            m_snapGuideAnchorX = snappedPointX;
+            m_snapGuideAnchorY = snappedPointY;
+            m_snapGuideTargetX = snappedPointX;
+            m_snapGuideTargetY = snappedPointY;
+            ApplyBrush(snappedPointX, snappedPointY, m_lastPressure);
+            changed = true;
         }
     } else if (event.action == Input::PointerAction::Move && m_drawing) {
+        m_snapGuideActive = true;
+        m_snapGuideAnchorX = m_lastCanvasX;
+        m_snapGuideAnchorY = m_lastCanvasY;
+        ApplySnap(m_lastCanvasX, m_lastCanvasY, canvasX, canvasY);
+        m_snapGuideTargetX = canvasX;
+        m_snapGuideTargetY = canvasY;
         const float pressure = std::max(0.05f, event.pressure);
         ApplyBrush(canvasX, canvasY, pressure);
         m_lastCanvasX = canvasX;
         m_lastCanvasY = canvasY;
         m_lastPressure = pressure;
+        changed = true;
     } else if (event.action == Input::PointerAction::Up && event.button == MouseButton::Left) {
         if (m_tool == ToolType::Move) {
             m_panning = false;
-            return;
+            m_snapGuideActive = false;
+            return false;
         }
         if (m_shapeDrawing) {
+            ApplySnap(m_shapeStartX, m_shapeStartY, canvasX, canvasY);
+            m_snapGuideTargetX = canvasX;
+            m_snapGuideTargetY = canvasY;
             FillShapeRect(m_shapeStartX, m_shapeStartY, canvasX, canvasY, m_color);
             m_shapeDrawing = false;
-            return;
+            m_snapGuideActive = false;
+            return true;
         }
         if (m_selecting) {
+            ApplySnap(m_selectionStartX, m_selectionStartY, canvasX, canvasY);
+            m_snapGuideTargetX = canvasX;
+            m_snapGuideTargetY = canvasY;
             if (m_selection && m_project) {
                 const int left = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartX, canvasX))));
                 const int top = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartY, canvasY))));
@@ -256,15 +416,28 @@ void CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
                 }
             }
             m_selecting = false;
-            return;
+            m_snapGuideActive = false;
+            return false;
         }
         if (m_drawing) {
             m_drawing = false;
+            m_snapGuideActive = false;
             if (auto layer = m_layerManager.GetActiveLayer()) {
                 layer->EndStroke();
             }
         }
+    } else if (event.action == Input::PointerAction::Move && (m_selecting || m_shapeDrawing)) {
+        const float startX = m_selecting ? m_selectionStartX : m_shapeStartX;
+        const float startY = m_selecting ? m_selectionStartY : m_shapeStartY;
+        m_snapGuideActive = true;
+        m_snapGuideAnchorX = startX;
+        m_snapGuideAnchorY = startY;
+        ApplySnap(startX, startY, canvasX, canvasY);
+        m_snapGuideTargetX = canvasX;
+        m_snapGuideTargetY = canvasY;
     }
+
+    return changed;
 }
 
 void CanvasController::HandleWheel(int delta, const Point& position, const Rect& viewport) {
@@ -627,6 +800,19 @@ void CanvasController::TogglePanel(WorkspacePanelId panel) {
     }
 }
 
+void CanvasController::SetPanelVisible(WorkspacePanelId panel, bool visible) {
+    switch (panel) {
+        case WorkspacePanelId::Color: m_panelColorVisible = visible; break;
+        case WorkspacePanelId::BrushPreview: m_panelBrushPreviewVisible = visible; break;
+        case WorkspacePanelId::BrushControl: m_panelBrushControlVisible = visible; break;
+        case WorkspacePanelId::BrushPresets: m_panelBrushPresetsVisible = visible; break;
+        case WorkspacePanelId::Navigator: m_panelNavigatorVisible = visible; break;
+        case WorkspacePanelId::Layer: m_panelLayerVisible = visible; break;
+        case WorkspacePanelId::BrushSize: m_panelBrushSizeVisible = visible; break;
+        case WorkspacePanelId::StatusBar: m_panelStatusBarVisible = visible; break;
+    }
+}
+
 bool CanvasController::IsPanelVisible(WorkspacePanelId panel) const {
     switch (panel) {
         case WorkspacePanelId::Color: return m_panelColorVisible;
@@ -650,6 +836,8 @@ void CanvasController::InitializeWorkspaceLayout() {
     m_panelLayerVisible = true;
     m_panelBrushSizeVisible = true;
     m_panelStatusBarVisible = true;
+    m_leftSidebarExpanded = true;
+    m_rightSidebarExpanded = true;
     m_showGrid = false;
     m_showPixelGrid = true;
     m_showTransparentBackground = true;
@@ -660,6 +848,74 @@ void CanvasController::InitializeWorkspaceLayout() {
 void CanvasController::ScreenToCanvas(const Point& position, const Rect& viewport, float& canvasX, float& canvasY) const {
     canvasX = (position.x - viewport.left - m_panX) / std::max(0.001f, m_zoom);
     canvasY = (position.y - viewport.top - m_panY) / std::max(0.001f, m_zoom);
+}
+
+void CanvasController::ApplySnap(float anchorX, float anchorY, float& x, float& y) const {
+    if (!m_project || m_snapMode == SnapModeId::Off) {
+        return;
+    }
+
+    constexpr float Pi = 3.1415926535f;
+    const float dx = x - anchorX;
+    const float dy = y - anchorY;
+
+    switch (m_snapMode) {
+        case SnapModeId::Off:
+            return;
+        case SnapModeId::Parallel:
+            if (std::fabs(dx) >= std::fabs(dy)) {
+                y = anchorY;
+            } else {
+                x = anchorX;
+            }
+            return;
+        case SnapModeId::Crisscross: {
+            const float angle = std::atan2(dy, dx);
+            const float snapped = std::round(angle / (Pi * 0.25f)) * (Pi * 0.25f);
+            const float distance = std::sqrt(dx * dx + dy * dy);
+            x = anchorX + std::cos(snapped) * distance;
+            y = anchorY + std::sin(snapped) * distance;
+            return;
+        }
+        case SnapModeId::VanishingPoint: {
+            const float centerX = m_project->GetCanvas().widthPx * 0.5f;
+            const float centerY = m_project->GetCanvas().heightPx * 0.5f;
+            const float vx = x - centerX;
+            const float vy = y - centerY;
+            const float angle = std::atan2(vy, vx);
+            const float snapped = std::round(angle / (Pi / 12.0f)) * (Pi / 12.0f);
+            const float radius = std::sqrt(vx * vx + vy * vy);
+            x = centerX + std::cos(snapped) * radius;
+            y = centerY + std::sin(snapped) * radius;
+            return;
+        }
+        case SnapModeId::Radial: {
+            const float angle = std::atan2(dy, dx);
+            const float snapped = std::round(angle / (Pi / 12.0f)) * (Pi / 12.0f);
+            const float radius = std::sqrt(dx * dx + dy * dy);
+            x = anchorX + std::cos(snapped) * radius;
+            y = anchorY + std::sin(snapped) * radius;
+            return;
+        }
+        case SnapModeId::Circle: {
+            const float angle = std::atan2(dy, dx);
+            const float radius = std::max(std::fabs(dx), std::fabs(dy));
+            x = anchorX + std::cos(angle) * radius;
+            y = anchorY + std::sin(angle) * radius;
+            return;
+        }
+        case SnapModeId::Curve:
+        case SnapModeId::CurvedLineEllipse: {
+            constexpr float Grid = 16.0f;
+            x = std::round(x / Grid) * Grid;
+            y = std::round(y / Grid) * Grid;
+            return;
+        }
+    }
+}
+
+void CanvasController::SnapPointToMode(float& x, float& y) const {
+    ApplySnap(x, y, x, y);
 }
 
 const SelectionMask* CanvasController::ActiveSelectionMask() const {
@@ -678,6 +934,125 @@ void CanvasController::RenderSelection(Presentation::SoftRenderer& renderer, con
         renderer.FillRect(Rect(sx, sy, sx + std::max(1, static_cast<int>(m_zoom)), sy + std::max(1, static_cast<int>(m_zoom))),
                           dash ? Color(255, 255, 255, 210) : Color(20, 20, 20, 210));
     }
+}
+
+void CanvasController::RenderSnapGuide(Presentation::SoftRenderer& renderer, const Rect& viewport) const {
+    if (!m_project || m_snapMode == SnapModeId::Off || !m_snapGuideActive) {
+        return;
+    }
+
+    float startX = m_snapGuideAnchorX;
+    float startY = m_snapGuideAnchorY;
+    float snapX = m_snapGuideTargetX;
+    float snapY = m_snapGuideTargetY;
+    ApplySnap(startX, startY, snapX, snapY);
+
+    auto toScreen = [&](float canvasX, float canvasY) {
+        return Point(viewport.left + static_cast<int32_t>(m_panX + canvasX * m_zoom),
+                     viewport.top + static_cast<int32_t>(m_panY + canvasY * m_zoom));
+    };
+
+    auto drawDashedLine = [&](int x0, int y0, int x1, int y1, const Color& color, int dashLength, int gapLength, int thickness) {
+        const float dx = static_cast<float>(x1 - x0);
+        const float dy = static_cast<float>(y1 - y0);
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (length <= 0.001f) {
+            return;
+        }
+        const float ux = dx / length;
+        const float uy = dy / length;
+        float offset = 0.0f;
+        while (offset < length) {
+            const float segmentStart = offset;
+            const float segmentEnd = std::min(length, offset + static_cast<float>(dashLength));
+            renderer.DrawLine(static_cast<int>(std::round(x0 + ux * segmentStart)),
+                              static_cast<int>(std::round(y0 + uy * segmentStart)),
+                              static_cast<int>(std::round(x0 + ux * segmentEnd)),
+                              static_cast<int>(std::round(y0 + uy * segmentEnd)),
+                              color, thickness);
+            offset += static_cast<float>(dashLength + gapLength);
+        }
+    };
+
+    const Point start = toScreen(startX, startY);
+    const Point target = toScreen(snapX, snapY);
+    const Color guide = Color(90, 188, 255, 180);
+    const Color strong = Color(180, 230, 255, 220);
+    const Color accent = Color(255, 210, 132, 190);
+    const auto& canvas = m_project->GetCanvas();
+    const int canvasLeft = viewport.left + static_cast<int>(m_panX);
+    const int canvasTop = viewport.top + static_cast<int>(m_panY);
+    const int canvasRight = canvasLeft + static_cast<int>(canvas.widthPx * m_zoom);
+    const int canvasBottom = canvasTop + static_cast<int>(canvas.heightPx * m_zoom);
+
+    renderer.FillCircle(start.x, start.y, 3, strong);
+    renderer.FillCircle(target.x, target.y, 4, guide);
+
+    switch (m_snapMode) {
+        case SnapModeId::Parallel:
+            if (std::abs(target.x - start.x) >= std::abs(target.y - start.y)) {
+                drawDashedLine(canvasLeft, target.y, canvasRight, target.y, guide, 8, 5, 1);
+                drawDashedLine(start.x, canvasTop, start.x, canvasBottom, Color(78, 112, 140, 120), 4, 6, 1);
+            } else {
+                drawDashedLine(target.x, canvasTop, target.x, canvasBottom, guide, 8, 5, 1);
+                drawDashedLine(canvasLeft, start.y, canvasRight, start.y, Color(78, 112, 140, 120), 4, 6, 1);
+            }
+            break;
+        case SnapModeId::Crisscross:
+        case SnapModeId::Radial:
+        case SnapModeId::VanishingPoint: {
+            Point origin = start;
+            if (m_snapMode == SnapModeId::VanishingPoint) {
+                origin = toScreen(canvas.widthPx * 0.5f, canvas.heightPx * 0.5f);
+                renderer.FillCircle(origin.x, origin.y, 4, strong);
+            }
+            const float dx = static_cast<float>(target.x - origin.x);
+            const float dy = static_cast<float>(target.y - origin.y);
+            const float len = std::max(1.0f, std::sqrt(dx * dx + dy * dy));
+            const float ux = dx / len;
+            const float uy = dy / len;
+            const int extend = std::max(canvasRight - canvasLeft, canvasBottom - canvasTop);
+            drawDashedLine(static_cast<int>(origin.x - ux * extend), static_cast<int>(origin.y - uy * extend),
+                           static_cast<int>(origin.x + ux * extend), static_cast<int>(origin.y + uy * extend), guide, 8, 5, 1);
+            if (m_snapMode == SnapModeId::Crisscross) {
+                drawDashedLine(static_cast<int>(origin.x + uy * extend), static_cast<int>(origin.y - ux * extend),
+                               static_cast<int>(origin.x - uy * extend), static_cast<int>(origin.y + ux * extend),
+                               Color(76, 118, 150, 120), 5, 6, 1);
+            } else if (m_snapMode == SnapModeId::Radial) {
+                const int radius = static_cast<int>(len);
+                renderer.StrokeCircle(origin.x, origin.y, std::max(10, radius), Color(70, 110, 138, 100), 1);
+            } else if (m_snapMode == SnapModeId::VanishingPoint) {
+                renderer.StrokeCircle(origin.x, origin.y, 10, accent, 1);
+            }
+            break;
+        }
+        case SnapModeId::Circle: {
+            const int radius = static_cast<int>(std::sqrt(static_cast<float>((target.x - start.x) * (target.x - start.x) +
+                                                                             (target.y - start.y) * (target.y - start.y))));
+            renderer.StrokeCircle(start.x, start.y, std::max(4, radius), guide, 1);
+            drawDashedLine(start.x - std::max(4, radius), start.y, start.x + std::max(4, radius), start.y, Color(70, 110, 138, 110), 6, 5, 1);
+            drawDashedLine(start.x, start.y - std::max(4, radius), start.x, start.y + std::max(4, radius), Color(70, 110, 138, 110), 6, 5, 1);
+            break;
+        }
+        case SnapModeId::Curve:
+            drawDashedLine(canvasLeft, target.y, canvasRight, target.y, Color(74, 124, 158, 110), 5, 6, 1);
+            drawDashedLine(target.x, canvasTop, target.x, canvasBottom, Color(74, 124, 158, 110), 5, 6, 1);
+            renderer.DrawLine(target.x - 12, target.y, target.x + 12, target.y, guide, 1);
+            renderer.DrawLine(target.x, target.y - 12, target.x, target.y + 12, guide, 1);
+            break;
+        case SnapModeId::CurvedLineEllipse: {
+            const Rect ellipseBounds(std::min(start.x, target.x), std::min(start.y, target.y),
+                                     std::max(start.x, target.x), std::max(start.y, target.y));
+            renderer.StrokeRect(ellipseBounds, Color(74, 124, 158, 120), 1);
+            renderer.DrawLine(target.x - 12, target.y, target.x + 12, target.y, guide, 1);
+            renderer.DrawLine(target.x, target.y - 12, target.x, target.y + 12, guide, 1);
+            break;
+        }
+        case SnapModeId::Off:
+            break;
+    }
+
+    drawDashedLine(start.x, start.y, target.x, target.y, strong, 9, 4, 1);
 }
 
 void CanvasController::ApplyBrush(float x, float y, float pressure) {

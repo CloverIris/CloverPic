@@ -25,6 +25,7 @@ public:
         virtual void OnApplySettings() {}
         virtual void OnSaveSettings() {}
         virtual void OnCreateCanvasPreset(uint32_t width, uint32_t height) = 0;
+        virtual void OnSetCanvasAnchor(uint32_t) {}
         virtual void OnCloseModal() = 0;
         virtual void OnOpenProject() = 0;
         virtual void OnOpenRecentProject(const String& path) = 0;
@@ -70,6 +71,8 @@ public:
         virtual void OnToggleViewOption(ViewOptionId) {}
         virtual void OnSetSnapMode(SnapModeId) {}
         virtual void OnTogglePanel(WorkspacePanelId) {}
+        virtual void OnToggleLeftSidebar() {}
+        virtual void OnToggleRightSidebar() {}
         virtual void OnInitializeLayout() {}
         virtual void OnShowUnavailable() {}
         virtual void OnCloseWorkspace() {}

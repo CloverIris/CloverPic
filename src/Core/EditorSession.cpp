@@ -12,32 +12,34 @@ void EditorSession::AttachProject(Ref<Project> project, const String& currentFil
     m_project = std::move(project);
     m_currentFilePath = currentFilePath;
     m_hasLoadedLayerState = false;
+    m_hasUnsavedChanges = false;
 }
 
 bool EditorSession::OpenProject(const String& filePath, LayerManager* layerManager) {
     ClearError();
     if (filePath.empty()) {
-        return Fail(L"项目路径为空");
+        return Fail(L"Project path is empty.");
     }
     if (!layerManager) {
-        return Fail(L"缺少图层管理器");
+        return Fail(L"Layer manager is missing.");
     }
 
     auto loadedProject = ProjectSerializer::LoadProject(filePath, layerManager);
     if (!loadedProject) {
-        return Fail(L"无法打开项目文件");
+        return Fail(L"Failed to open the project file.");
     }
 
     m_project = std::move(loadedProject);
     m_currentFilePath = filePath;
     m_hasLoadedLayerState = true;
+    m_hasUnsavedChanges = false;
     RememberRecentFile(filePath);
     return true;
 }
 
 bool EditorSession::SaveProject(LayerManager* layerManager) {
     if (m_currentFilePath.empty()) {
-        return Fail(L"当前项目还没有保存路径");
+        return Fail(L"Current project does not have a save path yet.");
     }
     return SaveProjectAs(m_currentFilePath, layerManager);
 }
@@ -45,21 +47,22 @@ bool EditorSession::SaveProject(LayerManager* layerManager) {
 bool EditorSession::SaveProjectAs(const String& filePath, LayerManager* layerManager) {
     ClearError();
     if (!m_project) {
-        return Fail(L"当前没有可保存的项目");
+        return Fail(L"There is no project to save.");
     }
     if (!layerManager) {
-        return Fail(L"缺少图层管理器");
+        return Fail(L"Layer manager is missing.");
     }
     if (filePath.empty()) {
-        return Fail(L"保存路径为空");
+        return Fail(L"Save path is empty.");
     }
 
     m_project->GetMetadata().modifiedAt = std::chrono::system_clock::now();
     if (!ProjectSerializer::SaveProject(filePath, m_project.get(), layerManager)) {
-        return Fail(L"保存项目失败");
+        return Fail(L"Failed to save the project.");
     }
 
     m_currentFilePath = filePath;
+    m_hasUnsavedChanges = false;
     RememberRecentFile(filePath);
     return true;
 }

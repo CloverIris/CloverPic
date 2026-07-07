@@ -280,16 +280,27 @@ void AppSceneBuilder::BuildWorkspaceScene(const Size& viewport,
         toolY += 60;
     }
 
+    const bool leftSidebarExpanded = canvas.IsLeftSidebarExpanded();
+    const bool rightSidebarExpanded = canvas.IsRightSidebarExpanded();
+    add(Rect(ToolBarW + (leftSidebarExpanded ? LeftPanelW - 18 : 0), TopBarH + 8,
+             ToolBarW + (leftSidebarExpanded ? LeftPanelW : 18), TopBarH + 86),
+        leftSidebarExpanded ? L"<" : L">", AppCommand::ToggleLeftSidebar, 0,
+        CoreUI::UiNodeType::Button, 36);
+    add(Rect(w - (rightSidebarExpanded ? RightPanelW : 18), TopBarH + 8,
+             w - (rightSidebarExpanded ? RightPanelW - 18 : 0), TopBarH + 86),
+        rightSidebarExpanded ? L">" : L"<", AppCommand::ToggleRightSidebar, 0,
+        CoreUI::UiNodeType::Button, 36);
+
     const int leftPanelLeft = ToolBarW + 4;
     const int leftPanelRight = ToolBarW + LeftPanelW - 4;
     const int panelInnerLeft = leftPanelLeft + 8;
     const int colorTop = TopBarH + 4;
-    const bool showColorPanel = canvas.IsPanelVisible(WorkspacePanelId::Color);
-    const bool showBrushControlPanel = canvas.IsPanelVisible(WorkspacePanelId::BrushControl);
-    const bool showBrushPresetPanel = canvas.IsPanelVisible(WorkspacePanelId::BrushPresets);
-    const bool showNavigatorPanel = canvas.IsPanelVisible(WorkspacePanelId::Navigator);
-    const bool showLayerPanel = canvas.IsPanelVisible(WorkspacePanelId::Layer);
-    const bool showBrushSizePanel = canvas.IsPanelVisible(WorkspacePanelId::BrushSize);
+    const bool showColorPanel = leftSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::Color);
+    const bool showBrushControlPanel = leftSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::BrushControl);
+    const bool showBrushPresetPanel = leftSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::BrushPresets);
+    const bool showNavigatorPanel = rightSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::Navigator);
+    const bool showLayerPanel = rightSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::Layer);
+    const bool showBrushSizePanel = rightSidebarExpanded && canvas.IsPanelVisible(WorkspacePanelId::BrushSize);
     const int colorFieldSize = std::min(216, leftPanelRight - panelInnerLeft - 38);
     const int colorFieldLeft = panelInnerLeft + 42;
     const int colorFieldTop = colorTop + 28;

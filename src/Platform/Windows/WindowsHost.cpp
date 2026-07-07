@@ -251,7 +251,7 @@ LRESULT WindowsSurfaceWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lPar
             if (m_role == SurfaceRole::Home) {
                 m_owner.OnProgramManagerCloseRequested();
             } else {
-                DestroyWindow(m_hwnd);
+                m_owner.OnWorkspaceCloseRequested();
             }
             return 0;
         case WM_DESTROY:
@@ -394,8 +394,8 @@ void WindowsSurfaceWindow::CheckRuntimeCloseRequest() {
     if (!m_runtime.WantsQuit()) return;
     if (m_role == SurfaceRole::Home) {
         m_owner.OnProgramManagerCloseRequested();
-    } else if (m_hwnd) {
-        DestroyWindow(m_hwnd);
+    } else {
+        m_owner.OnWorkspaceCloseRequested();
     }
 }
 
@@ -449,13 +449,23 @@ void WindowsHost::RequestQuit() {
 }
 
 void WindowsHost::OnProgramManagerCloseRequested() {
-    if (m_workspaceRuntime && m_workspaceRuntime->HasProject()) {
+    if (m_workspaceRuntime && m_workspaceWindow && m_workspaceWindow->GetHwnd()) {
         if (m_homeRuntime) m_homeRuntime->ClearQuitRequest();
         if (m_homeWindow) m_homeWindow->Hide();
         m_activeDialogOwner = m_workspaceWindow ? m_workspaceWindow->GetHwnd() : nullptr;
         return;
     }
     RequestQuit();
+}
+
+void WindowsHost::OnWorkspaceCloseRequested() {
+    if (!ConfirmWorkspaceDestructiveAction(L"closing CloverPic")) {
+        if (m_workspaceRuntime) m_workspaceRuntime->ClearQuitRequest();
+        return;
+    }
+    if (m_workspaceWindow && m_workspaceWindow->GetHwnd()) {
+        DestroyWindow(m_workspaceWindow->GetHwnd());
+    }
 }
 
 void WindowsHost::OnSurfaceDestroyed(SurfaceRole role) {
@@ -487,10 +497,34 @@ void WindowsHost::OpenWorkspace(Core::WorkspaceLaunchRequest request) {
     if (!m_workspaceRuntime || !m_workspaceWindow) {
         CreateWorkspaceWindow();
     }
+    if (request.kind != Core::WorkspaceLaunchKind::None && !ConfirmWorkspaceDestructiveAction(
+            request.kind == Core::WorkspaceLaunchKind::OpenProject ? L"opening another project" : L"creating a new image")) {
+        return;
+    }
     m_workspaceRuntime->AcceptWorkspaceLaunchRequest(std::move(request));
     m_workspaceWindow->Show(SW_SHOW);
     if (m_homeWindow) m_homeWindow->Hide();
     m_activeDialogOwner = m_workspaceWindow->GetHwnd();
+}
+
+bool WindowsHost::ConfirmWorkspaceDestructiveAction(const String& actionLabel) {
+    if (!m_workspaceRuntime || !m_workspaceRuntime->HasUnsavedChanges()) {
+        return true;
+    }
+    auto* dialogs = CoreServices::GetFileDialogService();
+    if (!dialogs) {
+        return false;
+    }
+    switch (dialogs->PromptUnsavedChanges(actionLabel)) {
+        case UnsavedChangesChoice::Save:
+            return m_workspaceRuntime->SaveCurrentProjectInteractive(false);
+        case UnsavedChangesChoice::Discard:
+            return true;
+        case UnsavedChangesChoice::Cancel:
+        default:
+            break;
+    }
+    return false;
 }
 
 void WindowsHost::CloseWorkspaceAndReturnHome() {

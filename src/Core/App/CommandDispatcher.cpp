@@ -41,6 +41,9 @@ void CommandDispatcher::Dispatch(Handler& handler, AppCommand command, uint64_t 
         case AppCommand::CreateCanvasPreset:
             handler.OnCreateCanvasPreset(PresetWidth(userData), PresetHeight(userData));
             break;
+        case AppCommand::SetCanvasAnchor:
+            handler.OnSetCanvasAnchor(static_cast<uint32_t>(userData));
+            break;
         case AppCommand::CloseModal:
             handler.OnCloseModal();
             break;
@@ -178,6 +181,12 @@ void CommandDispatcher::Dispatch(Handler& handler, AppCommand command, uint64_t 
             break;
         case AppCommand::TogglePanel:
             handler.OnTogglePanel(static_cast<WorkspacePanelId>(userData));
+            break;
+        case AppCommand::ToggleLeftSidebar:
+            handler.OnToggleLeftSidebar();
+            break;
+        case AppCommand::ToggleRightSidebar:
+            handler.OnToggleRightSidebar();
             break;
         case AppCommand::InitializeLayout:
             handler.OnInitializeLayout();

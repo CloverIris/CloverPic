@@ -25,11 +25,12 @@ public:
                    const std::vector<uint8_t>& rgbProfileBytes = {},
                    const std::vector<uint8_t>& cmykProfileBytes = {});
     bool AttachLoadedProject(Ref<Project> project);
+    bool ResizeCanvas(uint32_t width, uint32_t height, uint32_t anchorX = 1, uint32_t anchorY = 1);
     void CloseProject();
 
     void Render(Presentation::SoftRenderer& renderer, const Rect& viewport);
     void ResizeViewport(const Rect& viewport);
-    void HandlePointer(const Input::PointerEvent& event, const Rect& viewport);
+    bool HandlePointer(const Input::PointerEvent& event, const Rect& viewport);
     void HandleWheel(int delta, const Point& position, const Rect& viewport);
 
     void SetTool(ToolType tool) { m_tool = tool; }
@@ -77,7 +78,14 @@ public:
     void ToggleViewOption(ViewOptionId option);
     bool IsViewOptionEnabled(ViewOptionId option) const;
     void TogglePanel(WorkspacePanelId panel);
+    void SetPanelVisible(WorkspacePanelId panel, bool visible);
     bool IsPanelVisible(WorkspacePanelId panel) const;
+    void ToggleLeftSidebar() { m_leftSidebarExpanded = !m_leftSidebarExpanded; }
+    void ToggleRightSidebar() { m_rightSidebarExpanded = !m_rightSidebarExpanded; }
+    void SetLeftSidebarExpanded(bool expanded) { m_leftSidebarExpanded = expanded; }
+    void SetRightSidebarExpanded(bool expanded) { m_rightSidebarExpanded = expanded; }
+    bool IsLeftSidebarExpanded() const { return m_leftSidebarExpanded; }
+    bool IsRightSidebarExpanded() const { return m_rightSidebarExpanded; }
     void InitializeWorkspaceLayout();
     void SetSnapMode(SnapModeId mode) { m_snapMode = mode; }
     SnapModeId GetSnapMode() const { return m_snapMode; }
@@ -93,8 +101,11 @@ public:
 
 private:
     void ScreenToCanvas(const Point& position, const Rect& viewport, float& canvasX, float& canvasY) const;
+    void ApplySnap(float anchorX, float anchorY, float& x, float& y) const;
+    void SnapPointToMode(float& x, float& y) const;
     const SelectionMask* ActiveSelectionMask() const;
     void RenderSelection(Presentation::SoftRenderer& renderer, const Rect& viewport) const;
+    void RenderSnapGuide(Presentation::SoftRenderer& renderer, const Rect& viewport) const;
     void ApplyBrush(float x, float y, float pressure);
     void FloodFill(uint32_t x, uint32_t y, const Color& color);
     void FillShapeRect(float x1, float y1, float x2, float y2, const Color& color);
@@ -125,6 +136,11 @@ private:
     bool m_selecting = false;
     float m_selectionStartX = 0.0f;
     float m_selectionStartY = 0.0f;
+    bool m_snapGuideActive = false;
+    float m_snapGuideAnchorX = 0.0f;
+    float m_snapGuideAnchorY = 0.0f;
+    float m_snapGuideTargetX = 0.0f;
+    float m_snapGuideTargetY = 0.0f;
     bool m_showGrid = false;
     bool m_showPixelGrid = true;
     bool m_showTransparentBackground = true;
@@ -137,6 +153,8 @@ private:
     bool m_panelLayerVisible = true;
     bool m_panelBrushSizeVisible = true;
     bool m_panelStatusBarVisible = true;
+    bool m_leftSidebarExpanded = true;
+    bool m_rightSidebarExpanded = true;
     SnapModeId m_snapMode = SnapModeId::Off;
 };
 

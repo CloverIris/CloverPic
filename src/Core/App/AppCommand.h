@@ -18,6 +18,7 @@ enum class AppCommand : uint32_t {
     ApplySettings,
     SaveSettings,
     CreateCanvasPreset,
+    SetCanvasAnchor,
     CloseModal,
     OpenProject,
     OpenRecentProject,
@@ -64,6 +65,8 @@ enum class AppCommand : uint32_t {
     ToggleViewOption,
     SetSnapMode,
     TogglePanel,
+    ToggleLeftSidebar,
+    ToggleRightSidebar,
     InitializeLayout,
     ShowUnavailable,
     CloseWorkspace

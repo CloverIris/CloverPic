@@ -100,12 +100,19 @@ public:
                                           std::vector<uint16_t>& outRgba16Pixels) = 0;
 };
 
+enum class UnsavedChangesChoice {
+    Save,
+    Discard,
+    Cancel
+};
+
 class IFileDialogService {
 public:
     virtual ~IFileDialogService() = default;
     virtual bool PickOpenProjectPath(String& outPath) = 0;
     virtual bool PickSaveProjectPath(String& outPath) = 0;
     virtual bool PickExportImagePath(String& outPath) = 0;
+    virtual UnsavedChangesChoice PromptUnsavedChanges(const String& actionLabel) = 0;
 };
 
 class IPlatformFontCatalogProvider {

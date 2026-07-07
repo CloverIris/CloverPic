@@ -24,6 +24,9 @@ public:
     const String& GetLastError() const { return m_lastError; }
     bool HasProject() const { return static_cast<bool>(m_project); }
     bool HasLoadedLayerState() const { return m_hasLoadedLayerState; }
+    bool HasUnsavedChanges() const { return m_hasUnsavedChanges; }
+    void MarkDirty() { m_hasUnsavedChanges = HasProject(); }
+    void ClearDirty() { m_hasUnsavedChanges = false; }
 
 private:
     bool Fail(const String& message);
@@ -34,6 +37,7 @@ private:
     String m_currentFilePath;
     String m_lastError;
     bool m_hasLoadedLayerState = false;
+    bool m_hasUnsavedChanges = false;
 
     static constexpr size_t MaxRecentFiles = 10;
 };

@@ -140,6 +140,20 @@ public:
             true);
     }
 
+    UnsavedChangesChoice PromptUnsavedChanges(const String& actionLabel) override {
+        String message = L"Save changes before " + actionLabel + L"?\n\nUnsaved edits in the current project will be lost if you continue without saving.";
+        const int result = MessageBoxW(m_ownerProvider ? m_ownerProvider() : nullptr,
+                                       message.c_str(),
+                                       L"CloverPic",
+                                       MB_ICONWARNING | MB_YESNOCANCEL | MB_DEFBUTTON1);
+        switch (result) {
+            case IDYES: return UnsavedChangesChoice::Save;
+            case IDNO: return UnsavedChangesChoice::Discard;
+            default: break;
+        }
+        return UnsavedChangesChoice::Cancel;
+    }
+
 private:
     std::function<HWND()> m_ownerProvider;
 

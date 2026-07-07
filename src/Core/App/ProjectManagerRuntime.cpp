@@ -5,6 +5,7 @@
 #include "Core/Services/CoreServices.h"
 #include "Core/Text/CoreTextEngine.h"
 #include <algorithm>
+#include <cstring>
 #include <cwctype>
 
 namespace CloverPic::Core {
@@ -661,6 +662,56 @@ void ProjectManagerRuntime::LoadColorProfiles() {
             m_selectedRgbProfile = i;
             break;
         }
+    }
+
+    auto* store = CoreServices::GetAppSettingsStore();
+    if (!store) {
+        return;
+    }
+    std::vector<uint8_t> bytes;
+    if (!store->LoadSettingsBytes(bytes) || bytes.empty()) {
+        return;
+    }
+
+    size_t offset = 0;
+    auto readString = [&](String& outValue) -> bool {
+        if (offset + sizeof(uint32_t) > bytes.size()) {
+            return false;
+        }
+        uint32_t len = 0;
+        std::memcpy(&len, bytes.data() + offset, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+        if (offset + static_cast<size_t>(len) * sizeof(uint32_t) > bytes.size()) {
+            return false;
+        }
+        outValue.clear();
+        outValue.reserve(len);
+        for (uint32_t i = 0; i < len; ++i) {
+            uint32_t cp = 0;
+            std::memcpy(&cp, bytes.data() + offset, sizeof(uint32_t));
+            offset += sizeof(uint32_t);
+            outValue.push_back(static_cast<wchar_t>(cp));
+        }
+        return true;
+    };
+
+    String rgbPath;
+    String cmykPath;
+    if (!readString(rgbPath) || !readString(cmykPath)) {
+        m_settingsStatus = L"Stored settings could not be read. Using defaults.";
+        return;
+    }
+
+    for (size_t i = 0; i < m_profiles.size(); ++i) {
+        if (!rgbPath.empty() && m_profiles[i].path == rgbPath) {
+            m_selectedRgbProfile = i;
+        }
+        if (!cmykPath.empty() && m_profiles[i].path == cmykPath) {
+            m_selectedCmykProfile = i;
+        }
+    }
+    if (!rgbPath.empty() || !cmykPath.empty()) {
+        m_settingsStatus = L"Loaded saved settings.";
     }
 }
 
