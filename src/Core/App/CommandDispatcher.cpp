@@ -137,6 +137,9 @@ void CommandDispatcher::Dispatch(Handler& handler, AppCommand command, uint64_t 
         case AppCommand::SetLayerOpacity:
             handler.OnSetLayerOpacity(static_cast<uint8_t>(userData & 0xFFu));
             break;
+        case AppCommand::ToggleLayerBlendDropdown:
+            handler.OnToggleLayerBlendDropdown();
+            break;
         case AppCommand::SetBlendMode:
             handler.OnSetBlendMode(static_cast<uint32_t>(userData));
             break;

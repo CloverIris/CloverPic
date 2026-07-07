@@ -1,12 +1,18 @@
 #pragma once
 
 #include "Core/App/CommandDispatcher.h"
+#include "Core/App/WorkspaceEditorFacade.h"
+#include "Core/App/WorkspaceActionController.h"
+#include "Core/UI/Workspace/Layout/WorkspaceDockLayout.h"
+#include "Core/UI/Workspace/Interaction/WorkspaceInteractionController.h"
+#include "Core/UI/Workspace/Modal/WorkspaceModalState.h"
+#include "Core/UI/Workspace/WorkspaceUiState.h"
 #include "Core/App/ModalManager.h"
 #include "Core/App/RuntimeSurface.h"
 #include "Core/App/CanvasController.h"
-#include "Core/EditorSession.h"
+#include "Core/Document/EditorSession.h"
 #include "Core/Presentation/FrameScheduler.h"
-#include "Core/UI/UiScene.h"
+#include "Core/UI/Scene/UiScene.h"
 
 namespace CloverPic::Core {
 
@@ -31,51 +37,21 @@ public:
     bool ConsumeProgramManagerSettingsRequest();
 
 private:
-    enum class CanvasSizeField {
-        None,
-        Width,
-        Height
-    };
-
-    enum class CanvasAnchor {
-        TopLeft,
-        TopCenter,
-        TopRight,
-        MiddleLeft,
-        Center,
-        MiddleRight,
-        BottomLeft,
-        BottomCenter,
-        BottomRight
-    };
-
     bool OpenLaunchRequest(const WorkspaceLaunchRequest& launchRequest);
     void BuildScene();
-    void BuildCanvasSizeModalNodes();
     void LoadWorkspaceUiSettings();
     void SaveWorkspaceUiSettings();
+    void RecomputeLayout();
     void MarkDirty(const Rect& rect);
     Rect FullRect() const { return Rect(0, 0, static_cast<int32_t>(m_frame.width), static_cast<int32_t>(m_frame.height)); }
     Rect CanvasRect() const;
     void DispatchCommand(AppCommand command, uint64_t userData = 0, const String& payload = L"");
+    WorkspaceActionContext BuildActionContext();
+    WorkspaceActionCallbacks BuildActionCallbacks();
 
     void RenderWorkspace(Presentation::SoftRenderer& renderer);
     void RenderModal(Presentation::SoftRenderer& renderer);
-    void RenderButton(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, bool active = false);
-    void RenderMenuHeader(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderMenuItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderLayerItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderSwatch(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderSlider(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderSearchBox(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderColorField(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderHueStrip(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderBrushPresetItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderBrushSizeChip(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node);
-    void RenderCheckBox(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, bool checked);
-    void RenderPanel(Presentation::SoftRenderer& renderer, const Rect& rect, const String& title);
     void RenderWorkspacePanels(Presentation::SoftRenderer& renderer);
-    void RenderCanvasSizePreview(Presentation::SoftRenderer& renderer, const Rect& rect);
 
     bool SaveProject(bool saveAs);
     void ExportPng();
@@ -84,10 +60,6 @@ private:
     void TouchWorkspace();
     void MarkProjectDirty();
     bool ConfirmAbandonUnsavedChanges(const String& actionLabel);
-    bool HandleCanvasSizeKey(const Input::KeyEvent& event);
-    void ApplySliderAtPoint(const CoreUI::UiNode& node, const Point& position);
-    void ApplyColorFieldAtPoint(const CoreUI::UiNode& node, const Point& position);
-    void ApplyHueStripAtPoint(const CoreUI::UiNode& node, const Point& position);
 
     void OnGoHome() override;
     void OnShowNewCanvasModal() override;
@@ -126,6 +98,7 @@ private:
     void OnDuplicateLayer() override;
     void OnMergeLayerDown() override;
     void OnSetLayerOpacity(uint8_t opacity) override;
+    void OnToggleLayerBlendDropdown() override;
     void OnSetBlendMode(uint32_t mode) override;
     void OnSelectLayer(size_t index) override;
     void OnSetBrushParam(BrushParamId param, uint16_t value) override;
@@ -153,8 +126,12 @@ private:
     CoreUI::UiScene m_scene;
     CommandDispatcher m_commands;
     ModalManager m_modals;
+    WorkspaceUiState m_uiState;
+    WorkspaceDockLayoutResult m_layout;
+    WorkspaceInteractionController m_interaction;
     EditorSession m_session;
     CanvasController m_canvas;
+    WorkspaceEditorFacade m_editor;
     Size m_viewport;
     float m_dpiScale = 1.0f;
     bool m_wantsClose = false;
@@ -162,10 +139,7 @@ private:
     bool m_wantsProgramManagerSettings = false;
     String m_status = L"READY";
     String m_openMenu;
-    CanvasSizeField m_canvasSizeField = CanvasSizeField::None;
-    uint32_t m_canvasResizeWidth = 0;
-    uint32_t m_canvasResizeHeight = 0;
-    CanvasAnchor m_canvasAnchor = CanvasAnchor::Center;
+    WorkspaceCanvasSizeState m_canvasSizeState;
 };
 
 } // namespace CloverPic::Core

@@ -3,6 +3,7 @@
 #include "Core/App/ProjectManagerRuntime.h"
 #include "Core/App/WorkspaceRuntime.h"
 #include <memory>
+#include <vector>
 #include <windows.h>
 
 namespace CloverPic::Platform::Windows {
@@ -41,7 +42,9 @@ private:
     Input::PointerEvent MakeMouseEvent(Input::PointerAction action, LPARAM lParam, MouseButton button) const;
     Input::KeyEvent MakeKeyEvent(Input::KeyAction action, WPARAM wParam, LPARAM lParam) const;
     uint32_t CurrentModifiers() const;
-    bool TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEvent& outEvent) const;
+    std::vector<Input::PointerEvent> TranslatePointerEvents(UINT msg, WPARAM wParam) const;
+    Input::PointerEvent MakePenEvent(UINT msg, const POINTER_PEN_INFO& penInfo) const;
+    Input::PointerEvent MakeTouchEvent(UINT msg, const POINTER_INFO& pointerInfo) const;
     void UpdateDpiFromWindow();
     void CheckRuntimeCloseRequest();
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Input/InputEvents.h"
-#include "Core/LayerType.h"
+#include "Core/Layers/LayerType.h"
 #include "Core/Platform/PlatformInterfaces.h"
 #include "Utils/Types.h"
 #include <vector>

@@ -1,8 +1,8 @@
 #include "Core/App/CanvasController.h"
-#include "Core/Filters.h"
-#include "Core/LayerType.h"
+#include "Core/Editing/Filters.h"
+#include "Core/Layers/LayerType.h"
 #include "Core/Render/BrushEngine.h"
-#include "Core/TextLayer.h"
+#include "Core/Layers/TextLayer.h"
 #include <algorithm>
 #include <cmath>
 

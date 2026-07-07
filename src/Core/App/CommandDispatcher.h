@@ -56,6 +56,7 @@ public:
         virtual void OnDuplicateLayer() {}
         virtual void OnMergeLayerDown() {}
         virtual void OnSetLayerOpacity(uint8_t) {}
+        virtual void OnToggleLayerBlendDropdown() {}
         virtual void OnSetBlendMode(uint32_t) {}
         virtual void OnSelectLayer(size_t index) = 0;
         virtual void OnSetBrushParam(BrushParamId, uint16_t) {}

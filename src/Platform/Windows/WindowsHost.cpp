@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <vector>
 
 namespace CloverPic::Platform::Windows {
 
@@ -230,9 +231,11 @@ LRESULT WindowsSurfaceWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lPar
         case WM_POINTERDOWN:
         case WM_POINTERUPDATE:
         case WM_POINTERUP: {
-            Input::PointerEvent event;
-            if (TranslatePointerPen(msg, wParam, event)) {
-                m_runtime.HandlePointer(event);
+            const auto events = TranslatePointerEvents(msg, wParam);
+            if (!events.empty()) {
+                for (const auto& event : events) {
+                    m_runtime.HandlePointer(event);
+                }
                 RequestFrame();
                 return 0;
             }
@@ -337,42 +340,80 @@ uint32_t WindowsSurfaceWindow::CurrentModifiers() const {
     return modifiers;
 }
 
-bool WindowsSurfaceWindow::TranslatePointerPen(UINT msg, WPARAM wParam, Input::PointerEvent& outEvent) const {
+std::vector<Input::PointerEvent> WindowsSurfaceWindow::TranslatePointerEvents(UINT msg, WPARAM wParam) const {
+    std::vector<Input::PointerEvent> events;
     POINTER_INPUT_TYPE pointerType;
-    if (!GetPointerType(GET_POINTERID_WPARAM(wParam), &pointerType)) return false;
-    if (pointerType != PT_PEN && pointerType != PT_TOUCH) return false;
+    const UINT32 pointerId = GET_POINTERID_WPARAM(wParam);
+    if (!GetPointerType(pointerId, &pointerType)) return events;
+    if (pointerType != PT_PEN && pointerType != PT_TOUCH) return events;
 
     if (pointerType == PT_TOUCH) {
         POINTER_INFO pointerInfo = {};
-        if (!GetPointerInfo(GET_POINTERID_WPARAM(wParam), &pointerInfo)) return false;
-        POINT pt = {pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y};
-        ScreenToClient(m_hwnd, &pt);
-        outEvent.device = Input::PointerDeviceType::Touch;
-        outEvent.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
-        outEvent.position = Point(pt.x, pt.y);
-        outEvent.button = MouseButton::Left;
-        outEvent.pressure = 1.0f;
-        outEvent.inContact = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
-        outEvent.modifiers = CurrentModifiers();
-        return true;
+        if (GetPointerInfo(pointerId, &pointerInfo)) {
+            events.push_back(MakeTouchEvent(msg, pointerInfo));
+        }
+        return events;
+    }
+
+    if (msg == WM_POINTERUPDATE) {
+        using GetPointerPenInfoHistoryFn = BOOL(WINAPI*)(UINT32, UINT32*, POINTER_PEN_INFO*);
+        GetPointerPenInfoHistoryFn getHistory = nullptr;
+        if (HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
+            FARPROC proc = GetProcAddress(user32, "GetPointerPenInfoHistory");
+            static_assert(sizeof(proc) == sizeof(getHistory));
+            std::memcpy(&getHistory, &proc, sizeof(getHistory));
+        }
+        if (getHistory) {
+            UINT32 entryCount = 128;
+            std::vector<POINTER_PEN_INFO> history(entryCount);
+            if (getHistory(pointerId, &entryCount, history.data()) && entryCount > 0) {
+                history.resize(entryCount);
+                std::reverse(history.begin(), history.end());
+                for (const auto& penInfo : history) {
+                    events.push_back(MakePenEvent(WM_POINTERUPDATE, penInfo));
+                }
+                return events;
+            }
+        }
     }
 
     POINTER_PEN_INFO penInfo = {};
-    if (!GetPointerPenInfo(GET_POINTERID_WPARAM(wParam), &penInfo)) return false;
+    if (GetPointerPenInfo(pointerId, &penInfo)) {
+        events.push_back(MakePenEvent(msg, penInfo));
+    }
+    return events;
+}
+
+Input::PointerEvent WindowsSurfaceWindow::MakeTouchEvent(UINT msg, const POINTER_INFO& pointerInfo) const {
+    POINT pt = {pointerInfo.ptPixelLocation.x, pointerInfo.ptPixelLocation.y};
+    ScreenToClient(m_hwnd, &pt);
+    Input::PointerEvent event;
+    event.device = Input::PointerDeviceType::Touch;
+    event.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
+    event.position = Point(pt.x, pt.y);
+    event.button = MouseButton::Left;
+    event.pressure = 1.0f;
+    event.inContact = (pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+    event.modifiers = CurrentModifiers();
+    return event;
+}
+
+Input::PointerEvent WindowsSurfaceWindow::MakePenEvent(UINT msg, const POINTER_PEN_INFO& penInfo) const {
     POINT pt = {penInfo.pointerInfo.ptPixelLocation.x, penInfo.pointerInfo.ptPixelLocation.y};
     ScreenToClient(m_hwnd, &pt);
-    outEvent.device = Input::PointerDeviceType::Pen;
-    outEvent.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
-    outEvent.position = Point(pt.x, pt.y);
-    outEvent.button = MouseButton::Left;
-    outEvent.pressure = std::clamp(static_cast<float>(penInfo.pressure) / 1024.0f, 0.0f, 1.0f);
-    outEvent.tiltX = static_cast<float>(penInfo.tiltX) / 10.0f;
-    outEvent.tiltY = static_cast<float>(penInfo.tiltY) / 10.0f;
-    outEvent.rotation = static_cast<float>(penInfo.rotation);
-    outEvent.inContact = (penInfo.pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
-    outEvent.eraser = (penInfo.penFlags & PEN_FLAG_ERASER) != 0;
-    outEvent.modifiers = CurrentModifiers();
-    return true;
+    Input::PointerEvent event;
+    event.device = Input::PointerDeviceType::Pen;
+    event.action = msg == WM_POINTERDOWN ? Input::PointerAction::Down : (msg == WM_POINTERUP ? Input::PointerAction::Up : Input::PointerAction::Move);
+    event.position = Point(pt.x, pt.y);
+    event.button = MouseButton::Left;
+    event.pressure = std::clamp(static_cast<float>(penInfo.pressure) / 1024.0f, 0.0f, 1.0f);
+    event.tiltX = static_cast<float>(penInfo.tiltX) / 10.0f;
+    event.tiltY = static_cast<float>(penInfo.tiltY) / 10.0f;
+    event.rotation = static_cast<float>(penInfo.rotation);
+    event.inContact = (penInfo.pointerInfo.pointerFlags & POINTER_FLAG_INCONTACT) != 0;
+    event.eraser = (penInfo.penFlags & PEN_FLAG_ERASER) != 0;
+    event.modifiers = CurrentModifiers();
+    return event;
 }
 
 void WindowsSurfaceWindow::UpdateDpiFromWindow() {

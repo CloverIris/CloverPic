@@ -50,6 +50,7 @@ enum class AppCommand : uint32_t {
     DuplicateLayer,
     MergeLayerDown,
     SetLayerOpacity,
+    ToggleLayerBlendDropdown,
     SetBlendMode,
     SelectLayer,
     SetBrushParam,

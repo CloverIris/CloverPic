@@ -1,13 +1,13 @@
 #pragma once
 
 #include "Core/Input/InputEvents.h"
-#include "Core/History.h"
-#include "Core/LayerManager.h"
-#include "Core/BlendMode.h"
-#include "Core/Project.h"
+#include "Core/Editing/History.h"
+#include "Core/Layers/LayerManager.h"
+#include "Core/Layers/BlendMode.h"
+#include "Core/Document/Project.h"
 #include "Core/Render/BrushEngine.h"
 #include "Core/App/AppCommandPayload.h"
-#include "Core/SelectionMask.h"
+#include "Core/Layers/SelectionMask.h"
 #include "Core/Presentation/SoftRenderer.h"
 #include "Core/App/ToolType.h"
 
