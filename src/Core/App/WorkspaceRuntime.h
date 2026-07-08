@@ -52,6 +52,7 @@ private:
     void RenderWorkspace(Presentation::SoftRenderer& renderer);
     void RenderModal(Presentation::SoftRenderer& renderer);
     void RenderWorkspacePanels(Presentation::SoftRenderer& renderer);
+    void UpdateThumbnails(uint64_t nowMs);
 
     bool SaveProject(bool saveAs);
     void ExportPng();
@@ -89,6 +90,7 @@ private:
     void OnQuit() override;
     void OnSelectTool(ToolType tool) override;
     void OnSetColor(const Color& color) override;
+    void OnSwapColorSlots() override;
     void OnAddLayer() override;
     void OnDeleteLayer() override;
     void OnToggleActiveLayerVisibility() override;
@@ -101,6 +103,7 @@ private:
     void OnToggleLayerBlendDropdown() override;
     void OnSetBlendMode(uint32_t mode) override;
     void OnSelectLayer(size_t index) override;
+    void OnToggleWebSafeColor() override;
     void OnSetBrushParam(BrushParamId param, uint16_t value) override;
     void OnSetBrushTip(uint32_t tip) override;
     void OnSetBrushPreset(uint16_t size, uint16_t tip) override;
@@ -140,6 +143,7 @@ private:
     String m_status = L"READY";
     String m_openMenu;
     WorkspaceCanvasSizeState m_canvasSizeState;
+    uint64_t m_nextThumbnailRefreshMs = 0;
 };
 
 } // namespace CloverPic::Core

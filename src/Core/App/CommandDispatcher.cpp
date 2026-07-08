@@ -110,6 +110,9 @@ void CommandDispatcher::Dispatch(Handler& handler, AppCommand command, uint64_t 
         case AppCommand::SetColor:
             handler.OnSetColor(ColorFromPackedRgba(userData));
             break;
+        case AppCommand::SwapColorSlots:
+            handler.OnSwapColorSlots();
+            break;
         case AppCommand::AddLayer:
             handler.OnAddLayer();
             break;
@@ -145,6 +148,9 @@ void CommandDispatcher::Dispatch(Handler& handler, AppCommand command, uint64_t 
             break;
         case AppCommand::SelectLayer:
             handler.OnSelectLayer(static_cast<size_t>(userData));
+            break;
+        case AppCommand::ToggleWebSafeColor:
+            handler.OnToggleWebSafeColor();
             break;
         case AppCommand::SetBrushParam:
             handler.OnSetBrushParam(BrushParamFromPacked(userData), BrushParamValueFromPacked(userData));

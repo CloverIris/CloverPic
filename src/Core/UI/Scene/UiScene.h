@@ -29,12 +29,17 @@ enum class UiInteractionKind : uint16_t {
     None,
     Click,
     DragValue,
-    DragPanel
+    DragPanel,
+    ResizePanel,
+    DragLayerItem,
+    ToggleSwitch,
+    ScrollRegion
 };
 
 enum class UiNodeType {
     Panel,
     PanelHeader,
+    PanelResizeHandle,
     Button,
     Canvas,
     ToolbarItem,
@@ -54,7 +59,9 @@ enum class UiNodeType {
     HueStrip,
     BrushPresetItem,
     BrushSizeChip,
-    CheckBox
+    CheckBox,
+    ToggleSwitch,
+    ScrollRegion
 };
 
 struct UiNode {

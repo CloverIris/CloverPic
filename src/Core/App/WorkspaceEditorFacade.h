@@ -19,6 +19,11 @@ public:
     ToolType GetTool() const { return m_canvas ? m_canvas->GetTool() : ToolType::Brush; }
     Color GetColor() const { return m_canvas ? m_canvas->GetColor() : Color::FromHex(0x111111); }
     void SetColor(const Color& color) { if (m_canvas) m_canvas->SetColor(color); }
+    bool IsWebSafeColorEnabled() const { return m_canvas && m_canvas->IsWebSafeColorEnabled(); }
+    void SetWebSafeColorEnabled(bool enabled) { if (m_canvas) m_canvas->SetWebSafeColorEnabled(enabled); }
+    std::vector<uint8_t> BuildCompositeThumbnail(uint32_t width, uint32_t height) {
+        return m_canvas ? m_canvas->BuildCompositeThumbnail(width, height) : std::vector<uint8_t>{};
+    }
 
     float GetBrushSize() const { return m_canvas ? m_canvas->GetBrushSize() : 1.0f; }
     void SetBrushSize(float size) { if (m_canvas) m_canvas->SetBrushSize(size); }
@@ -30,6 +35,7 @@ public:
 
     void SetBrushParam(BrushParamId param, uint16_t value) { if (m_canvas) m_canvas->SetBrushParam(param, value); }
     void SetActiveLayerOpacity(uint8_t opacity) { if (m_canvas) m_canvas->SetActiveLayerOpacity(opacity); }
+    void MoveLayer(size_t fromIndex, size_t toIndex) { if (m_canvas) m_canvas->MoveLayer(fromIndex, toIndex); }
 
     SnapModeId GetSnapMode() const { return m_canvas ? m_canvas->GetSnapMode() : SnapModeId::Off; }
     bool IsViewOptionEnabled(ViewOptionId option) const { return m_canvas && m_canvas->IsViewOptionEnabled(option); }

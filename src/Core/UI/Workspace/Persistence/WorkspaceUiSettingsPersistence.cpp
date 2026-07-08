@@ -110,6 +110,7 @@ void WorkspaceUiSettingsPersistence::LoadFromBytes(const std::vector<uint8_t>& b
             else if (side == "floating") panel->dockSide = WorkspaceDockSide::Floating;
 
             panel->dockOrder = ParseInt(PanelScopeValue(payload, key, "order", std::to_string(panel->dockOrder)), panel->dockOrder);
+            panel->dockedHeight = ParseInt(PanelScopeValue(payload, key, "dockH", std::to_string(panel->dockedHeight)), panel->dockedHeight);
             panel->visible = PanelScopeValue(payload, key, "visible", panel->visible ? "true" : "false") == "true";
             panel->collapsed = PanelScopeValue(payload, key, "collapsed", "false") == "true";
             panel->floatingRect.left = ParseInt(PanelScopeValue(payload, key, "x", std::to_string(panel->floatingRect.left)), panel->floatingRect.left);
@@ -164,6 +165,7 @@ void WorkspaceUiSettingsPersistence::SaveToBytes(std::vector<uint8_t>& bytes, co
         json << "\"" << PanelKey(panel.panelId) << "\":{\"side\":\""
              << (panel.dockSide == WorkspaceDockSide::Left ? "left" : panel.dockSide == WorkspaceDockSide::Right ? "right" : "floating")
              << "\",\"order\":" << panel.dockOrder
+             << ",\"dockH\":" << panel.dockedHeight
              << ",\"visible\":" << (panel.visible ? "true" : "false")
              << ",\"collapsed\":" << (panel.collapsed ? "true" : "false")
              << ",\"x\":" << panel.floatingRect.left

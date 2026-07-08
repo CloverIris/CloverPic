@@ -31,6 +31,12 @@ int DefaultPanelHeight(WorkspacePanelId panelId, const Size& viewport, bool stat
     }
 }
 
+int PanelHeight(const WorkspacePanelLayoutState& panel, const Size& viewport, bool statusBarVisible) {
+    const int minH = panel.panelId == WorkspacePanelId::Layer ? 220 : 96;
+    const int fallback = DefaultPanelHeight(panel.panelId, viewport, statusBarVisible);
+    return std::max(minH, panel.dockedHeight > 0 ? panel.dockedHeight : fallback);
+}
+
 Rect ClampFloatingRect(Rect rect, const Size& viewport) {
     const int minW = 220;
     const int minH = 120;
@@ -62,7 +68,7 @@ void AddDockedPanels(WorkspaceDockLayoutResult& result,
         layout.side = side;
         layout.floating = false;
         layout.zOrder = 40 + panel->dockOrder;
-        const int height = DefaultPanelHeight(panel->panelId, viewport, statusBarVisible);
+        const int height = PanelHeight(*panel, viewport, statusBarVisible);
         layout.rect = Rect(left, y, right, y + height);
         layout.headerRect = Rect(layout.rect.left, layout.rect.top, layout.rect.right, layout.rect.top + PanelHeaderH);
         layout.contentRect = Rect(layout.rect.left + 8, layout.rect.top + PanelHeaderH + 4,

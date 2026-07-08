@@ -126,10 +126,26 @@ void LayerManager::MergeDown(size_t index) {
 }
 
 void LayerManager::MoveLayer(size_t fromIndex, size_t toIndex) {
-    if (fromIndex >= m_layers.size() || toIndex >= m_layers.size()) return;
+    if (fromIndex >= m_layers.size() || toIndex >= m_layers.size() || fromIndex == toIndex) return;
     auto layer = m_layers[fromIndex];
     m_layers.erase(m_layers.begin() + fromIndex);
     m_layers.insert(m_layers.begin() + toIndex, layer);
+    if (m_activeLayerIndex == fromIndex) {
+        m_activeLayerIndex = toIndex;
+    } else if (fromIndex < m_activeLayerIndex && toIndex >= m_activeLayerIndex) {
+        --m_activeLayerIndex;
+    } else if (fromIndex > m_activeLayerIndex && toIndex <= m_activeLayerIndex) {
+        ++m_activeLayerIndex;
+    }
+    if (m_soloLayerIndex == fromIndex) {
+        m_soloLayerIndex = toIndex;
+    } else if (m_soloLayerIndex != static_cast<size_t>(-1)) {
+        if (fromIndex < m_soloLayerIndex && toIndex >= m_soloLayerIndex) {
+            --m_soloLayerIndex;
+        } else if (fromIndex > m_soloLayerIndex && toIndex <= m_soloLayerIndex) {
+            ++m_soloLayerIndex;
+        }
+    }
     m_compositeDirty = true;
 }
 

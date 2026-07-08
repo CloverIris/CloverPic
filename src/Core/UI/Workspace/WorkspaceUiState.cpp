@@ -1,6 +1,7 @@
 #include "Core/UI/Workspace/WorkspaceUiState.h"
 #include "Core/UI/Workspace/WorkspaceLayout.h"
 #include <algorithm>
+#include <utility>
 
 namespace CloverPic::Core {
 
@@ -76,6 +77,15 @@ void WorkspaceUiState::Reset(const Size& viewport) {
     statusText = L"READY";
     dockInsertion = {};
     draggingPanel = false;
+    resizingPanel = false;
+    draggingLayer = false;
+    layerScrollOffset = 0;
+    layerDropIndex = 0;
+    webSafeColorEnabled = false;
+    secondaryColor = Color(255, 255, 255, 255);
+    compositeThumbnailBgra.clear();
+    compositeThumbnailWidth = 0;
+    compositeThumbnailHeight = 0;
     panels.clear();
 
     const WorkspacePanelId order[] = {
@@ -97,6 +107,7 @@ void WorkspaceUiState::Reset(const Size& viewport) {
         state.panelId = panelId;
         state.dockSide = DefaultDockSide(panelId);
         state.dockOrder = state.dockSide == WorkspaceDockSide::Right ? rightOrder++ : leftOrder++;
+        state.dockedHeight = 0;
         state.floatingRect = DefaultFloatingRect(panelId, viewport);
         state.visible = DefaultVisible(panelId) || panelId == WorkspacePanelId::StatusBar;
         state.collapsed = false;
@@ -159,6 +170,12 @@ void WorkspaceUiState::BringFloatingPanelToFront(WorkspacePanelId panelId) {
     if (auto* panel = FindPanel(panelId)) {
         panel->floatingZ = maxZ + 1;
     }
+}
+
+void WorkspaceUiState::SetCompositeThumbnail(std::vector<uint8_t> pixels, uint32_t width, uint32_t height) {
+    compositeThumbnailBgra = std::move(pixels);
+    compositeThumbnailWidth = width;
+    compositeThumbnailHeight = height;
 }
 
 std::vector<WorkspacePanelLayoutState*> WorkspaceUiState::PanelsForDock(WorkspaceDockSide side) {

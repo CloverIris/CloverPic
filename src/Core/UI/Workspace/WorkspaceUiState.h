@@ -16,6 +16,7 @@ struct WorkspacePanelLayoutState {
     WorkspacePanelId panelId = WorkspacePanelId::Color;
     WorkspaceDockSide dockSide = WorkspaceDockSide::Left;
     int dockOrder = 0;
+    int dockedHeight = 0;
     Rect floatingRect;
     bool visible = true;
     bool collapsed = false;
@@ -38,9 +39,24 @@ struct WorkspaceUiState {
     WorkspaceDockInsertionMarker dockInsertion;
     WorkspacePanelId draggedPanelId = WorkspacePanelId::Color;
     bool draggingPanel = false;
+    bool resizingPanel = false;
     Rect draggedPreviewRect;
+    WorkspacePanelId resizedPanelId = WorkspacePanelId::Color;
+    Rect resizedPreviewRect;
     bool layerBlendDropdownOpen = false;
     Rect layerBlendDropdownRect;
+    int layerScrollOffset = 0;
+    Rect layerListRect;
+    bool draggingLayer = false;
+    size_t draggedLayerIndex = 0;
+    size_t layerDropIndex = 0;
+    Point layerDragStart;
+    Point layerDragCurrent;
+    bool webSafeColorEnabled = false;
+    Color secondaryColor = Color(255, 255, 255, 255);
+    std::vector<uint8_t> compositeThumbnailBgra;
+    uint32_t compositeThumbnailWidth = 0;
+    uint32_t compositeThumbnailHeight = 0;
 
     void Reset(const Size& viewport);
     WorkspacePanelLayoutState* FindPanel(WorkspacePanelId panelId);
@@ -51,6 +67,7 @@ struct WorkspaceUiState {
     void NormalizeDockOrder(WorkspaceDockSide side);
     void NormalizeAllDockOrders();
     void BringFloatingPanelToFront(WorkspacePanelId panelId);
+    void SetCompositeThumbnail(std::vector<uint8_t> pixels, uint32_t width, uint32_t height);
     std::vector<WorkspacePanelLayoutState*> PanelsForDock(WorkspaceDockSide side);
     std::vector<const WorkspacePanelLayoutState*> PanelsForDock(WorkspaceDockSide side) const;
 };

@@ -8,8 +8,30 @@
 
 namespace CloverPic::Core {
 
+namespace {
+
+uint8_t QuantizeWebSafe(uint8_t value) {
+    return static_cast<uint8_t>(std::clamp<int>((static_cast<int>(value) + 25) / 51, 0, 5) * 51);
+}
+
+} // namespace
+
 CanvasController::CanvasController() {
     m_layerManager.SetHistoryManager(&m_history);
+}
+
+void CanvasController::CancelActivePointerInteraction() {
+    if (m_drawing) {
+        if (auto layer = m_layerManager.GetActiveLayer()) {
+            layer->EndStroke();
+        }
+    }
+    m_drawing = false;
+    m_panning = false;
+    m_selecting = false;
+    m_shapeDrawing = false;
+    m_snapGuideActive = false;
+    m_hasActivePointerDevice = false;
 }
 
 bool CanvasController::NewCanvas(uint32_t width, uint32_t height, float dpi, bool transparent,
@@ -190,6 +212,7 @@ void CanvasController::CloseProject() {
     m_selecting = false;
     m_shapeDrawing = false;
     m_snapGuideActive = false;
+    m_hasActivePointerDevice = false;
     m_zoom = 1.0f;
     m_panX = 0.0f;
     m_panY = 0.0f;
@@ -289,13 +312,30 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
         return false;
     }
 
+    const bool hasInteraction = m_drawing || m_panning || m_selecting || m_shapeDrawing;
+    if (hasInteraction && m_hasActivePointerDevice) {
+        if (event.device != m_activePointerDevice) {
+            if (event.action == Input::PointerAction::Down || event.inContact) {
+                CancelActivePointerInteraction();
+            } else {
+                return false;
+            }
+        } else if (event.action == Input::PointerAction::Move && !event.inContact) {
+            CancelActivePointerInteraction();
+            return false;
+        }
+    }
+
     if (event.action == Input::PointerAction::Down && event.button == MouseButton::Middle) {
         m_panning = true;
+        m_activePointerDevice = event.device;
+        m_hasActivePointerDevice = true;
         m_snapGuideActive = false;
         return false;
     }
     if (event.action == Input::PointerAction::Up && event.button == MouseButton::Middle) {
         m_panning = false;
+        m_hasActivePointerDevice = false;
         m_snapGuideActive = false;
         return false;
     }
@@ -314,6 +354,8 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
 
     if (event.action == Input::PointerAction::Down && event.button == MouseButton::Left) {
         if (m_tool == ToolType::Move) {
+            m_activePointerDevice = event.device;
+            m_hasActivePointerDevice = true;
             m_panning = true;
             m_snapGuideActive = false;
             return false;
@@ -335,9 +377,12 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
             return changed;
         }
         if (m_tool == ToolType::RectSelect) {
+            m_activePointerDevice = event.device;
+            m_hasActivePointerDevice = true;
             m_selecting = true;
             m_selectionStartX = snappedPointX;
             m_selectionStartY = snappedPointY;
+            m_selectionStartPointer = event.position;
             m_snapGuideActive = true;
             m_snapGuideAnchorX = snappedPointX;
             m_snapGuideAnchorY = snappedPointY;
@@ -346,6 +391,8 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
             return false;
         }
         if (m_tool == ToolType::Shape) {
+            m_activePointerDevice = event.device;
+            m_hasActivePointerDevice = true;
             m_shapeDrawing = true;
             m_shapeStartX = snappedPointX;
             m_shapeStartY = snappedPointY;
@@ -357,6 +404,8 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
             return false;
         }
         if (m_tool == ToolType::Brush || m_tool == ToolType::Eraser) {
+            m_activePointerDevice = event.device;
+            m_hasActivePointerDevice = true;
             m_drawing = true;
             if (auto layer = m_layerManager.GetActiveLayer()) {
                 layer->BeginStroke();
@@ -388,6 +437,7 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
     } else if (event.action == Input::PointerAction::Up && event.button == MouseButton::Left) {
         if (m_tool == ToolType::Move) {
             m_panning = false;
+            m_hasActivePointerDevice = false;
             m_snapGuideActive = false;
             return false;
         }
@@ -397,6 +447,7 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
             m_snapGuideTargetY = canvasY;
             FillShapeRect(m_shapeStartX, m_shapeStartY, canvasX, canvasY, m_color);
             m_shapeDrawing = false;
+            m_hasActivePointerDevice = false;
             m_snapGuideActive = false;
             return true;
         }
@@ -405,17 +456,23 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
             m_snapGuideTargetX = canvasX;
             m_snapGuideTargetY = canvasY;
             if (m_selection && m_project) {
-                const int left = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartX, canvasX))));
-                const int top = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartY, canvasY))));
-                const int right = std::min(static_cast<int>(m_project->GetCanvas().widthPx), static_cast<int>(std::ceil(std::max(m_selectionStartX, canvasX))));
-                const int bottom = std::min(static_cast<int>(m_project->GetCanvas().heightPx), static_cast<int>(std::ceil(std::max(m_selectionStartY, canvasY))));
+                const int pointerDeltaX = std::abs(event.position.x - m_selectionStartPointer.x);
+                const int pointerDeltaY = std::abs(event.position.y - m_selectionStartPointer.y);
+                const bool clickOnly = pointerDeltaX <= 2 && pointerDeltaY <= 2;
                 m_selection->Clear();
-                if (right > left && bottom > top) {
-                    m_selection->FillRect(static_cast<uint32_t>(left), static_cast<uint32_t>(top),
-                                          static_cast<uint32_t>(right - left), static_cast<uint32_t>(bottom - top));
+                if (!clickOnly) {
+                    const int left = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartX, canvasX))));
+                    const int top = std::max(0, static_cast<int>(std::floor(std::min(m_selectionStartY, canvasY))));
+                    const int right = std::min(static_cast<int>(m_project->GetCanvas().widthPx), static_cast<int>(std::ceil(std::max(m_selectionStartX, canvasX))));
+                    const int bottom = std::min(static_cast<int>(m_project->GetCanvas().heightPx), static_cast<int>(std::ceil(std::max(m_selectionStartY, canvasY))));
+                    if (right > left && bottom > top) {
+                        m_selection->FillRect(static_cast<uint32_t>(left), static_cast<uint32_t>(top),
+                                              static_cast<uint32_t>(right - left), static_cast<uint32_t>(bottom - top));
+                    }
                 }
             }
             m_selecting = false;
+            m_hasActivePointerDevice = false;
             m_snapGuideActive = false;
             return false;
         }
@@ -426,6 +483,7 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
                 layer->EndStroke();
             }
         }
+        m_hasActivePointerDevice = false;
     } else if (event.action == Input::PointerAction::Move && (m_selecting || m_shapeDrawing)) {
         const float startX = m_selecting ? m_selectionStartX : m_shapeStartX;
         const float startY = m_selecting ? m_selectionStartY : m_shapeStartY;
@@ -451,8 +509,48 @@ void CanvasController::HandleWheel(int delta, const Point& position, const Rect&
 }
 
 void CanvasController::SetColor(const Color& color) {
-    m_color = color;
-    m_brush.SetColor(color);
+    m_color = m_webSafeColorEnabled
+        ? Color(QuantizeWebSafe(color.r), QuantizeWebSafe(color.g), QuantizeWebSafe(color.b), color.a)
+        : color;
+    m_brush.SetColor(m_color);
+}
+
+std::vector<uint8_t> CanvasController::BuildCompositeThumbnail(uint32_t thumbWidth, uint32_t thumbHeight) {
+    std::vector<uint8_t> thumbnail;
+    if (!m_project || thumbWidth == 0 || thumbHeight == 0) {
+        return thumbnail;
+    }
+
+    EnsureCompositeBuffer();
+    const auto& canvas = m_project->GetCanvas();
+    if (m_compositeBuffer.empty() || canvas.widthPx == 0 || canvas.heightPx == 0) {
+        return thumbnail;
+    }
+
+    m_layerManager.CompositeToBuffer(m_compositeBuffer.data(), canvas.widthPx, canvas.heightPx);
+    thumbnail.assign(static_cast<size_t>(thumbWidth) * thumbHeight * 4, 0);
+    const float srcAspect = static_cast<float>(canvas.widthPx) / static_cast<float>(canvas.heightPx);
+    uint32_t drawW = thumbWidth;
+    uint32_t drawH = static_cast<uint32_t>(std::max(1.0f, drawW / std::max(0.01f, srcAspect)));
+    if (drawH > thumbHeight) {
+        drawH = thumbHeight;
+        drawW = static_cast<uint32_t>(std::max(1.0f, drawH * srcAspect));
+    }
+    const uint32_t offsetX = (thumbWidth - drawW) / 2;
+    const uint32_t offsetY = (thumbHeight - drawH) / 2;
+    for (uint32_t y = 0; y < drawH; ++y) {
+        const uint32_t sy = std::min<uint32_t>(canvas.heightPx - 1, (static_cast<uint64_t>(y) * canvas.heightPx) / drawH);
+        for (uint32_t x = 0; x < drawW; ++x) {
+            const uint32_t sx = std::min<uint32_t>(canvas.widthPx - 1, (static_cast<uint64_t>(x) * canvas.widthPx) / drawW);
+            const size_t srcIdx = (static_cast<size_t>(sy) * canvas.widthPx + sx) * 4;
+            const size_t dstIdx = (static_cast<size_t>(offsetY + y) * thumbWidth + (offsetX + x)) * 4;
+            thumbnail[dstIdx] = m_compositeBuffer[srcIdx];
+            thumbnail[dstIdx + 1] = m_compositeBuffer[srcIdx + 1];
+            thumbnail[dstIdx + 2] = m_compositeBuffer[srcIdx + 2];
+            thumbnail[dstIdx + 3] = m_compositeBuffer[srcIdx + 3];
+        }
+    }
+    return thumbnail;
 }
 
 void CanvasController::SetBrushSize(float size) {
@@ -532,6 +630,10 @@ void CanvasController::ApplyBrushPreset(uint16_t size, uint16_t tip) {
 
 void CanvasController::SelectLayer(size_t index) {
     m_layerManager.SetActiveLayer(index);
+}
+
+void CanvasController::MoveLayer(size_t fromIndex, size_t toIndex) {
+    m_layerManager.MoveLayer(fromIndex, toIndex);
 }
 
 void CanvasController::AddRasterLayer() {

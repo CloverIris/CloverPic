@@ -12,6 +12,9 @@ namespace CloverPic::Platform::Windows {
 
 namespace {
 
+constexpr LPARAM PointerPromotedMouseSignatureMask = 0xFFFFFF00;
+constexpr LPARAM PointerPromotedMouseSignature = 0xFF515700;
+
 uint64_t NowMs() {
     using namespace std::chrono;
     return static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
@@ -47,6 +50,11 @@ void CenterWindow(HWND hwnd, int clientWidth, int clientHeight, bool borderless)
                  origin.y + std::max(0, (work.height - windowH) / 2),
                  windowW, windowH,
                  SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+bool IsPointerPromotedMouseMessage() {
+    const auto extraInfo = static_cast<LPARAM>(GetMessageExtraInfo());
+    return (extraInfo & PointerPromotedMouseSignatureMask) == PointerPromotedMouseSignature;
 }
 
 } // namespace
@@ -188,36 +196,43 @@ LRESULT WindowsSurfaceWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lPar
             }
             break;
         case WM_LBUTTONDOWN:
+            if (IsPointerPromotedMouseMessage()) return 0;
             SetCapture(m_hwnd);
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Down, lParam, MouseButton::Left));
             CheckRuntimeCloseRequest();
             RequestFrame();
             return 0;
         case WM_LBUTTONUP:
+            if (IsPointerPromotedMouseMessage()) return 0;
             ReleaseCapture();
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Up, lParam, MouseButton::Left));
             CheckRuntimeCloseRequest();
             RequestFrame();
             return 0;
         case WM_RBUTTONDOWN:
+            if (IsPointerPromotedMouseMessage()) return 0;
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Down, lParam, MouseButton::Right));
             RequestFrame();
             return 0;
         case WM_RBUTTONUP:
+            if (IsPointerPromotedMouseMessage()) return 0;
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Up, lParam, MouseButton::Right));
             RequestFrame();
             return 0;
         case WM_MBUTTONDOWN:
+            if (IsPointerPromotedMouseMessage()) return 0;
             SetCapture(m_hwnd);
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Down, lParam, MouseButton::Middle));
             RequestFrame();
             return 0;
         case WM_MBUTTONUP:
+            if (IsPointerPromotedMouseMessage()) return 0;
             ReleaseCapture();
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Up, lParam, MouseButton::Middle));
             RequestFrame();
             return 0;
         case WM_MOUSEMOVE:
+            if (IsPointerPromotedMouseMessage()) return 0;
             m_runtime.HandlePointer(MakeMouseEvent(Input::PointerAction::Move, lParam, MouseButton::None));
             RequestFrame();
             return 0;

@@ -180,6 +180,7 @@ const RgbaFrame& WorkspaceRuntime::Render(uint64_t nowMs, std::vector<Rect>& out
         outDirtyRects.clear();
         return m_frame;
     }
+    UpdateThumbnails(nowMs);
     Presentation::SoftRenderer renderer(m_frame);
     RenderWorkspace(renderer);
     if (m_modals.HasModal()) {
@@ -257,6 +258,17 @@ void WorkspaceRuntime::HandleKey(const Input::KeyEvent& event) {
 }
 
 void WorkspaceRuntime::HandleWheel(int delta, const Point& position) {
+    if (!m_modals.HasModal() && m_uiState.IsPanelVisible(WorkspacePanelId::Layer) && m_uiState.layerListRect.Contains(position)) {
+        const int itemH = 56;
+        const int layerCount = m_editor.GetLayerManager()
+            ? static_cast<int>(m_editor.GetLayerManager()->GetLayerCount())
+            : 0;
+        const int maxScroll = std::max(0, layerCount * itemH - m_uiState.layerListRect.Height());
+        m_uiState.layerScrollOffset = std::clamp(m_uiState.layerScrollOffset - (delta > 0 ? 32 : -32), 0, maxScroll);
+        TouchWorkspace();
+        MarkDirty(FullRect());
+        return;
+    }
     if (!m_modals.HasModal() && CanvasRect().Contains(position)) {
         m_canvas.HandleWheel(delta, position, CanvasRect());
         MarkDirty(CanvasRect());
@@ -368,6 +380,20 @@ void WorkspaceRuntime::RenderWorkspace(Presentation::SoftRenderer& renderer) {
                                  m_uiState.draggedPreviewRect.right - 2, m_uiState.draggedPreviewRect.bottom - 2),
                             Color(218, 240, 255, 140), 1);
     }
+    if (m_uiState.resizingPanel) {
+        renderer.StrokeRect(m_uiState.resizedPreviewRect, Color(0, 145, 255, 235), 2);
+        renderer.DrawLine(m_uiState.resizedPreviewRect.right - 16, m_uiState.resizedPreviewRect.bottom - 4,
+                          m_uiState.resizedPreviewRect.right - 4, m_uiState.resizedPreviewRect.bottom - 16,
+                          Color(218, 240, 255, 180), 1);
+    }
+    if (m_uiState.draggingLayer && m_uiState.layerListRect.Width() > 0) {
+        const int y = m_uiState.layerListRect.top +
+            static_cast<int>(m_uiState.layerDropIndex) * 56 - m_uiState.layerScrollOffset;
+        if (y >= m_uiState.layerListRect.top - 4 && y <= m_uiState.layerListRect.bottom + 4) {
+            renderer.FillRect(Rect(m_uiState.layerListRect.left, y - 1, m_uiState.layerListRect.right, y + 2),
+                              Color(0, 145, 255, 235));
+        }
+    }
 
     if (m_uiState.IsPanelVisible(WorkspacePanelId::StatusBar)) {
         std::wstringstream status;
@@ -383,6 +409,21 @@ void WorkspaceRuntime::RenderWorkspacePanels(Presentation::SoftRenderer& rendere
         m_scene, m_uiState, m_editor, m_modals.Current(), static_cast<uint64_t>(m_canvasSizeState.anchor)
     };
     WorkspaceNodeRenderer::RenderPanelDecorations(renderer, m_layout, nodeContext);
+}
+
+void WorkspaceRuntime::UpdateThumbnails(uint64_t nowMs) {
+    if (nowMs < m_nextThumbnailRefreshMs || !m_canvas.HasProject()) {
+        return;
+    }
+    m_nextThumbnailRefreshMs = nowMs + 2000;
+    if (auto* lm = m_editor.GetLayerManager()) {
+        for (size_t i = 0; i < lm->GetLayerCount(); ++i) {
+            if (auto layer = lm->GetLayer(i)) {
+                layer->UpdateThumbnail();
+            }
+        }
+    }
+    m_uiState.SetCompositeThumbnail(m_editor.BuildCompositeThumbnail(160, 120), 160, 120);
 }
 
 void WorkspaceRuntime::RenderModal(Presentation::SoftRenderer& renderer) {
@@ -436,6 +477,7 @@ void WorkspaceRuntime::SetStatus(const String& status) {
 
 void WorkspaceRuntime::MarkProjectDirty() {
     m_session.MarkDirty();
+    m_nextThumbnailRefreshMs = 0;
 }
 
 bool WorkspaceRuntime::ConfirmAbandonUnsavedChanges(const String& actionLabel) {
@@ -553,6 +595,12 @@ void WorkspaceRuntime::OnInvertSelection() { m_canvas.InvertSelection(); SetStat
 void WorkspaceRuntime::OnQuit() { m_wantsClose = true; }
 void WorkspaceRuntime::OnSelectTool(ToolType tool) { SwitchTool(tool); }
 void WorkspaceRuntime::OnSetColor(const Color& color) { m_canvas.SetColor(color); SetStatus(L"COLOR"); }
+void WorkspaceRuntime::OnSwapColorSlots() {
+    const Color foreground = m_canvas.GetColor();
+    m_canvas.SetColor(m_uiState.secondaryColor);
+    m_uiState.secondaryColor = foreground;
+    SetStatus(L"COLOR SWAPPED");
+}
 void WorkspaceRuntime::OnAddLayer() { m_canvas.AddRasterLayer(); MarkProjectDirty(); SetStatus(L"LAYER ADDED"); }
 void WorkspaceRuntime::OnDeleteLayer() { m_canvas.DeleteActiveLayer(); MarkProjectDirty(); SetStatus(L"LAYER DELETED"); }
 void WorkspaceRuntime::OnToggleActiveLayerVisibility() { m_canvas.ToggleActiveLayerVisibility(); MarkProjectDirty(); SetStatus(L"VISIBILITY"); }
@@ -573,6 +621,11 @@ void WorkspaceRuntime::OnSetBlendMode(uint32_t mode) {
     SetStatus(BlendName(static_cast<BlendMode>(mode)));
 }
 void WorkspaceRuntime::OnSelectLayer(size_t index) { m_canvas.SelectLayer(index); SetStatus(L"LAYER SELECTED"); }
+void WorkspaceRuntime::OnToggleWebSafeColor() {
+    m_canvas.SetWebSafeColorEnabled(!m_canvas.IsWebSafeColorEnabled());
+    m_uiState.webSafeColorEnabled = m_canvas.IsWebSafeColorEnabled();
+    SetStatus(m_uiState.webSafeColorEnabled ? L"WEB SAFE COLOR" : L"FULL COLOR");
+}
 void WorkspaceRuntime::OnSetBrushParam(BrushParamId param, uint16_t value) { m_canvas.SetBrushParam(param, value); SetStatus(L"BRUSH PARAM"); }
 void WorkspaceRuntime::OnSetBrushTip(uint32_t tip) { m_canvas.SetBrushTip(static_cast<Render::BrushTipType>(tip)); SetStatus(TipName(static_cast<Render::BrushTipType>(tip))); }
 void WorkspaceRuntime::OnSetBrushPreset(uint16_t size, uint16_t tip) {

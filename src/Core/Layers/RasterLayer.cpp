@@ -431,20 +431,30 @@ void RasterLayer::ImportTile(uint32_t gridX, uint32_t gridY, const uint8_t* srcD
 }
 
 void RasterLayer::UpdateThumbnail() {
-    // M3: Simple 64x64 thumbnail from top-left of canvas
     constexpr uint32_t thumbSize = 64;
-    m_thumbnail.resize(thumbSize * thumbSize * 4);
-    
-    uint32_t stepX = m_canvasWidth / thumbSize;
-    uint32_t stepY = m_canvasHeight / thumbSize;
-    if (stepX == 0) stepX = 1;
-    if (stepY == 0) stepY = 1;
-    
+    if (m_canvasWidth == 0 || m_canvasHeight == 0) {
+        m_thumbnail.clear();
+        return;
+    }
+
+    m_thumbnail.assign(thumbSize * thumbSize * 4, 0);
+    const float aspect = static_cast<float>(m_canvasWidth) / static_cast<float>(m_canvasHeight);
+    uint32_t drawW = thumbSize;
+    uint32_t drawH = static_cast<uint32_t>(std::max(1.0f, drawW / std::max(0.01f, aspect)));
+    if (drawH > thumbSize) {
+        drawH = thumbSize;
+        drawW = static_cast<uint32_t>(std::max(1.0f, drawH * aspect));
+    }
+    const uint32_t offsetX = (thumbSize - drawW) / 2;
+    const uint32_t offsetY = (thumbSize - drawH) / 2;
+
     bool hasVisible = false;
-    for (uint32_t y = 0; y < thumbSize; ++y) {
-        for (uint32_t x = 0; x < thumbSize; ++x) {
-            Color c = GetPixel(x * stepX, y * stepY);
-            uint32_t idx = (y * thumbSize + x) * 4;
+    for (uint32_t y = 0; y < drawH; ++y) {
+        const uint32_t sy = std::min<uint32_t>(m_canvasHeight - 1, (static_cast<uint64_t>(y) * m_canvasHeight) / drawH);
+        for (uint32_t x = 0; x < drawW; ++x) {
+            const uint32_t sx = std::min<uint32_t>(m_canvasWidth - 1, (static_cast<uint64_t>(x) * m_canvasWidth) / drawW);
+            Color c = GetPixel(sx, sy);
+            uint32_t idx = ((offsetY + y) * thumbSize + (offsetX + x)) * 4;
             m_thumbnail[idx] = c.b;
             m_thumbnail[idx + 1] = c.g;
             m_thumbnail[idx + 2] = c.r;

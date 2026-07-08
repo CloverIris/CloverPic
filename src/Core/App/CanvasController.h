@@ -37,6 +37,9 @@ public:
     ToolType GetTool() const { return m_tool; }
     void SetColor(const Color& color);
     Color GetColor() const { return m_color; }
+    void SetWebSafeColorEnabled(bool enabled) { m_webSafeColorEnabled = enabled; SetColor(m_color); }
+    bool IsWebSafeColorEnabled() const { return m_webSafeColorEnabled; }
+    std::vector<uint8_t> BuildCompositeThumbnail(uint32_t thumbWidth, uint32_t thumbHeight);
     void SetBrushSize(float size);
     float GetBrushSize() const;
     void SetBrushOpacity(float opacity);
@@ -52,6 +55,7 @@ public:
     void SetBrushParam(BrushParamId param, uint16_t value);
     void ApplyBrushPreset(uint16_t size, uint16_t tip);
     void SelectLayer(size_t index);
+    void MoveLayer(size_t fromIndex, size_t toIndex);
     void AddRasterLayer();
     void AddTextLayer(const String& text, float fontSize = 36.0f);
     void DeleteActiveLayer();
@@ -100,6 +104,7 @@ public:
     bool IsInteracting() const { return m_drawing || m_panning || m_selecting || m_shapeDrawing; }
 
 private:
+    void CancelActivePointerInteraction();
     void ScreenToCanvas(const Point& position, const Rect& viewport, float& canvasX, float& canvasY) const;
     void ApplySnap(float anchorX, float anchorY, float& x, float& y) const;
     void SnapPointToMode(float& x, float& y) const;
@@ -125,6 +130,8 @@ private:
     Rect m_lastViewport;
     bool m_drawing = false;
     bool m_panning = false;
+    Input::PointerDeviceType m_activePointerDevice = Input::PointerDeviceType::Mouse;
+    bool m_hasActivePointerDevice = false;
     Point m_lastPointer;
     float m_lastCanvasX = 0.0f;
     float m_lastCanvasY = 0.0f;
@@ -136,6 +143,7 @@ private:
     bool m_selecting = false;
     float m_selectionStartX = 0.0f;
     float m_selectionStartY = 0.0f;
+    Point m_selectionStartPointer;
     bool m_snapGuideActive = false;
     float m_snapGuideAnchorX = 0.0f;
     float m_snapGuideAnchorY = 0.0f;
@@ -153,6 +161,7 @@ private:
     bool m_panelLayerVisible = true;
     bool m_panelBrushSizeVisible = true;
     bool m_panelStatusBarVisible = true;
+    bool m_webSafeColorEnabled = false;
     bool m_leftSidebarExpanded = true;
     bool m_rightSidebarExpanded = true;
     SnapModeId m_snapMode = SnapModeId::Off;

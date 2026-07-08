@@ -6,6 +6,7 @@
 #include "Core/Presentation/IconPainter.h"
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <sstream>
 
 namespace CloverPic::Core {
@@ -267,13 +268,20 @@ void RenderLayerItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode&
     auto* lm = context.editor.GetLayerManager();
     auto layer = lm ? lm->GetLayer(static_cast<size_t>(node.userData)) : nullptr;
     const bool active = lm && node.userData == lm->GetActiveLayerIndex();
+    renderer.PushClip(context.uiState.layerListRect);
     Color fill = active ? Color(74, 101, 126) : (node.id == context.scene.GetHover() ? Color(63, 66, 69) : Color(50, 52, 54));
+    if (context.uiState.draggingLayer && context.uiState.draggedLayerIndex == static_cast<size_t>(node.userData)) {
+        fill = Color(38, 90, 134);
+    }
     renderer.FillRect(node.bounds, fill);
     renderer.FillRect(Rect(node.bounds.left, node.bounds.top, node.bounds.right, node.bounds.top + 1),
                       active ? Color(134, 185, 226, 120) : Color(92, 98, 104, 100));
     renderer.StrokeRect(node.bounds, active ? Color(128, 180, 222) : Color(72, 76, 80), 1);
     const Rect thumb(node.bounds.left + 8, node.bounds.top + 6, node.bounds.left + 48, node.bounds.bottom - 6);
     renderer.DrawCheckerboard(thumb, 5, Color(196, 196, 196), Color(230, 230, 230));
+    if (layer && !layer->GetThumbnail().empty()) {
+        renderer.BlitBgra(thumb, layer->GetThumbnail().data(), 64, 64);
+    }
     renderer.StrokeRect(thumb, Color(30, 32, 35), 1);
     renderer.DrawText(node.bounds.left + 58, node.bounds.top + 7, node.label, Color(232, 236, 239), 2);
     if (layer) {
@@ -284,10 +292,16 @@ void RenderLayerItem(Presentation::SoftRenderer& renderer, const CoreUI::UiNode&
         if (layer->IsLocked()) renderer.DrawText(node.bounds.right - 44, node.bounds.top + 7, L"LOCK", Color(238, 190, 90), 2);
         if (layer->IsProtectAlpha()) renderer.DrawText(node.bounds.right - 44, node.bounds.top + 29, L"A", Color(140, 210, 255), 2);
     }
+    renderer.PopClip();
 }
 
 void RenderSwatch(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, const WorkspaceNodeRenderContext& context) {
-    const Color swatch = ColorFromPackedRgba(node.userData);
+    Color swatch = ColorFromPackedRgba(node.userData);
+    if (node.payload == L"foreground") {
+        swatch = context.editor.GetColor();
+    } else if (node.payload == L"background") {
+        swatch = context.uiState.secondaryColor;
+    }
     const Color current = context.editor.GetColor();
     const bool active = swatch.r == current.r && swatch.g == current.g && swatch.b == current.b && swatch.a == current.a;
     if (swatch.a == 0) {
@@ -296,6 +310,24 @@ void RenderSwatch(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& no
         renderer.FillRect(node.bounds, swatch);
     }
     renderer.StrokeRect(node.bounds, active ? Color(245, 250, 255) : Color(112, 122, 132), active ? 2 : 1);
+}
+
+void RenderPanelResizeHandle(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, const WorkspaceNodeRenderContext& context) {
+    const bool hovered = node.id == context.scene.GetHover() || node.id == context.scene.GetCapture();
+    const Color color = hovered ? Color(156, 212, 255) : Color(112, 122, 132);
+    if (node.payload == L"right") {
+        if (hovered) renderer.FillRect(node.bounds, Color(0, 145, 255, 88));
+        renderer.DrawLine(node.bounds.right - 2, node.bounds.top + 4, node.bounds.right - 2, node.bounds.bottom - 4, color, 1);
+    } else if (node.payload == L"bottom") {
+        if (hovered) renderer.FillRect(node.bounds, Color(0, 145, 255, 88));
+        renderer.DrawLine(node.bounds.left + 4, node.bounds.bottom - 2, node.bounds.right - 4, node.bounds.bottom - 2, color, 1);
+    } else {
+        renderer.DrawLine(node.bounds.right - 11, node.bounds.bottom - 3, node.bounds.right - 3, node.bounds.bottom - 11, color, 1);
+        renderer.DrawLine(node.bounds.right - 7, node.bounds.bottom - 3, node.bounds.right - 3, node.bounds.bottom - 7, color, 1);
+    }
+    if (hovered) {
+        renderer.StrokeRect(node.bounds, Color(0, 145, 255, 150), 1);
+    }
 }
 
 void RenderSlider(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, const WorkspaceNodeRenderContext& context) {
@@ -326,10 +358,31 @@ void RenderColorField(Presentation::SoftRenderer& renderer, const CoreUI::UiNode
     const Hsv hsv = RgbToHsv(context.editor.GetColor());
     renderer.DrawHsvSquare(node.bounds, hsv.h);
     renderer.StrokeRect(node.bounds, Color(26, 28, 30), 2);
+    if (context.editor.IsWebSafeColorEnabled()) {
+        const Color grid(245, 248, 250, 72);
+        for (int i = 1; i < 6; ++i) {
+            const int x = node.bounds.left + (node.bounds.Width() * i) / 6;
+            const int y = node.bounds.top + (node.bounds.Height() * i) / 6;
+            renderer.DrawLine(x, node.bounds.top, x, node.bounds.bottom, grid, 1);
+            renderer.DrawLine(node.bounds.left, y, node.bounds.right, y, grid, 1);
+        }
+    }
     const int cx = node.bounds.left + static_cast<int>(hsv.s * std::max(1, node.bounds.Width() - 1));
     const int cy = node.bounds.top + static_cast<int>((1.0f - hsv.v) * std::max(1, node.bounds.Height() - 1));
     renderer.StrokeRect(Rect(cx - 5, cy - 5, cx + 5, cy + 5), Color(255, 255, 255), 1);
     renderer.StrokeRect(Rect(cx - 6, cy - 6, cx + 6, cy + 6), Color(30, 30, 30), 1);
+}
+
+void RenderToggleSwitch(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, const WorkspaceNodeRenderContext& context) {
+    const bool hovered = node.id == context.scene.GetHover();
+    const bool active = node.checked;
+    const Rect track(node.bounds.left, node.bounds.top + 4, node.bounds.left + 40, node.bounds.bottom - 4);
+    renderer.FillRect(track, active ? Color(0, 120, 215) : hovered ? Color(72, 76, 80) : Color(48, 51, 54));
+    renderer.StrokeRect(track, active ? Color(132, 205, 255) : Color(86, 92, 98), 1);
+    const int knobSize = std::max(8, track.Height() - 6);
+    const int knobLeft = active ? track.right - knobSize - 3 : track.left + 3;
+    renderer.FillRect(Rect(knobLeft, track.top + 3, knobLeft + knobSize, track.top + 3 + knobSize), Color(238, 242, 245));
+    renderer.DrawText(node.bounds.left + 50, node.bounds.top + 5, node.label, Color(210, 216, 220), 2);
 }
 
 void RenderHueStrip(Presentation::SoftRenderer& renderer, const CoreUI::UiNode& node, const WorkspaceNodeRenderContext& context) {
@@ -370,7 +423,9 @@ void RenderBrushSizeChip(Presentation::SoftRenderer& renderer, const CoreUI::UiN
     renderer.FillRect(Rect(node.bounds.left, node.bounds.bottom - 1, node.bounds.right, node.bounds.bottom), Color(18, 20, 22, 170));
     renderer.StrokeRect(node.bounds, active ? Color(138, 202, 255) : Color(72, 76, 80), 1);
     renderer.FillCircle(node.bounds.left + node.bounds.Width() / 2, node.bounds.top + 14, std::clamp<int>(size / 12, 2, 10), Color(238, 241, 244));
-    renderer.DrawText(node.bounds.left + 8, node.bounds.bottom - 16, node.label, Color(204, 210, 214), 2);
+    const int textW = TextWidthApprox(node.label, 2);
+    renderer.DrawText(node.bounds.left + std::max(2, (node.bounds.Width() - textW) / 2), node.bounds.bottom - 16,
+                      node.label, Color(204, 210, 214), 2);
 }
 
 } // namespace
@@ -384,13 +439,27 @@ void WorkspaceNodeRenderer::RenderNode(Presentation::SoftRenderer& renderer,
     else if (node.type == CoreUI::UiNodeType::MenuItem) RenderMenuItem(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::LayerItem) RenderLayerItem(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::Swatch) RenderSwatch(renderer, node, context);
+    else if (node.type == CoreUI::UiNodeType::PanelResizeHandle) RenderPanelResizeHandle(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::Slider) RenderSlider(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::SearchBox) RenderSearchBox(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::ColorField) RenderColorField(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::HueStrip) RenderHueStrip(renderer, node, context);
+    else if (node.type == CoreUI::UiNodeType::ToggleSwitch) RenderToggleSwitch(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::BrushPresetItem) RenderBrushPresetItem(renderer, node, context);
     else if (node.type == CoreUI::UiNodeType::BrushSizeChip) RenderBrushSizeChip(renderer, node, context);
-    else if (node.type == CoreUI::UiNodeType::Text) renderer.DrawText(node.bounds.left, node.bounds.top, node.label, Color(210, 216, 220), 2);
+    else if (node.type == CoreUI::UiNodeType::Text) {
+        if (node.payload == L"color-hex") {
+            const Color current = context.editor.GetColor();
+            std::wstringstream hex;
+            hex << L"#" << std::uppercase << std::hex << std::setfill(L'0')
+                << std::setw(2) << static_cast<int>(current.r)
+                << std::setw(2) << static_cast<int>(current.g)
+                << std::setw(2) << static_cast<int>(current.b);
+            renderer.DrawText(node.bounds.left, node.bounds.top, hex.str(), Color(220, 226, 230), 2);
+        } else {
+            renderer.DrawText(node.bounds.left, node.bounds.top, node.label, Color(210, 216, 220), 2);
+        }
+    }
     else if (node.type == CoreUI::UiNodeType::MenuSeparator) renderer.FillRect(node.bounds, Color(67, 70, 73));
 }
 
@@ -420,7 +489,7 @@ void WorkspaceNodeRenderer::RenderPanelDecorations(Presentation::SoftRenderer& r
             renderer.StrokeRect(Rect(panel.contentRect.left + 12, panel.contentRect.top + 32, panel.contentRect.left + 44, panel.contentRect.top + 64), Color(30, 33, 36), 1);
             std::wstringstream rgb;
             rgb << L"R:" << static_cast<int>(current.r) << L" G:" << static_cast<int>(current.g) << L" B:" << static_cast<int>(current.b);
-            renderer.DrawText(panel.contentRect.left + 2, panel.contentRect.bottom - 22, rgb.str(), Color(202, 210, 216), 2);
+            renderer.DrawText(panel.contentRect.left + 2, panel.contentRect.bottom - 18, rgb.str(), Color(202, 210, 216), 1);
         } else if (panel.panelId == WorkspacePanelId::BrushPreview) {
             const Rect preview(panel.contentRect.left + 2, panel.contentRect.top, panel.contentRect.right - 2, panel.contentRect.bottom - 6);
             renderer.DrawCheckerboard(preview, 8, Color(230, 230, 230), Color(204, 204, 204));
@@ -447,9 +516,28 @@ void WorkspaceNodeRenderer::RenderPanelDecorations(Presentation::SoftRenderer& r
                 }
                 const int miniL = navPreview.left + (navPreview.Width() - miniW) / 2;
                 const int miniT = navPreview.top + (navPreview.Height() - miniH) / 2;
-                renderer.FillRect(Rect(miniL, miniT, miniL + miniW, miniT + miniH), Color(245, 245, 245));
+                const Rect miniRect(miniL, miniT, miniL + miniW, miniT + miniH);
+                renderer.FillRect(miniRect, Color(245, 245, 245));
+                if (!context.uiState.compositeThumbnailBgra.empty()) {
+                    renderer.BlitBgra(miniRect, context.uiState.compositeThumbnailBgra.data(),
+                                      context.uiState.compositeThumbnailWidth,
+                                      context.uiState.compositeThumbnailHeight);
+                }
                 renderer.StrokeRect(Rect(miniL, miniT, miniL + miniW, miniT + miniH), Color(28, 31, 34), 2);
                 renderer.StrokeRect(Rect(miniL + 8, miniT + 8, miniL + miniW - 8, miniT + miniH - 8), Color(0, 120, 215), 1);
+            }
+        } else if (panel.panelId == WorkspacePanelId::Layer) {
+            auto* lm = context.editor.GetLayerManager();
+            if (lm && lm->GetLayerCount() * 56 > static_cast<size_t>(std::max(0, context.uiState.layerListRect.Height()))) {
+                const int total = static_cast<int>(lm->GetLayerCount()) * 56;
+                const Rect track(context.uiState.layerListRect.right - 9, context.uiState.layerListRect.top + 1,
+                                 context.uiState.layerListRect.right - 2, context.uiState.layerListRect.bottom - 1);
+                const int thumbH = std::max(18, (track.Height() * track.Height()) / std::max(track.Height(), total));
+                const int maxScroll = std::max(1, total - track.Height());
+                const int thumbTop = track.top + ((track.Height() - thumbH) * context.uiState.layerScrollOffset) / maxScroll;
+                renderer.FillRect(track, Color(20, 22, 24, 230));
+                renderer.StrokeRect(track, Color(72, 78, 84), 1);
+                renderer.FillRect(Rect(track.left + 1, thumbTop, track.right - 1, thumbTop + thumbH), Color(142, 154, 164));
             }
         }
     }

@@ -358,16 +358,44 @@ void BuildPanelChrome(const WorkspacePanelComputedLayout& panel,
 
     AddNode(scene, UiNodeType::Button,
             Rect(panel.headerRect.right - 18, panel.headerRect.top + 4, panel.headerRect.right - 4, panel.headerRect.bottom - 4),
-            L"x", AppCommand::TogglePanel, static_cast<uint64_t>(panel.panelId), L"", panel.zOrder + 2,
+            L"", AppCommand::TogglePanel, static_cast<uint64_t>(panel.panelId), L"", panel.zOrder + 2,
             Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
             Presentation::IconId::None, IconPlacement::Center, L"Close panel",
             false, false, L"", false, UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
+    AddNode(scene, UiNodeType::PanelResizeHandle,
+            Rect(panel.rect.right - 6, panel.headerRect.bottom + 10, panel.rect.right, panel.rect.bottom - 16),
+            L"", AppCommand::None, 0, L"right", panel.zOrder + 3,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
+            Presentation::IconId::None, IconPlacement::None, L"Resize panel width",
+            false, false, L"", false, UiBindingKey::None, UiInteractionKind::ResizePanel, panel.panelId);
+    AddNode(scene, UiNodeType::PanelResizeHandle,
+            Rect(panel.rect.left + 10, panel.rect.bottom - 6, panel.rect.right - 16, panel.rect.bottom),
+            L"", AppCommand::None, 0, L"bottom", panel.zOrder + 3,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
+            Presentation::IconId::None, IconPlacement::None, L"Resize panel height",
+            false, false, L"", false, UiBindingKey::None, UiInteractionKind::ResizePanel, panel.panelId);
+    AddNode(scene, UiNodeType::PanelResizeHandle,
+            Rect(panel.rect.right - 16, panel.rect.bottom - 16, panel.rect.right, panel.rect.bottom),
+            L"", AppCommand::None, 0, L"corner", panel.zOrder + 4,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
+            Presentation::IconId::None, IconPlacement::None, L"Resize panel",
+            false, false, L"", false, UiBindingKey::None, UiInteractionKind::ResizePanel, panel.panelId);
 }
 
-void BuildColorPanel(const WorkspacePanelComputedLayout& panel, CoreUI::UiScene& scene) {
-    const int colorFieldSize = std::max(120, std::min(216, panel.contentRect.Width() - 34));
-    const int fieldLeft = panel.contentRect.left + 36;
-    const int fieldTop = panel.contentRect.top;
+void BuildColorPanel(const WorkspacePanelComputedLayout& panel, CoreUI::UiScene& scene, WorkspaceEditorFacade& editor) {
+    const int colorFieldSize = std::max(112, std::min(184, panel.contentRect.Width() - 42));
+    const int fieldLeft = panel.contentRect.left + 46;
+    const int fieldTop = panel.contentRect.top + 2;
+    AddNode(scene, UiNodeType::Swatch, Rect(panel.contentRect.left + 8, fieldTop + 6, panel.contentRect.left + 40, fieldTop + 38),
+            L"Foreground", AppCommand::SwapColorSlots, 0, L"foreground", panel.zOrder + 4,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
+            Presentation::IconId::None, IconPlacement::None, L"Swap foreground/background",
+            false, false, L"", false, UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
+    AddNode(scene, UiNodeType::Swatch, Rect(panel.contentRect.left + 18, fieldTop + 34, panel.contentRect.left + 50, fieldTop + 66),
+            L"Background", AppCommand::SwapColorSlots, 0, L"background", panel.zOrder + 5,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
+            Presentation::IconId::None, IconPlacement::None, L"Swap foreground/background",
+            false, false, L"", false, UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
     AddNode(scene, UiNodeType::ColorField, Rect(fieldLeft, fieldTop, fieldLeft + colorFieldSize, fieldTop + colorFieldSize),
             L"Color field", AppCommand::None, 0, L"", panel.zOrder + 4,
             Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
@@ -385,14 +413,26 @@ void BuildColorPanel(const WorkspacePanelComputedLayout& panel, CoreUI::UiScene&
         SwatchPurple, 0x00A4E4FFull, 0xFF8C00FFull, 0x107C10FFull, 0x5C2D91FFull, SwatchTransparent
     };
     const int swatchTop = fieldTop + colorFieldSize + 12;
+    const int swatchW = std::max(22, std::min(28, (panel.contentRect.Width() - 10) / 7));
     for (int i = 0; i < 12; ++i) {
-        const int sx = panel.contentRect.left + (i % 6) * 34;
+        const int sx = panel.contentRect.left + (i % 6) * (swatchW + 6);
         const int sy = swatchTop + (i / 6) * 28;
-        AddNode(scene, UiNodeType::Swatch, Rect(sx, sy, sx + 26, sy + 20), L"", AppCommand::SetColor, swatches[i], L"",
+        AddNode(scene, UiNodeType::Swatch, Rect(sx, sy, sx + swatchW, sy + 20), L"", AppCommand::SetColor, swatches[i], L"",
                 panel.zOrder + 4, Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
                 Presentation::IconId::None, IconPlacement::None, L"", false, false, L"", false,
                 UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
     }
+
+    const int infoTop = swatchTop + 62;
+    AddNode(scene, UiNodeType::Text, Rect(panel.contentRect.left, infoTop, panel.contentRect.right, infoTop + 18),
+            L"HEX", AppCommand::None, 0, L"color-hex", panel.zOrder + 4,
+            Presentation::UiNodeVisible, Presentation::IconId::None, IconPlacement::None, L"", false, false, L"", false,
+            UiBindingKey::None, UiInteractionKind::None, panel.panelId);
+    AddNode(scene, UiNodeType::ToggleSwitch, Rect(panel.contentRect.left, infoTop + 24, panel.contentRect.left + 128, infoTop + 48),
+            L"Web Safe", AppCommand::ToggleWebSafeColor, 0, L"", panel.zOrder + 4,
+            Presentation::UiNodeVisible | Presentation::UiNodeInteractive, Presentation::IconId::None, IconPlacement::None,
+            L"Limit color picking to web-safe colors", editor.IsWebSafeColorEnabled(), false, L"", false,
+            UiBindingKey::None, UiInteractionKind::ToggleSwitch, panel.panelId);
 }
 
 void AddSliderNode(CoreUI::UiScene& scene,
@@ -457,7 +497,8 @@ void BuildBrushPresetPanel(const WorkspacePanelComputedLayout& panel, CoreUI::Ui
             break;
         }
         AddNode(scene, UiNodeType::BrushPresetItem, Rect(panel.contentRect.left, y, panel.contentRect.right, y + 30),
-                preset.label, AppCommand::SetBrushPreset, PackBrushPreset(preset.size, static_cast<uint16_t>(preset.tip)), L"",
+                preset.label, AppCommand::SetBrushPreset, PackBrushPreset(preset.size, static_cast<uint16_t>(preset.tip)),
+                std::to_wstring(preset.accent),
                 panel.zOrder + 4, Presentation::UiNodeVisible | Presentation::UiNodeInteractive,
                 Presentation::IconId::None, IconPlacement::None, L"", false, false, L"", false,
                 UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
@@ -488,7 +529,7 @@ void BuildNavigatorPanel(const WorkspacePanelComputedLayout& panel, CoreUI::UiSc
 void BuildLayerPanel(const WorkspacePanelComputedLayout& panel,
                      CoreUI::UiScene& scene,
                      WorkspaceEditorFacade& editor,
-                     const WorkspaceUiState& uiState) {
+                     WorkspaceUiState& uiState) {
     auto* lm = editor.GetLayerManager();
     uint8_t activeOpacity = 255;
     BlendMode activeBlend = BlendMode::Normal;
@@ -551,16 +592,27 @@ void BuildLayerPanel(const WorkspacePanelComputedLayout& panel,
 
     const int listTop = panel.contentRect.top + 106;
     const int layerToolsY = panel.contentRect.bottom - 66;
+    uiState.layerListRect = Rect(panel.contentRect.left, listTop, panel.contentRect.right, layerToolsY - 8);
     if (lm) {
-        int y = listTop;
-        for (size_t i = 0; i < lm->GetLayerCount() && y + 54 < layerToolsY - 8; ++i) {
+        constexpr int itemH = 56;
+        const int maxScroll = std::max(0, static_cast<int>(lm->GetLayerCount()) * itemH - uiState.layerListRect.Height());
+        uiState.layerScrollOffset = std::clamp(uiState.layerScrollOffset, 0, maxScroll);
+        const size_t firstIndex = static_cast<size_t>(std::max(0, uiState.layerScrollOffset / itemH));
+        int y = listTop - (uiState.layerScrollOffset % itemH);
+        for (size_t i = firstIndex; i < lm->GetLayerCount() && y < uiState.layerListRect.bottom; ++i) {
             auto layer = lm->GetLayer(i);
             String label = layer ? layer->GetName() : L"Layer";
-            AddNode(scene, UiNodeType::LayerItem, Rect(panel.contentRect.left, y, panel.contentRect.right, y + 52), label,
+            const Rect itemRect(panel.contentRect.left, y, panel.contentRect.right, y + 52);
+            AddNode(scene, UiNodeType::LayerItem, itemRect, label,
                     AppCommand::SelectLayer, static_cast<uint64_t>(i), L"", panel.zOrder + 5,
                     Presentation::UiNodeVisible | Presentation::UiNodeInteractive, Presentation::IconId::None, IconPlacement::None,
-                    L"", false, false, L"", false, UiBindingKey::None, UiInteractionKind::Click, panel.panelId);
-            y += 56;
+                    L"", false, false, L"", false, UiBindingKey::None, UiInteractionKind::DragLayerItem, panel.panelId);
+            y += itemH;
+        }
+        if (maxScroll > 0) {
+            AddNode(scene, UiNodeType::ScrollRegion, uiState.layerListRect, L"", AppCommand::None, 0, L"", panel.zOrder + 3,
+                    Presentation::UiNodeVisible, Presentation::IconId::None, IconPlacement::None, L"", false, false, L"", false,
+                    UiBindingKey::None, UiInteractionKind::ScrollRegion, panel.panelId);
         }
     }
 
@@ -622,7 +674,7 @@ void BuildBrushSizePanel(const WorkspacePanelComputedLayout& panel, CoreUI::UiSc
 
 void WorkspaceComponentBuilder::Build(const Size& viewport,
                                       WorkspaceEditorFacade& editor,
-                                      const WorkspaceUiState& uiState,
+                                      WorkspaceUiState& uiState,
                                       const WorkspaceDockLayoutResult& layout,
                                       CoreUI::UiScene& scene) {
     scene.Clear();
@@ -632,7 +684,7 @@ void WorkspaceComponentBuilder::Build(const Size& viewport,
         BuildPanelChrome(panel, scene);
         switch (panel.panelId) {
             case WorkspacePanelId::Color:
-                BuildColorPanel(panel, scene);
+                BuildColorPanel(panel, scene, editor);
                 break;
             case WorkspacePanelId::BrushControl:
                 BuildBrushControlPanel(panel, scene, editor);

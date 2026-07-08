@@ -11,7 +11,7 @@ class WorkspaceComponentBuilder {
 public:
     static void Build(const Size& viewport,
                       WorkspaceEditorFacade& editor,
-                      const WorkspaceUiState& uiState,
+                      WorkspaceUiState& uiState,
                       const WorkspaceDockLayoutResult& layout,
                       CoreUI::UiScene& scene);
 };

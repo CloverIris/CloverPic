@@ -14,7 +14,9 @@ enum class ActiveWorkspaceInteractionKind : uint8_t {
     Slider,
     ColorField,
     HueStrip,
-    PanelDrag
+    PanelDrag,
+    PanelResize,
+    LayerDrag
 };
 
 struct ActiveWorkspaceInteraction {
@@ -25,7 +27,10 @@ struct ActiveWorkspaceInteraction {
     Point dragStart;
     Point lastPoint;
     Point panelGrabOffset;
+    Size panelStartSize;
+    String resizeAxis;
     WorkspacePanelLayoutState originalPanelState;
+    size_t layerIndex = 0;
 };
 
 struct WorkspaceInteractionCallbacks {

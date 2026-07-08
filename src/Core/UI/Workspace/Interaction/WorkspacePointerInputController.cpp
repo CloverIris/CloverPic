@@ -61,12 +61,13 @@ void WorkspacePointerInputController::HandlePointer(const Input::PointerEvent& e
 
     if ((event.action == Input::PointerAction::Move || event.action == Input::PointerAction::Up) &&
         context.interaction->Active().kind != ActiveWorkspaceInteractionKind::None) {
-        const bool panelDrag = context.interaction->Active().kind == ActiveWorkspaceInteractionKind::PanelDrag;
+        const bool panelLayoutDrag = context.interaction->Active().kind == ActiveWorkspaceInteractionKind::PanelDrag ||
+                                     context.interaction->Active().kind == ActiveWorkspaceInteractionKind::PanelResize;
         if (event.action == Input::PointerAction::Move) {
             context.interaction->Update(event, *context.scene, *context.uiState, *context.layout, *context.editor, interactionCallbacks);
         } else {
             context.interaction->End(event, *context.scene, *context.uiState, *context.layout, *context.editor, interactionCallbacks);
-            if (panelDrag) {
+            if (panelLayoutDrag) {
                 callbacks.saveWorkspaceUiSettings();
             }
         }

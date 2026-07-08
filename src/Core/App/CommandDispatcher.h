@@ -47,6 +47,7 @@ public:
         virtual void OnQuit() = 0;
         virtual void OnSelectTool(ToolType tool) = 0;
         virtual void OnSetColor(const Color& color) = 0;
+        virtual void OnSwapColorSlots() {}
         virtual void OnAddLayer() = 0;
         virtual void OnDeleteLayer() = 0;
         virtual void OnToggleActiveLayerVisibility() = 0;
@@ -59,6 +60,7 @@ public:
         virtual void OnToggleLayerBlendDropdown() {}
         virtual void OnSetBlendMode(uint32_t) {}
         virtual void OnSelectLayer(size_t index) = 0;
+        virtual void OnToggleWebSafeColor() {}
         virtual void OnSetBrushParam(BrushParamId, uint16_t) {}
         virtual void OnSetBrushTip(uint32_t) {}
         virtual void OnSetBrushPreset(uint16_t, uint16_t) {}

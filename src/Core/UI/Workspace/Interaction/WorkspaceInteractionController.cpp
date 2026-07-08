@@ -123,6 +123,35 @@ bool WorkspaceInteractionController::Begin(const Input::PointerEvent& event,
         callbacks.markDirty(layout.canvasRect);
         return true;
     }
+    if (node.type == CoreUI::UiNodeType::PanelResizeHandle) {
+        m_active.kind = ActiveWorkspaceInteractionKind::PanelResize;
+        m_active.resizeAxis = node.payload;
+        if (auto* panel = uiState.FindPanel(m_active.panelId)) {
+            m_active.originalPanelState = *panel;
+            const auto* computed = layout.FindPanel(m_active.panelId);
+            if (computed) {
+                m_active.panelStartSize = computed->rect.GetSize();
+                uiState.resizingPanel = true;
+                uiState.resizedPanelId = m_active.panelId;
+                uiState.resizedPreviewRect = computed->rect;
+                uiState.BringFloatingPanelToFront(m_active.panelId);
+            }
+        }
+        callbacks.markDirty(Rect(0, 0, layout.statusBarRect.right, layout.statusBarRect.bottom));
+        return true;
+    }
+    if (node.type == CoreUI::UiNodeType::LayerItem) {
+        m_active.kind = ActiveWorkspaceInteractionKind::LayerDrag;
+        m_active.layerIndex = static_cast<size_t>(node.userData);
+        uiState.draggingLayer = true;
+        uiState.draggedLayerIndex = m_active.layerIndex;
+        uiState.layerDropIndex = m_active.layerIndex;
+        uiState.layerDragStart = event.position;
+        uiState.layerDragCurrent = event.position;
+        callbacks.setStatus(L"LAYER DRAG");
+        callbacks.markDirty(layout.canvasRect);
+        return true;
+    }
 
     return false;
 }
@@ -160,6 +189,34 @@ bool WorkspaceInteractionController::Update(const Input::PointerEvent& event,
             callbacks.rebuildScene();
             callbacks.markDirty(Rect(0, 0, layout.statusBarRect.right, layout.statusBarRect.bottom));
             return true;
+        case ActiveWorkspaceInteractionKind::PanelResize: {
+            const int dx = event.position.x - m_active.dragStart.x;
+            const int dy = event.position.y - m_active.dragStart.y;
+            auto* panel = uiState.FindPanel(m_active.panelId);
+            if (!panel) return false;
+            const int minW = 220;
+            const int minH = panel->panelId == WorkspacePanelId::Layer ? 220 : 96;
+            const bool resizeW = (m_active.resizeAxis == L"right" || m_active.resizeAxis == L"corner") &&
+                                 panel->dockSide == WorkspaceDockSide::Floating;
+            const bool resizeH = m_active.resizeAxis == L"bottom" || m_active.resizeAxis == L"corner";
+            const int newW = resizeW ? std::max(minW, m_active.panelStartSize.width + dx) : m_active.panelStartSize.width;
+            const int newH = resizeH ? std::max(minH, m_active.panelStartSize.height + dy) : m_active.panelStartSize.height;
+            uiState.resizedPreviewRect = uiState.resizedPreviewRect.Width() > 0 ? uiState.resizedPreviewRect : panel->floatingRect;
+            uiState.resizedPreviewRect.right = uiState.resizedPreviewRect.left + newW;
+            uiState.resizedPreviewRect.bottom = uiState.resizedPreviewRect.top + newH;
+            callbacks.markDirty(Rect(0, 0, layout.statusBarRect.right, layout.statusBarRect.bottom));
+            return true;
+        }
+        case ActiveWorkspaceInteractionKind::LayerDrag: {
+            uiState.layerDragCurrent = event.position;
+            const int itemH = 56;
+            const int relativeY = std::clamp(event.position.y - uiState.layerListRect.top + uiState.layerScrollOffset, 0,
+                                             std::max(0, uiState.layerScrollOffset + uiState.layerListRect.Height()));
+            uiState.layerDropIndex = static_cast<size_t>(relativeY / itemH);
+            callbacks.rebuildScene();
+            callbacks.markDirty(Rect(0, 0, layout.statusBarRect.right, layout.statusBarRect.bottom));
+            return true;
+        }
         default:
             return false;
     }
@@ -186,11 +243,42 @@ bool WorkspaceInteractionController::End(const Input::PointerEvent& event,
     } else if (m_active.kind == ActiveWorkspaceInteractionKind::PanelDrag) {
         CommitPanelDrag(event.position, uiState, layout);
         callbacks.rebuildScene();
+    } else if (m_active.kind == ActiveWorkspaceInteractionKind::PanelResize) {
+        auto* panel = uiState.FindPanel(m_active.panelId);
+        if (panel) {
+            if (panel->dockSide == WorkspaceDockSide::Floating) {
+                panel->floatingRect = uiState.resizedPreviewRect;
+            } else {
+                panel->dockedHeight = uiState.resizedPreviewRect.Height();
+            }
+            callbacks.setStatus(L"PANEL RESIZED");
+        }
+        callbacks.rebuildScene();
+    } else if (m_active.kind == ActiveWorkspaceInteractionKind::LayerDrag) {
+        const int dx = event.position.x - m_active.dragStart.x;
+        const int dy = event.position.y - m_active.dragStart.y;
+        if (std::abs(dx) + std::abs(dy) < 6) {
+            callbacks.dispatch(AppCommand::SelectLayer, m_active.layerIndex, L"");
+        } else {
+            size_t target = uiState.layerDropIndex;
+            if (auto* lm = editor.GetLayerManager()) {
+                const size_t count = lm->GetLayerCount();
+                if (count > 0) {
+                    target = std::min(target, count - 1);
+                    editor.MoveLayer(m_active.layerIndex, target);
+                    callbacks.markProjectDirty();
+                    callbacks.setStatus(L"LAYER MOVED");
+                }
+            }
+        }
+        callbacks.rebuildScene();
     }
 
     scene.SetCapture(0);
     m_active = {};
     uiState.draggingPanel = false;
+    uiState.resizingPanel = false;
+    uiState.draggingLayer = false;
     uiState.dockInsertion = {};
     callbacks.markDirty(Rect(0, 0, layout.statusBarRect.right, layout.statusBarRect.bottom));
     return true;
