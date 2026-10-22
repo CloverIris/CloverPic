@@ -101,3 +101,22 @@ The adapter must not understand UI controls, layer-list semantics, panel behavio
 - When adding a new platform capability, extend the portable service interfaces instead of leaking native handles.
 
 See `docs/CoreAdapterAPI.md` for the full boundary contract.
+
+## CloverPlatform (submodule)
+
+`CloverPlatform/` is a git submodule pointing at
+[CloverIris/CloverPlartform](https://github.com/CloverIris/CloverPlartform).
+
+- It is a Rust workspace: `clover-core`, `clover-ui`, `clover-render`,
+  `clover-abi`, `clover-demo`.
+- It is **not** in the CMake graph. The C++/ObjC++ adapters do not depend on it
+  yet, so `cmake` builds are unaffected.
+- Build and test it with `cargo`: `cd CloverPlatform && cargo test`.
+- It is the target for the UI migration: core-owned UI scenes will eventually be
+  expressed as CloverPlatform trees and presented through the C ABI instead of
+  `SoftwareRenderer` into `RgbaFrame`.
+- Do not copy CloverPlatform sources into `src/`. The submodule boundary is the
+  intended coupling; when a capability is missing, extend the framework.
+
+When cloning with submodules: `git clone --recursive`, or
+`git submodule update --init` in an existing checkout.
