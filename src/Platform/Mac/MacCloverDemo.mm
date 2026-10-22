@@ -28,9 +28,9 @@ std::string BuildDemoXaml() {
     std::string xaml = R"XAML(
 <StackPanel Background="#1E2023">
   <StackPanel Orientation="Horizontal" Spacing="6" Padding="8" Background="#25282C">
-    <Button Content="Brush"  Width="72" x:Name="btnBrush"  Focusable="True"/>
-    <Button Content="Eraser" Width="72" x:Name="btnEraser" Focusable="True"/>
-    <Button Content="Layers" Width="72" x:Name="btnLayers" Focusable="True"/>
+    <Button Content="Brush"  Width="72" x:Name="btnBrush"  Focusable="True" Command="tool:brush"/>
+    <Button Content="Eraser" Width="72" x:Name="btnEraser" Focusable="True" Command="tool:eraser"/>
+    <Button Content="Layers" Width="72" x:Name="btnLayers" Focusable="True" Command="toggle:canvas"/>
   </StackPanel>
   <Panel Width="Fill" Height="Fill" Background="#141618" Padding="14">
     <StackPanel Orientation="Horizontal" Spacing="14" Width="Fill" Height="Fill">
@@ -110,6 +110,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     float _scale;
     NSSize _lastLogicalSize;
     BOOL _canvasSized;
+    BOOL _canvasHidden;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -120,6 +121,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
         _directHandle = 0;
         _lastLogicalSize = NSZeroSize;
         _canvasSized = NO;
+        _canvasHidden = NO;
     }
     return self;
 }
@@ -258,6 +260,28 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     CGDataProviderRelease(provider);
 }
 
+/// Drains the framework's action queue and reacts. This is the whole host/UI
+/// contract: the framework says *what happened*, the host decides what it means.
+- (void)drainActions {
+    if (!_surface) {
+        return;
+    }
+    char buffer[128];
+    for (;;) {
+        const int32_t length = clover_surface_take_action(_surface, buffer, sizeof(buffer));
+        if (length <= 0) {
+            break;
+        }
+        const std::string action(buffer, static_cast<size_t>(length));
+        std::fprintf(stderr, "[clover] action: %s\n", action.c_str());
+        if (action == "toggle:canvas") {
+            _canvasHidden = !_canvasHidden;
+            clover_surface_set_visible(_surface, "canvas", !_canvasHidden);
+        }
+        [self setNeedsDisplay:YES];
+    }
+}
+
 - (uint32_t)currentModifiers:(NSEvent*)event {
     uint32_t modifiers = 0;
     if (event.modifierFlags & NSEventModifierFlagShift) modifiers |= CLOVER_MODIFIER_SHIFT;
@@ -275,6 +299,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
     clover_surface_pointer(_surface, static_cast<float>(local.x), static_cast<float>(local.y), action,
                            button, [self currentModifiers:event]);
+    [self drainActions];
     [self setNeedsDisplay:YES];
 }
 
@@ -308,6 +333,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     }
     clover_surface_wheel(_surface, static_cast<float>(local.x), static_cast<float>(local.y),
                          static_cast<float>(delta), [self currentModifiers:event]);
+    [self drainActions];
     [self setNeedsDisplay:YES];
 }
 
@@ -320,6 +346,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
         const uint32_t modifiers =
             (event.modifierFlags & NSEventModifierFlagShift) ? CLOVER_MODIFIER_SHIFT : 0;
         clover_surface_key(_surface, 0x09, CLOVER_KEY_DOWN, modifiers, event.isARepeat);
+        [self drainActions];
         [self setNeedsDisplay:YES];
     }
 }
