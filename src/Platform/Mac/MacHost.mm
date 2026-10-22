@@ -2,6 +2,7 @@
 
 #include "Platform/Mac/MacCloverDemo.h"
 #include "Platform/Mac/MacCloverProgramManager.h"
+#include "Platform/Mac/MacCloverShell.h"
 #include "Platform/Mac/MacCoreServices.h"
 #include "Platform/Mac/MacString.h"
 #include "Platform/Mac/MacTime.h"
@@ -125,6 +126,9 @@ bool MacHost::Initialize() {
     // CLOVERPIC_CLOVER_DEMO=1. Created last so it ends up front and key, and it
     // never touches the two core surfaces.
     ShowCloverPlatformDemoWindow();
+
+    // Optional: the workspace shell rendered from src/Resource/ui/workspace.cui.
+    ShowCloverShellWindow();
 
     // Optional: render the Program Manager with CloverPlatform instead of the
     // core-drawn scene. Same state machine, different presentation.

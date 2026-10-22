@@ -161,3 +161,21 @@ CLOVERPIC_CLOVER_PM=1 ./build-mac/CloverPic
   a command or is added as one.
 - Settings still lives in the core-drawn scene; the CloverPlatform page covers
   new-canvas presets, open project, recents and quit.
+
+### CloverPlatform workspace shell
+
+The workspace chrome (menu bar, toolbar, tool rail, docks, status bar) is now a
+document rather than drawing code:
+
+```bash
+CLOVERPIC_CLOVER_SHELL=1 ./build-mac/CloverPic
+```
+
+- The document is `src/Resource/ui/workspace.cui`, loaded through
+  `clover_surface_create_from_cui`; `CLOVERPIC_UI_DOC` overrides the path and
+  `CLOVERPIC_UI_DIR` (a compile definition) is the default directory.
+- It is additive and off by default: the core-drawn workspace is untouched, so
+  the two can be compared side by side while the shell is filled in.
+- The canvas region is a placeholder panel; the core surface gets composited
+  there in a later step.
+- See `docs/UI_REWRITE_PLAN.md` for the remaining steps.

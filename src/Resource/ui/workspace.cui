@@ -1,0 +1,355 @@
+<Ui>
+  <!--
+    CloverPic workspace shell.
+
+    Equivalent replacement for the core-drawn scene: same regions, same
+    proportions, same labels. The canvas is a direct surface; everything around
+    it is layout, so the panels can be rearranged without touching drawing code.
+  -->
+  <Data>
+    <Value Key="doc" Text="untitled.cloverpic"/>
+    <Value Key="zoom" Text="141%"/>
+    <Value Key="tool" Text="Brush"/>
+    <Value Key="size" Number="10"/>
+    <Value Key="opacity" Text="100%"/>
+    <Value Key="hardness" Text="0"/>
+    <Value Key="layer" Text="LAYER 1"/>
+  </Data>
+
+  <Styles>
+    <!-- Chrome -->
+    <Style x:Name="root" Background="#1B1B1B"/>
+    <Style x:Name="menubar" Background="#2E2E2E" Padding="8,0"/>
+    <Style x:Name="toolbar" Background="#3A3A3A" Padding="8,0"/>
+    <Style x:Name="status" Background="#2E2E2E" Padding="10,0"/>
+
+    <!-- Panels -->
+    <Style x:Name="dock" Background="#232323"/>
+    <Style x:Name="panel" Background="#232323" BorderThickness="1" BorderBrush="#3A3A3A"/>
+    <Style x:Name="panelTitle" Background="#2F2F2F" Padding="8,3"/>
+
+    <!-- Text -->
+    <Style x:Name="menu" FontSize="10" Foreground="#B8B8B8" Padding="6,0"/>
+    <Style x:Name="title" FontSize="10" Foreground="#9C9C9C"/>
+    <Style x:Name="label" FontSize="10" Foreground="#9C9C9C"/>
+    <Style x:Name="value" FontSize="10" Foreground="#D0D0D0"/>
+    <Style x:Name="statusText" FontSize="10" Foreground="#9C9C9C"/>
+
+    <!-- Bits -->
+    <Style x:Name="swatch" Background="#D8D8D8" CornerRadius="2"/>
+    <Style x:Name="toolTile" Background="Transparent" CornerRadius="3" Padding="2,3"/>
+    <Style x:Name="rail" Background="#1F1F1F"/>
+    <Style x:Name="track" Background="#151515" CornerRadius="2"/>
+    <Style x:Name="fill" Background="#4A4A4A" CornerRadius="2"/>
+    <Style x:Name="row" Background="#1E1E1E"/>
+    <Style x:Name="rowSel" Background="#3B6FD4"/>
+    <Style x:Name="chip" Background="#3C3C3C" CornerRadius="3" Padding="6,2"/>
+  </Styles>
+
+  <StackPanel x:Name="root" Width="Fill" Height="Fill">
+
+    <!-- Menu bar -->
+    <StackPanel x:Name="menubar" Orientation="Horizontal" Height="22" Width="Fill">
+      <TextBlock x:Name="menu" Text="FILE"/>
+      <TextBlock x:Name="menu" Text="EDIT"/>
+      <TextBlock x:Name="menu" Text="LAYER"/>
+      <TextBlock x:Name="menu" Text="FILTER"/>
+      <TextBlock x:Name="menu" Text="SELECT"/>
+      <TextBlock x:Name="menu" Text="SNAP"/>
+      <TextBlock x:Name="menu" Text="COLOR"/>
+      <TextBlock x:Name="menu" Text="RULER"/>
+      <TextBlock x:Name="menu" Text="VIEW"/>
+      <TextBlock x:Name="menu" Text="TOOL"/>
+      <TextBlock x:Name="menu" Text="WINDOW"/>
+      <TextBlock x:Name="menu" Text="HELP"/>
+      <TextBlock Width="Fill"/>
+      <TextBlock x:Name="menu" Text="PROGRAM MANAGER" Cursor="pointer"/>
+    </StackPanel>
+
+    <!-- Toolbar: tool strip, modifiers, then the panel toggles on the right -->
+    <StackPanel x:Name="toolbar" Orientation="Horizontal" Height="30" Width="Fill" Spacing="4">
+      <Panel Width="26" Height="22" Cursor="pointer" CornerRadius="3">
+        <Path Data="M5 15 L12 8 L14 10 L7 17 Z" Fill="#D8D8D8" Margin="4,3,4,3"/>
+      </Panel>
+      <Panel Width="26" Height="22" Cursor="pointer" CornerRadius="3">
+        <Path Data="M4 12 C6 5 14 5 16 12" Stroke="#D8D8D8" StrokeThickness="1.4" Margin="4,4,4,4"/>
+      </Panel>
+      <Panel Width="26" Height="22" Cursor="pointer" CornerRadius="3">
+        <Path Data="M4 15 L16 3" Stroke="#D8D8D8" StrokeThickness="1.6" Margin="4,3,4,3"/>
+      </Panel>
+      <Panel Width="10"/>
+      <TextBlock x:Name="label" Text="ANTIALIASING" VerticalAlignment="Center"/>
+      <TextBlock x:Name="value" Text="0" VerticalAlignment="Center"/>
+      <TextBlock x:Name="label" Text="CORRECTION" VerticalAlignment="Center" Margin="10,0,0,0"/>
+      <TextBlock x:Name="value" Text="0" VerticalAlignment="Center"/>
+      <TextBlock x:Name="label" Text="SOFT EDGE" VerticalAlignment="Center" Margin="10,0,0,0"/>
+      <TextBlock Width="Fill"/>
+      <TextBlock x:Name="label" Text="SHOW PALETTE" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <!-- Body -->
+    <StackPanel Orientation="Horizontal" Width="Fill" Height="Fill">
+
+      <!-- Tool rail -->
+      <StackPanel x:Name="rail" Width="54" Height="Fill" Padding="0,4">
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M5 15 L12 8 L14 10 L7 17 Z" Fill="#4A9EFF" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="BRUSH" HorizontalAlignment="Center" FontSize="8" Foreground="#4A9EFF"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M8 4 C10 8 13 9 13 12 C13 14 11 16 8 16 C5 16 3 14 3 12 C3 9 6 8 8 4 Z" Fill="#8A8A8A" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="FILL" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M8 2 L8 14 M3 9 L8 14 L13 9" Stroke="#8A8A8A" StrokeThickness="1.5" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="MOVE" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M3 13 L13 3" Stroke="#8A8A8A" StrokeThickness="1.5" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="LINE" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M4 4 L12 4 L12 12 L4 12 Z" Stroke="#8A8A8A" StrokeThickness="1.4" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="ERASE" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M4 2 L4 15 L8 11 L11 16 L13 15 L10 10 L14 10 Z" Fill="#8A8A8A" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="SELECT" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+        <StackPanel Height="46">
+          <Panel Width="26" Height="20" Cursor="pointer">
+            <Path Data="M8 3 L13 8 L8 13 L3 8 Z" Stroke="#8A8A8A" StrokeThickness="1.4" Margin="5,2,5,2"/>
+          </Panel>
+          <TextBlock x:Name="title" Text="SHAPE" HorizontalAlignment="Center" FontSize="8"/>
+        </StackPanel>
+      </StackPanel>
+
+      <!-- Left dock: colour + brush controls -->
+      <StackPanel x:Name="dock" Width="212" Height="Fill">
+
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
+          <TextBlock x:Name="title" Text="COLOR" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Padding="8,8" Spacing="8">
+          <Panel Width="130" Height="96" BackgroundGradient="Linear" GradientAngle="0"
+                 GradientStops="0:#FFFFFF,1:#FF0000" CornerRadius="2">
+            <Panel Width="Fill" Height="Fill" BackgroundGradient="Linear" GradientAngle="90"
+                   GradientStops="0:#00000000,1:#000000" CornerRadius="2"/>
+          </Panel>
+          <StackPanel Width="16" Height="96" BackgroundGradient="Linear" GradientAngle="90"
+                      GradientStops="0:#FF0000,0.17:#FFFF00,0.33:#00FF00,0.5:#00FFFF,0.67:#0000FF,0.83:#FF00FF,1:#FF0000"
+                      CornerRadius="2"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Padding="8,0" Spacing="4" Height="16">
+          <Panel x:Name="swatch" Width="14" Height="14"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#000000"/>
+          <Panel Width="8"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#E04A4A"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#E0A24A"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#E0DC4A"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#4AE06A"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#4AB8E0"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#6A4AE0"/>
+          <Panel x:Name="swatch" Width="14" Height="14" Background="#E04AC0"/>
+        </StackPanel>
+
+        <TextBlock x:Name="label" Text="0x111111" Margin="8,8,8,4"/>
+
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill" Margin="0,4,0,0">
+          <TextBlock x:Name="title" Text="BRUSH CONTROL" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <StackPanel Padding="8,8" Spacing="7">
+          <StackPanel Height="14">
+            <StackPanel Orientation="Horizontal" Height="12">
+              <TextBlock x:Name="label" Text="SIZE" Width="70"/>
+              <TextBlock x:Name="value" Text="10" HorizontalAlignment="End" Width="Fill"/>
+            </StackPanel>
+            <Panel x:Name="track" Height="4" Width="Fill">
+              <Panel x:Name="fill" Height="4" Width="18%"/>
+            </Panel>
+          </StackPanel>
+          <StackPanel Height="14">
+            <StackPanel Orientation="Horizontal" Height="12">
+              <TextBlock x:Name="label" Text="OPACITY" Width="70"/>
+              <TextBlock x:Name="value" Text="100%" HorizontalAlignment="End" Width="Fill"/>
+            </StackPanel>
+            <Panel x:Name="track" Height="4" Width="Fill">
+              <Panel x:Name="fill" Height="4" Width="100%"/>
+            </Panel>
+          </StackPanel>
+          <StackPanel Height="14">
+            <StackPanel Orientation="Horizontal" Height="12">
+              <TextBlock x:Name="label" Text="FLOW" Width="70"/>
+              <TextBlock x:Name="value" Text="100%" HorizontalAlignment="End" Width="Fill"/>
+            </StackPanel>
+            <Panel x:Name="track" Height="4" Width="Fill">
+              <Panel x:Name="fill" Height="4" Width="100%"/>
+            </Panel>
+          </StackPanel>
+          <StackPanel Height="14">
+            <StackPanel Orientation="Horizontal" Height="12">
+              <TextBlock x:Name="label" Text="SPACING" Width="70"/>
+              <TextBlock x:Name="value" Text="25%" HorizontalAlignment="End" Width="Fill"/>
+            </StackPanel>
+            <Panel x:Name="track" Height="4" Width="Fill">
+              <Panel x:Name="fill" Height="4" Width="25%"/>
+            </Panel>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4" Height="20">
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+              <TextBlock x:Name="label" Text="HARD" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Panel>
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+              <TextBlock x:Name="label" Text="SOFT" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Panel>
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+              <TextBlock x:Name="label" Text="FLAT" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Panel>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
+          <TextBlock x:Name="title" Text="BRUSH: PEN" VerticalAlignment="Center"/>
+        </StackPanel>
+        <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
+          <StackPanel Width="Fill">
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="15 PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="8 PEN SOFT" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#E04A4A" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="20 MAPPING PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#E0A24A" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="30 KABURA PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#E0DC4A" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="40 WATERCOLOR" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+              <Panel Width="8" Height="8" Background="#4AE06A" CornerRadius="4" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="60 TEXTURE PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </StackPanel>
+
+      <!-- Canvas area: the direct surface will sit here -->
+      <Panel Width="Fill" Height="Fill" Background="#2B2B2B" Padding="16">
+        <Panel Width="Fill" Height="Fill" Background="#3C3C3C" BorderThickness="1" BorderBrush="#4A4A4A">
+          <Panel Width="Fill" Height="Fill" Background="#BFBFBF"/>
+        </Panel>
+      </Panel>
+
+      <!-- Right dock: navigator, layers, brush size -->
+      <StackPanel x:Name="dock" Width="248" Height="Fill">
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
+          <TextBlock x:Name="title" Text="NAVIGATOR" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Padding="8,8" Spacing="6">
+          <Panel Width="Fill" Height="120" Background="#3C3C3C" BorderThickness="1" BorderBrush="#4A4A4A" Padding="18">
+            <Panel Width="Fill" Height="Fill" Background="#F2F2F2"/>
+          </Panel>
+          <StackPanel Orientation="Horizontal" Spacing="6" Height="16">
+            <TextBlock x:Name="label" Text="50" Width="46"/>
+            <TextBlock x:Name="label" Text="10" Width="46"/>
+            <TextBlock x:Name="label" Text="20" Width="46"/>
+            <Panel x:Name="chip" Width="46" Height="16">
+              <TextBlock x:Name="label" Text="RESET" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Panel>
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
+          <TextBlock x:Name="title" Text="LAYER" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Padding="8,8" Spacing="6">
+          <StackPanel Orientation="Horizontal" Height="12">
+            <TextBlock x:Name="label" Text="OPACITY" Width="60"/>
+            <TextBlock x:Name="value" Text="100%" HorizontalAlignment="End" Width="Fill"/>
+          </StackPanel>
+          <Panel x:Name="track" Height="4" Width="Fill">
+            <Panel x:Name="fill" Height="4" Width="100%"/>
+          </Panel>
+          <Panel x:Name="chip" Height="18" Width="Fill">
+            <TextBlock x:Name="label" Text="NORMAL" Margin="6,0" VerticalAlignment="Center"/>
+          </Panel>
+        </StackPanel>
+
+        <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
+          <StackPanel Width="Fill">
+            <StackPanel x:Name="rowSel" Orientation="Horizontal" Height="42" Padding="8,0">
+              <Panel Width="26" Height="26" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <StackPanel Width="Fill" Margin="8,0,0,0" Padding="0,9">
+                <TextBlock x:Name="value" Text="LAYER 1"/>
+                <TextBlock x:Name="label" Text="100%  NORMAL" Margin="0,2,0,0"/>
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Orientation="Horizontal" Spacing="4" Padding="8,4" Height="26">
+          <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="+ AD" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="⊖" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="DU" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="▽" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="ME" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+        </StackPanel>
+
+        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
+          <TextBlock x:Name="title" Text="BRUSH SIZE" VerticalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Padding="8,6" Spacing="4">
+          <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="5" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="7" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="rowSel" Width="34" Height="16"><TextBlock x:Name="value" Text="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="20" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="25" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="30" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="40" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="50" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </StackPanel>
+
+    <!-- Status bar -->
+    <StackPanel x:Name="status" Orientation="Horizontal" Height="22" Width="Fill" Spacing="14">
+      <TextBlock x:Name="statusText" Text="NEW CANVAS"/>
+      <TextBlock x:Name="statusText" Text="{Binding tool}"/>
+      <TextBlock x:Name="statusText" Text="SIZE 10"/>
+      <TextBlock x:Name="statusText" Text="OP 100%"/>
+      <TextBlock x:Name="statusText" Text="HARD 0"/>
+      <TextBlock x:Name="statusText" Text="ZOOM {Binding zoom}"/>
+      <TextBlock Width="Fill"/>
+      <TextBlock x:Name="statusText" Text="{Binding doc}"/>
+    </StackPanel>
+  </StackPanel>
+</Ui>

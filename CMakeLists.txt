@@ -125,6 +125,11 @@ elseif(APPLE)
 
     target_compile_options(CloverPic PRIVATE -fobjc-arc)
 
+    # The workspace shell is a .cui document, not compiled code.
+    target_compile_definitions(CloverPic PRIVATE
+        CLOVERPIC_UI_DIR="${CMAKE_SOURCE_DIR}/src/Resource/ui")
+
+
     # CloverPlatform is a Rust submodule consumed through its C ABI. It is
     # optional: without cargo or the submodule the adapter still builds, just
     # without the experimental CloverPlatform surface.
