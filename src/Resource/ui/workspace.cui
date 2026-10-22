@@ -273,12 +273,12 @@
           <Panel x:Name="track" Height="4" Width="Fill">
             <Panel x:Name="fill" Height="4" Width="100%"/>
           </Panel>
-          <Panel x:Name="chip" Height="18" Width="Fill">
-            <TextBlock x:Name="label" Text="NORMAL" Margin="6,0" VerticalAlignment="Center"/>
-          </Panel>
+          <ComboBox x:Name="blend" Height="22" Width="Fill" TextColor="#D0D0D0"
+                    Items="Normal,Multiply,Screen,Darken,Lighten" SelectedIndex="0"/>
         </StackPanel>
 
-        <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
+        <StackPanel Orientation="Horizontal" Width="Fill" Height="Fill">
+        <ScrollViewer x:Name="layerList" Width="Fill" Height="Fill" Padding="0,4">
           <StackPanel Width="Fill">
             <StackPanel x:Name="rowSel" Orientation="Horizontal" Height="42" Padding="8,0">
               <Panel Width="26" Height="26" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
@@ -287,8 +287,88 @@
                 <TextBlock x:Name="label" Text="100%  NORMAL" Margin="0,2,0,0"/>
               </StackPanel>
             </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 2" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 3" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 4" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 5" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 6" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 7" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 8" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 9" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 10" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 11" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 12" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 13" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 14" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 15" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 16" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 17" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 18" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 19" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+            <StackPanel x:Name="row" Orientation="Horizontal" Height="30" Padding="8,0">
+              <Panel Width="20" Height="20" Background="#FFFFFF" CornerRadius="2" VerticalAlignment="Center"/>
+              <TextBlock x:Name="label" Text="LAYER 20" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
+        <ScrollBar x:Name="layerScroll" Orientation="Vertical" Target="layerList"
+                   Offset="0" Viewport="453" Extent="642" Width="10" Height="Fill"
+                   Background="#1A1A1A" Margin="2,0,0,0"/>
+        </StackPanel>
 
         <StackPanel Orientation="Horizontal" Spacing="4" Padding="8,4" Height="26">
           <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="+ AD" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
@@ -327,6 +407,7 @@
       <TextBlock x:Name="statusText" Text="SIZE 10"/>
       <TextBlock x:Name="statusText" Text="OP 100%"/>
       <TextBlock x:Name="statusText" Text="HARD 0"/>
+      <TextBlock x:Name="brushReadout" Text="size 10"/>
       <TextBlock x:Name="statusText" Text="ZOOM {Binding zoom}"/>
       <TextBlock Width="Fill"/>
       <TextBlock x:Name="statusText" Text="{Binding doc}"/>

@@ -133,7 +133,36 @@ std::string ShellDocumentPath() {
     // when the buffer is too small. It does not return `CLOVER_OK` (also 0), so
     // testing against `CLOVER_OK` would spin forever on an empty queue.
     while (clover_surface_take_action(_surface, buffer, sizeof(buffer)) > 0) {
-        std::fprintf(stderr, "[clover-shell] action: %s\n", buffer);
+        [self handleAction:std::string(buffer)];
+    }
+}
+
+/// Routes a framework action.
+///
+/// Widgets report `change:<control>:<value>`; the shell reflects the value in its
+/// own readouts. Once the canvas is hosted here these will also forward to core.
+- (void)handleAction:(const std::string&)action {
+    std::fprintf(stderr, "[clover-shell] action: %s\n", action.c_str());
+    if (!_surface) {
+        return;
+    }
+    const std::string prefix = "change:";
+    if (action.rfind(prefix, 0) != 0) {
+        return;
+    }
+    const std::string rest = action.substr(prefix.size());
+    const auto colon = rest.find(':');
+    if (colon == std::string::npos) {
+        return;
+    }
+    const std::string control = rest.substr(0, colon);
+    const std::string value = rest.substr(colon + 1);
+
+    if (control == "size" || control == "opacity" || control == "flow" || control == "spacing") {
+        clover_surface_set_label(_surface, "brushReadout",
+                                 (control + " " + value).c_str());
+    } else if (control == "blend") {
+        clover_surface_set_label(_surface, "blendReadout", value.c_str());
     }
 }
 
