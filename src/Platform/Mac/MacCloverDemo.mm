@@ -13,7 +13,10 @@
 
 namespace {
 
-constexpr const char* kDemoXaml = R"XAML(
+/// Builds the demo document. The recent-project list is generated so it is long
+/// enough to exercise the ScrollViewer.
+std::string BuildDemoXaml() {
+    std::string xaml = R"XAML(
 <StackPanel Background="#1E2023">
   <StackPanel Orientation="Horizontal" Spacing="6" Padding="8" Background="#25282C">
     <Button Content="Brush"  Width="72" x:Name="btnBrush"  Focusable="True"/>
@@ -21,17 +24,40 @@ constexpr const char* kDemoXaml = R"XAML(
     <Button Content="Layers" Width="72" x:Name="btnLayers" Focusable="True"/>
   </StackPanel>
   <Panel Width="Fill" Height="Fill" Background="#141618" Padding="14">
-    <Border Background="#1A1C1F" CornerRadius="6" BorderThickness="1" BorderBrush="#3A3F46"
-            Width="Fill" Height="Fill">
-      <CloverSurface Id="1" Width="Fill" Height="Fill" x:Name="canvas"/>
-    </Border>
+    <StackPanel Orientation="Horizontal" Spacing="14" Width="Fill" Height="Fill">
+      <Panel Width="190" Background="#232629" Padding="10">
+        <StackPanel Spacing="6" Width="Fill" Height="Fill">
+          <TextBlock Text="RECENT PROJECTS" FontSize="11" Foreground="#9AA3AD" Height="18"/>
+          <ScrollViewer Height="Fill" Width="Fill" x:Name="recent">
+)XAML";
+    for (int index = 0; index < 14; ++index) {
+        char row[256];
+        std::snprintf(row, sizeof(row),
+                      "            <Panel Height=\"34\" Background=\"#2A2D31\" CornerRadius=\"4\" "
+                      "Padding=\"8,0\" VerticalAlignment=\"Center\">"
+                      "<TextBlock Text=\"Sketch %02d\" FontSize=\"12\" Foreground=\"#D6DBE1\" "
+                      "VerticalAlignment=\"Center\"/></Panel>\n",
+                      index + 1);
+        xaml += row;
+    }
+    xaml += R"XAML(
+          </ScrollViewer>
+        </StackPanel>
+      </Panel>
+      <Border Background="#1A1C1F" CornerRadius="6" BorderThickness="1" BorderBrush="#3A3F46"
+              Width="Fill" Height="Fill">
+        <CloverSurface Id="1" Width="Fill" Height="Fill" x:Name="canvas"/>
+      </Border>
+    </StackPanel>
   </Panel>
   <Panel Height="26" Background="#181A1D" Padding="14,0">
-    <TextBlock Text="CloverPlatform 0.2 surface hosted by the CloverPic macOS adapter via the C ABI"
+    <TextBlock Text="CloverPlatform 0.3 — scrollable list + direct-memory canvas, hosted via the C ABI"
                FontSize="11" Foreground="#7F8892" VerticalAlignment="Center"/>
   </Panel>
 </StackPanel>
 )XAML";
+    return xaml;
+}
 
 /// Premultiplied BGRA content for the canvas region: checkerboard plus two
 /// accent bands, so it is visibly live pixels rather than a flat fill.
@@ -145,7 +171,8 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     const float logicalHeight = static_cast<float>(NSHeight(bounds));
 
     if (!_surface) {
-        _surface = clover_surface_create_from_xaml(logicalWidth, logicalHeight, scale, kDemoXaml);
+        const std::string xaml = BuildDemoXaml();
+        _surface = clover_surface_create_from_xaml(logicalWidth, logicalHeight, scale, xaml.c_str());
         if (!_surface) {
             std::fprintf(stderr, "[clover] surface creation failed (no usable font?)\n");
             return;
@@ -255,6 +282,23 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
 
 - (void)mouseMoved:(NSEvent*)event {
     [self pushPointer:CLOVER_POINTER_MOVE button:0 event:event];
+}
+
+- (void)scrollWheel:(NSEvent*)event {
+    if (!_surface) {
+        return;
+    }
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    CGFloat delta = event.scrollingDeltaY;
+    if (event.hasPreciseScrollingDeltas) {
+        delta /= 10.0;
+    }
+    if (std::abs(delta) < 0.01) {
+        return;
+    }
+    clover_surface_wheel(_surface, static_cast<float>(local.x), static_cast<float>(local.y),
+                         static_cast<float>(delta), [self currentModifiers:event]);
+    [self setNeedsDisplay:YES];
 }
 
 - (void)keyDown:(NSEvent*)event {
