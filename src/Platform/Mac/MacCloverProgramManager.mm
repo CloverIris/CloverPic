@@ -10,6 +10,7 @@
 
 #include "Core/App/AppCommandPayload.h"
 #include "Core/Services/CoreServices.h"
+#include "Platform/Mac/MacCloverIme.h"
 #include "clover_platform.h"
 
 #include <cstdio>
@@ -120,7 +121,7 @@ std::vector<std::string> LoadRecentProjects() {
 
 } // namespace
 
-@interface CloverProgramManagerView : NSView
+@interface CloverProgramManagerView : CloverImeView
 - (instancetype)initWithHost:(CloverPic::Platform::Mac::MacHost*)host;
 @end
 
@@ -195,6 +196,7 @@ std::vector<std::string> LoadRecentProjects() {
             return;
         }
         _scale = scale;
+        [self setCloverSurface:_surface];
         std::fprintf(stderr, "[clover-pm] Program Manager rendered by CloverPlatform (%.0fx%.0f pt)\n",
                      width, height);
     } else if (std::fabs(scale - _scale) > 0.01f || !NSEqualSizes(bounds.size, _lastSize)) {
@@ -209,9 +211,15 @@ std::vector<std::string> LoadRecentProjects() {
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     if (self.window) {
+        [self setCloverSurface:_surface];
         [self syncSurface];
         [self.window makeFirstResponder:self];
     }
+}
+
+- (void)cloverActionsChanged {
+    [self drainActions];
+    [self setNeedsDisplay:YES];
 }
 
 - (void)setFrameSize:(NSSize)newSize {

@@ -4,6 +4,7 @@
 
 #import <Cocoa/Cocoa.h>
 
+#include "Platform/Mac/MacCloverIme.h"
 #include "clover_platform.h"
 
 #include <cmath>
@@ -31,6 +32,9 @@ std::string BuildDemoXaml() {
     <Button Content="Brush"  Width="72" x:Name="btnBrush"  Focusable="True" Command="tool:brush"/>
     <Button Content="Eraser" Width="72" x:Name="btnEraser" Focusable="True" Command="tool:eraser"/>
     <Button Content="Layers" Width="72" x:Name="btnLayers" Focusable="True" Command="toggle:canvas"/>
+    <TextBox x:Name="filter" Width="200" Height="32" Placeholder="Filter layers..."
+             Background="#1B1E22" Foreground="#E8ECF0" CornerRadius="5"
+             BorderThickness="1" BorderBrush="#3B4048"/>
   </StackPanel>
   <Panel Width="Fill" Height="Fill" Background="#141618" Padding="14">
     <StackPanel Orientation="Horizontal" Spacing="14" Width="Fill" Height="Fill">
@@ -101,7 +105,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
 
 } // namespace
 
-@interface CloverPlatformView : NSView
+@interface CloverPlatformView : CloverImeView
 @end
 
 @implementation CloverPlatformView {
@@ -149,9 +153,17 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     if (self.window) {
+        [self setCloverSurface:_surface];
         [self syncSurface];
         [self.window makeFirstResponder:self];
     }
+}
+
+/// The IME mutates the framework's text field directly, so the action queue has
+/// to be drained here as well as on pointer input.
+- (void)cloverActionsChanged {
+    [self drainActions];
+    [self setNeedsDisplay:YES];
 }
 
 - (void)setFrameSize:(NSSize)newSize {
@@ -190,6 +202,7 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
             return;
         }
         _scale = scale;
+        [self setCloverSurface:_surface];
         _directHandle = clover_surface_add_direct(_surface, 1, 1);
         _canvasSized = NO;
         clover_frame frame{};
@@ -341,14 +354,17 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
     if (!_surface) {
         return;
     }
-    // Only Tab is forwarded for now; the rest of the keyboard mapping is not wired.
+    // Tab is ours; everything else goes through the input system, which routes
+    // printable text to insertText: and the rest to doCommandBySelector:.
     if (event.keyCode == 0x30) {
         const uint32_t modifiers =
             (event.modifierFlags & NSEventModifierFlagShift) ? CLOVER_MODIFIER_SHIFT : 0;
         clover_surface_key(_surface, 0x09, CLOVER_KEY_DOWN, modifiers, event.isARepeat);
         [self drainActions];
         [self setNeedsDisplay:YES];
+        return;
     }
+    [self interpretKeyEvents:@[ event ]];
 }
 
 @end
