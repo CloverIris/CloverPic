@@ -16,6 +16,22 @@
 - (void)cloverActionsChanged {
 }
 
+/// Applies the cursor the framework asks for at a logical point.
+- (void)cloverUpdateCursorAt:(NSPoint)point {
+    if (!_cloverSurface) {
+        return;
+    }
+    switch (clover_surface_cursor(_cloverSurface, (float)point.x, (float)point.y)) {
+        case 1: [[NSCursor pointingHandCursor] set]; break;
+        case 2: [[NSCursor IBeamCursor] set]; break;
+        case 3: [[NSCursor resizeLeftRightCursor] set]; break;
+        case 4: [[NSCursor resizeUpDownCursor] set]; break;
+        case 5: [[NSCursor openHandCursor] set]; break;
+        case 6: [[NSCursor crosshairCursor] set]; break;
+        default: [[NSCursor arrowCursor] set]; break;
+    }
+}
+
 - (BOOL)acceptsFirstResponder {
     return YES;
 }

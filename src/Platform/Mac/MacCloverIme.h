@@ -18,6 +18,9 @@
 - (void)setCloverSurface:(clover_surface*)surface;
 #endif
 
+/// Applies the framework's cursor choice at a logical point.
+- (void)cloverUpdateCursorAt:(NSPoint)point;
+
 /// Called after any text mutation so subclasses can drain the action queue and
 /// repaint. Default implementation does nothing.
 - (void)cloverActionsChanged;

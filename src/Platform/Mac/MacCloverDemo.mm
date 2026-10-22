@@ -329,6 +329,8 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
 }
 
 - (void)mouseMoved:(NSEvent*)event {
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    [self cloverUpdateCursorAt:local];
     [self pushPointer:CLOVER_POINTER_MOVE button:0 event:event];
 }
 
