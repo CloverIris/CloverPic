@@ -23,10 +23,14 @@ $env:PATH = "$mingwBin;$env:PATH"
 macOS:
 
 ```bash
-cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build-mac --target CloverPic -j 8
 ./build-mac/CloverPic
 ```
+
+Use `Release` for anything you are going to *use*. The UI renderer is a per-pixel
+CPU loop, and `-O0` measured **7.5x slower** (318 ms vs 42 ms per full frame).
+See `docs/UI_PERFORMANCE_REVIEW.md`.
 
 `CMakeLists.txt` selects the adapter by host: `WIN32` builds
 `src/main.cpp` + `src/Platform/Windows`, `APPLE` builds `src/Platform/Mac`
