@@ -29,6 +29,25 @@ Core 里不再有 `Render()`，不再有矩形计算。
 - **适配层不感知 UI**：只开窗、翻译输入、贴图。
 - 缺能力时扩框架，不在 Core 里补绘制代码。
 
+## 施工结构（直接在 CloverPic 里，不在框架里）
+
+```text
+src/Core/UI/Workspace/Clover/
+  WorkspaceViewModel.{h,cpp}   UI 快照：工具、笔刷、图层、缩放、文档、活动层
+  WorkspacePresenter.{h,cpp}   快照 → surface（set_*）；动作 → Core::AppCommand
+src/Resource/ui/workspace.cui  布局 + 控件（画布是 <CloverSurface x:Name="canvas"/>）
+```
+
+两条数据流：
+
+- **下行**：`ViewModel::Snapshot` → `clover_surface_set_value/set_label/set_checked/
+  set_selected/set_visible/set_children_xaml`；结构性变化才 `reload_cui`。
+- **上行**：`clover_surface_take_action` → `change:<name>:<value>` → 解析 →
+  `Core::AppCommand` → `EditorSession`。
+
+Workspace 窗口本身变成 Clover surface（与 `CLOVERPIC_CLOVER_PM` 同构），
+不开第二个窗口。开关：`CLOVERPIC_CLOVER_WORKSPACE=1`。
+
 ## 步骤
 
 ### Step 1 — 补齐框架缺口，搭出工作区外壳
