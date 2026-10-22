@@ -13,6 +13,15 @@
 
 namespace {
 
+/// Colours for the host demo live here, not in the markup.
+constexpr const char* kHostStyles = R"XAML(
+<Styles>
+  <Style TargetType="Button" Background="#2F6FD0" Foreground="#FFFFFF"
+         CornerRadius="6" BorderThickness="1" BorderBrush="#4C8DE8"/>
+  <Style x:Name="canvas" Background="#101215"/>
+</Styles>
+)XAML";
+
 /// Builds the demo document. The recent-project list is generated so it is long
 /// enough to exercise the ScrollViewer.
 std::string BuildDemoXaml() {
@@ -172,7 +181,8 @@ void PaintCanvas(clover_surface* surface, uint64_t handle) {
 
     if (!_surface) {
         const std::string xaml = BuildDemoXaml();
-        _surface = clover_surface_create_from_xaml(logicalWidth, logicalHeight, scale, xaml.c_str());
+        _surface = clover_surface_create_from_xaml_with_styles(
+            logicalWidth, logicalHeight, scale, xaml.c_str(), kHostStyles);
         if (!_surface) {
             std::fprintf(stderr, "[clover] surface creation failed (no usable font?)\n");
             return;
