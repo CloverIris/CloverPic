@@ -109,12 +109,14 @@ See `docs/CoreAdapterAPI.md` for the full boundary contract.
 
 - It is a Rust workspace: `clover-core`, `clover-ui`, `clover-render`,
   `clover-abi`, `clover-demo`.
-- It is **not** in the CMake graph. The C++/ObjC++ adapters do not depend on it
-  yet, so `cmake` builds are unaffected.
+- On macOS, CMake builds `clover-abi` with cargo and links the static library
+  into the executable (optional, guarded by `CLOVERPIC_HAS_CLOVER_PLATFORM`). The
+  Windows build does not reference it yet.
 - Build and test it with `cargo`: `cd CloverPlatform && cargo test`.
 - It is the target for the UI migration: core-owned UI scenes will eventually be
   expressed as CloverPlatform trees and presented through the C ABI instead of
-  `SoftwareRenderer` into `RgbaFrame`.
+  `SoftwareRenderer` into `RgbaFrame`. Today only the demonstration window in
+  `MacCloverDemo.mm` uses it.
 - Do not copy CloverPlatform sources into `src/`. The submodule boundary is the
   intended coupling; when a capability is missing, extend the framework.
 
