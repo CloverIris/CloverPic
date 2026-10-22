@@ -53,3 +53,7 @@ recent_projects.json
 # Local build/run artifacts
 build.log
 build_err.txt
+
+# Local macOS build directories
+build-mac/
+build-mac-*/

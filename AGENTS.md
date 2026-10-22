@@ -2,14 +2,16 @@
 
 ## Toolchain
 
-- OS: Windows 10/11 x64
+- OS: Windows 10/11 x64 (primary) or macOS 13+ on Apple Silicon / Intel
 - C++: C++20, extensions off
-- Compiler: MinGW-w64 GCC 13.1.0 from CLion bundled toolchain
-- Build: CLion bundled CMake + Ninja
+- Compiler: MinGW-w64 GCC 13.1.0 from CLion bundled toolchain (Windows); Apple Clang (macOS)
+- Build: CLion bundled CMake + Ninja (Windows); CMake 3.25+ + Ninja (macOS)
 - Runtime: no MSVC runtime dependency
 - Target: `CloverPic`
 
 ## Build Command
+
+Windows:
 
 ```powershell
 $mingwBin = "C:\Users\YoCoc\AppData\Local\Programs\CLion\bin\mingw\bin"
@@ -18,21 +20,56 @@ $env:PATH = "$mingwBin;$env:PATH"
 & "C:\Users\YoCoc\AppData\Local\Programs\CLion\bin\cmake\win\x64\bin\cmake.exe" --build cmake-build-debug --target CloverPic -j 14
 ```
 
+macOS:
+
+```bash
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-mac --target CloverPic -j 8
+./build-mac/CloverPic
+```
+
+`CMakeLists.txt` selects the adapter by host: `WIN32` builds
+`src/main.cpp` + `src/Platform/Windows`, `APPLE` builds `src/Platform/Mac`
+(Objective-C++, AppKit). `CloverPicCore` is identical for both.
+
 ## Current Architecture
 
 ```text
 src/
   Core/               # platform-independent app model, UI scene, renderer, document model, services
   Platform/Windows/   # first platform adapter, Win32 host/presenter/services
+  Platform/Mac/       # macOS adapter, AppKit host/presenter/services
   Resource/           # vendored source resources such as icon subsets
   Utils/              # platform-neutral primitive types
 ```
 
 - `CloverPicCore` is a platform-neutral static library.
-- `CloverPic.exe` links `CloverPicCore` with the Windows adapter.
+- `CloverPic` links `CloverPicCore` with exactly one platform adapter.
 - The old native child-window UI has been removed.
 - The old tablet and D2D canvas paths have been removed.
 - Workspace and Program Manager UI are core-owned single-surface scenes.
+
+## macOS Adapter Notes
+
+- Objective-C++ (`.mm`) because the shell is AppKit; `MacHost` mirrors `WindowsHost`
+  (two `RuntimeSurface` instances: Program Manager + Workspace) and pumps frames on a
+  60 Hz `NSTimer` added to `NSRunLoopCommonModes`.
+- `MacSurfaceView` is flipped so core and AppKit share a top-left pixel origin, and it
+  forwards input in **backing pixels** (`point * backingScaleFactor`), matching the
+  Windows per-monitor-DPI-aware contract.
+- Cmd maps to `ModifierControl`, Cmd and Control both set it, so core's Control-based
+  shortcuts stay native.
+- macOS key codes are translated to Windows virtual-key values, because core's input
+  controllers compare against VK codes.
+- `CoreTypes.h` names (`Point`, `Rect`, `Size`) collide with legacy MacTypes.h. Inside
+  `src/Platform/Mac` always qualify them (`CloverPic::Point`).
+- `String` is `std::wstring`, which is 32 bit on Apple platforms. `MacString` normalizes
+  at the boundary: conversions back into `String` always emit UTF-16 code units so
+  core's UTF-16 text paths keep working.
+- The PNG codec is self-contained on zlib (`MacPngCodec`) rather than ImageIO, because
+  `CGBitmapContext` only supports premultiplied alpha and would destroy the precision of
+  the RGBA10 payloads that `.cloverpic` stores as 16 bit PNG.
+- `CLOVERPIC_DATA_DIR` redirects settings/recent-file storage for local testing.
 
 ## Core Responsibilities
 

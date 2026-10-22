@@ -45,6 +45,7 @@ src/
       ProjectManager/       # Program Manager UI state / layout / components / interaction / render
   Platform/
     Windows/                # Windows adapter：HWND、消息泵、服务实现、frame 呈现
+    Mac/                    # macOS adapter：NSWindow、帧泵、服务实现、frame 呈现
   Resource/
     Icons/Tabler/           # MIT 图标资源子集与说明
   Utils/                    # 平台无关基础类型
@@ -103,6 +104,8 @@ CloverPic 的 UI 是 core-owned scene tree。平台只知道窗口大小和输�
 
 ## 构建
 
+### Windows
+
 推荐使用 CLion 的 Build / Run。命令行构建需要先把 CLion bundled MinGW 加入 `PATH`：
 
 ```powershell
@@ -112,14 +115,37 @@ $env:PATH = "$mingwBin;$env:PATH"
 & "C:\Users\YoCoc\AppData\Local\Programs\CLion\bin\cmake\win\x64\bin\cmake.exe" --build cmake-build-debug --target CloverPic -j 14
 ```
 
+### macOS
+
+需要 Xcode Command Line Tools（或完整 Xcode）、CMake ≥ 3.25 和 Ninja：
+
+```bash
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-mac --target CloverPic -j 8
+./build-mac/CloverPic
+```
+
+`CMakeLists.txt` 按宿主平台选择 adapter：Windows 编译 `src/main.cpp` + `src/Platform/Windows`，macOS 编译 `src/Platform/Mac`（Objective-C++ / AppKit）。`CloverPicCore` 两者完全相同。
+
 ## 工具链
 
-- OS: Windows 10/11 x64
+- OS: Windows 10/11 x64（主力）或 macOS 13+（Apple Silicon / Intel）
 - C++: C++20，`CMAKE_CXX_EXTENSIONS OFF`
-- Compiler: CLion bundled MinGW-w64 GCC 13.1.0
-- Build: CLion bundled CMake + Ninja
+- Compiler: CLion bundled MinGW-w64 GCC 13.1.0（Windows）；Apple Clang（macOS）
+- Build: CLion bundled CMake + Ninja（Windows）；CMake + Ninja（macOS）
 - Runtime: 不依赖 MSVC runtime
 - Target: `CloverPic`
+
+## macOS 适配层
+
+`src/Platform/Mac` 只负责平台能力，不含 UI 或编辑器语义：
+
+- `MacHost`：NSApplication、Workspace 窗口、无边框 Program Manager 窗口、60Hz 帧泵。
+- `MacSurfaceView`：向上翻转坐标系（与 core 的左上原点一致），把 AppKit 输入翻译成 `CloverPic::Input`（像素坐标 = point × backingScaleFactor），并把 `RgbaFrame` 以零拷贝 CGImage 呈现。
+- `MacCoreServices`：内存/显示信息、最近文件、文件字节、文件对话框、字体发现、色彩 profile、设置存储。
+- `MacPngCodec`：基于 zlib 的独立 PNG 编解码。不使用 ImageIO，因为 `CGBitmapContext` 只支持预乘 alpha，会破坏 `.cloverpic` 里 RGBA10 数据的精度。
+
+macOS 下 Cmd 映射为 `ModifierControl`，因此 core 里基于 Control 的快捷键（Cmd+S / Cmd+Z 等）保持原生手感。调试时可用 `CLOVERPIC_DATA_DIR` 把设置和最近文件重定向到指定目录。
 
 ## 验证建议
 
