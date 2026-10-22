@@ -49,3 +49,7 @@ out/
 # VividPic runtime data (future)
 settings.json
 recent_projects.json
+
+# Local build/run artifacts
+build.log
+build_err.txt
