@@ -141,6 +141,74 @@ std::string ShellDocumentPath() {
     [self setNeedsDisplay:YES];
 }
 
+// ---- input -------------------------------------------------------------
+// Without these the view accepts the first responder but never sees a click:
+// AppKit delivers mouse events through the responder chain, and an NSView that
+// does not override them silently swallows nothing.
+
+- (BOOL)acceptsFirstMouse:(NSEvent*)event {
+    (void)event;
+    return YES;
+}
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea* area in [self trackingAreas]) {
+        [self removeTrackingArea:area];
+    }
+    NSTrackingArea* area = [[NSTrackingArea alloc]
+        initWithRect:self.bounds
+             options:(NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow |
+                      NSTrackingInVisibleRect)
+               owner:self
+            userInfo:nil];
+    [self addTrackingArea:area];
+}
+
+- (void)mouseDown:(NSEvent*)event {
+    [self.window makeFirstResponder:self];
+    [self pushPointer:CLOVER_POINTER_DOWN button:1 event:event];
+}
+
+- (void)mouseUp:(NSEvent*)event {
+    [self pushPointer:CLOVER_POINTER_UP button:1 event:event];
+}
+
+- (void)mouseDragged:(NSEvent*)event {
+    [self pushPointer:CLOVER_POINTER_MOVE button:1 event:event];
+}
+
+- (void)rightMouseDown:(NSEvent*)event {
+    [self pushPointer:CLOVER_POINTER_DOWN button:2 event:event];
+}
+
+- (void)rightMouseUp:(NSEvent*)event {
+    [self pushPointer:CLOVER_POINTER_UP button:2 event:event];
+}
+
+- (void)mouseMoved:(NSEvent*)event {
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    [self cloverUpdateCursorAt:local];
+    [self pushPointer:CLOVER_POINTER_MOVE button:0 event:event];
+}
+
+- (void)scrollWheel:(NSEvent*)event {
+    if (!_surface) {
+        return;
+    }
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    CGFloat delta = event.scrollingDeltaY;
+    if (event.hasPreciseScrollingDeltas) {
+        delta /= 10.0;
+    }
+    if (std::abs(delta) < 0.01) {
+        return;
+    }
+    clover_surface_wheel(_surface, (float)local.x, (float)local.y, (float)delta, 0);
+    [self syncSurface];
+    [self setNeedsDisplay:YES];
+}
+
 - (void)pushPointer:(uint32_t)kind button:(uint32_t)button event:(NSEvent*)event {
     if (!_surface) {
         return;

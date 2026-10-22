@@ -173,51 +173,31 @@
           <TextBlock x:Name="title" Text="BRUSH CONTROL" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <StackPanel Padding="8,8" Spacing="7">
-          <StackPanel Height="14">
-            <StackPanel Orientation="Horizontal" Height="12">
-              <TextBlock x:Name="label" Text="SIZE" Width="70"/>
-              <TextBlock x:Name="value" Text="10" HorizontalAlignment="End" Width="Fill"/>
-            </StackPanel>
-            <Panel x:Name="track" Height="4" Width="Fill">
-              <Panel x:Name="fill" Height="4" Width="18%"/>
-            </Panel>
+        <StackPanel Padding="8,8" Spacing="5">
+          <StackPanel Orientation="Horizontal" Height="22" Spacing="6">
+            <TextBlock x:Name="label" Text="SIZE" Width="64" VerticalAlignment="Center"/>
+            <Slider x:Name="size" Width="Fill" Value="10" Min="1" Max="100"/>
           </StackPanel>
-          <StackPanel Height="14">
-            <StackPanel Orientation="Horizontal" Height="12">
-              <TextBlock x:Name="label" Text="OPACITY" Width="70"/>
-              <TextBlock x:Name="value" Text="100%" HorizontalAlignment="End" Width="Fill"/>
-            </StackPanel>
-            <Panel x:Name="track" Height="4" Width="Fill">
-              <Panel x:Name="fill" Height="4" Width="100%"/>
-            </Panel>
+          <StackPanel Orientation="Horizontal" Height="22" Spacing="6">
+            <TextBlock x:Name="label" Text="OPACITY" Width="64" VerticalAlignment="Center"/>
+            <Slider x:Name="opacity" Width="Fill" Value="100" Min="0" Max="100"/>
           </StackPanel>
-          <StackPanel Height="14">
-            <StackPanel Orientation="Horizontal" Height="12">
-              <TextBlock x:Name="label" Text="FLOW" Width="70"/>
-              <TextBlock x:Name="value" Text="100%" HorizontalAlignment="End" Width="Fill"/>
-            </StackPanel>
-            <Panel x:Name="track" Height="4" Width="Fill">
-              <Panel x:Name="fill" Height="4" Width="100%"/>
-            </Panel>
+          <StackPanel Orientation="Horizontal" Height="22" Spacing="6">
+            <TextBlock x:Name="label" Text="FLOW" Width="64" VerticalAlignment="Center"/>
+            <Slider x:Name="flow" Width="Fill" Value="100" Min="0" Max="100"/>
           </StackPanel>
-          <StackPanel Height="14">
-            <StackPanel Orientation="Horizontal" Height="12">
-              <TextBlock x:Name="label" Text="SPACING" Width="70"/>
-              <TextBlock x:Name="value" Text="25%" HorizontalAlignment="End" Width="Fill"/>
-            </StackPanel>
-            <Panel x:Name="track" Height="4" Width="Fill">
-              <Panel x:Name="fill" Height="4" Width="25%"/>
-            </Panel>
+          <StackPanel Orientation="Horizontal" Height="22" Spacing="6">
+            <TextBlock x:Name="label" Text="SPACING" Width="64" VerticalAlignment="Center"/>
+            <Slider x:Name="spacing" Width="Fill" Value="25" Min="0" Max="100"/>
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" Height="20">
-            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer" Command="hardness:hard">
               <TextBlock x:Name="label" Text="HARD" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Panel>
-            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer" Command="hardness:soft">
               <TextBlock x:Name="label" Text="SOFT" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Panel>
-            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer">
+            <Panel x:Name="chip" Width="52" Height="18" Cursor="pointer" Command="hardness:flat">
               <TextBlock x:Name="label" Text="FLAT" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Panel>
           </StackPanel>
