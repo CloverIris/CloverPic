@@ -1,5 +1,6 @@
 #import "Platform/Mac/MacHost.h"
 
+#include "Platform/Mac/MacCloverDemo.h"
 #include "Platform/Mac/MacCoreServices.h"
 #include "Platform/Mac/MacString.h"
 #include "Platform/Mac/MacTime.h"
@@ -118,6 +119,11 @@ bool MacHost::Initialize() {
     } else if (m_workspaceWindow) {
         [m_workspaceWindow makeKeyAndOrderFront:nil];
     }
+
+    // Optional: an additive CloverPlatform window, enabled with
+    // CLOVERPIC_CLOVER_DEMO=1. Created last so it ends up front and key, and it
+    // never touches the two core surfaces.
+    ShowCloverPlatformDemoWindow();
 
     return m_workspaceWindow != nil && m_homeWindow != nil;
 }

@@ -124,6 +124,31 @@ elseif(APPLE)
     )
 
     target_compile_options(CloverPic PRIVATE -fobjc-arc)
+
+    # CloverPlatform is a Rust submodule consumed through its C ABI. It is
+    # optional: without cargo or the submodule the adapter still builds, just
+    # without the experimental CloverPlatform surface.
+    set(CLOVER_PLATFORM_DIR "${CMAKE_SOURCE_DIR}/CloverPlatform")
+    find_program(CARGO_EXECUTABLE cargo)
+    if(CARGO_EXECUTABLE AND EXISTS "${CLOVER_PLATFORM_DIR}/Cargo.toml")
+        set(CLOVER_ABI_LIB "${CLOVER_PLATFORM_DIR}/target/release/libclover_abi.a")
+        add_custom_target(CloverPlatformAbi ALL
+            COMMAND ${CARGO_EXECUTABLE} build --release
+                    --manifest-path "${CLOVER_PLATFORM_DIR}/Cargo.toml" -p clover-abi
+            BYPRODUCTS "${CLOVER_ABI_LIB}"
+            COMMENT "Building the CloverPlatform C ABI (cargo)"
+            VERBATIM)
+        add_dependencies(CloverPic CloverPlatformAbi)
+        target_include_directories(CloverPic PRIVATE "${CLOVER_PLATFORM_DIR}/include")
+        target_compile_definitions(CloverPic PRIVATE CLOVERPIC_HAS_CLOVER_PLATFORM=1)
+        target_link_libraries(CloverPic PRIVATE
+            "${CLOVER_ABI_LIB}"
+            "-framework Security"
+            "-framework CoreFoundation")
+        message(STATUS "CloverPlatform: enabled")
+    else()
+        message(STATUS "CloverPlatform: disabled (submodule or cargo not found)")
+    endif()
 else()
     message(FATAL_ERROR "CloverPic currently ships adapters for Windows and macOS only.")
 endif()

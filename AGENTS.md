@@ -120,3 +120,20 @@ See `docs/CoreAdapterAPI.md` for the full boundary contract.
 
 When cloning with submodules: `git clone --recursive`, or
 `git submodule update --init` in an existing checkout.
+
+### macOS integration spike
+
+`src/Platform/Mac/MacCloverDemo.mm` hosts a CloverPlatform surface through the C
+ABI in its own window. It is additive and off by default:
+
+```bash
+CLOVERPIC_CLOVER_DEMO=1 ./build-mac/CloverPic
+```
+
+- CMake builds `clover-abi` with cargo and links the static library. If cargo or
+  the submodule is missing the adapter still builds, just without the window
+  (`CLOVERPIC_HAS_CLOVER_PLATFORM` is then undefined).
+- The demo never touches the two core surfaces; it is the proving ground before
+  any real UI migrates.
+- See `CloverPlatform/docs/MIGRATION.md` for the hosting pattern and the traps
+  found so far (damage coordinate space, single damage owner, window key order).
