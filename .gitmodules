@@ -1,0 +1,4 @@
+[submodule "CloverPlatform"]
+	path = CloverPlatform
+	url = https://github.com/CloverIris/CloverPlartform.git
+	branch = main
