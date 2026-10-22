@@ -115,8 +115,9 @@ See `docs/CoreAdapterAPI.md` for the full boundary contract.
 - Build and test it with `cargo`: `cd CloverPlatform && cargo test`.
 - It is the target for the UI migration: core-owned UI scenes will eventually be
   expressed as CloverPlatform trees and presented through the C ABI instead of
-  `SoftwareRenderer` into `RgbaFrame`. Today only the demonstration window in
-  `MacCloverDemo.mm` uses it.
+  `SoftwareRenderer` into `RgbaFrame`. Today the demonstration window
+  (`MacCloverDemo.mm`) and an alternative Program Manager
+  (`MacCloverProgramManager.mm`) use it; the Workspace is still core-drawn.
 - Do not copy CloverPlatform sources into `src/`. The submodule boundary is the
   intended coupling; when a capability is missing, extend the framework.
 
