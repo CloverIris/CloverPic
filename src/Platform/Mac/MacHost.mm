@@ -1,6 +1,7 @@
 #import "Platform/Mac/MacHost.h"
 
 #include "Platform/Mac/MacCloverDemo.h"
+#include "Platform/Mac/MacCloverProgramManager.h"
 #include "Platform/Mac/MacCoreServices.h"
 #include "Platform/Mac/MacString.h"
 #include "Platform/Mac/MacTime.h"
@@ -125,12 +126,26 @@ bool MacHost::Initialize() {
     // never touches the two core surfaces.
     ShowCloverPlatformDemoWindow();
 
+    // Optional: render the Program Manager with CloverPlatform instead of the
+    // core-drawn scene. Same state machine, different presentation.
+    m_useCloverProgramManager = ShowCloverProgramManager(*this);
+    if (m_useCloverProgramManager && m_homeWindow) {
+        [m_homeWindow orderOut:nil];
+    }
+
     return m_workspaceWindow != nil && m_homeWindow != nil;
 }
 
 int MacHost::Run() {
     [NSApp run];
     return 0;
+}
+
+void MacHost::HandleProgramManagerCommand(Core::AppCommand command, uint64_t userData,
+                                          const String& payload) {
+    if (m_homeRuntime) {
+        m_homeRuntime->HandleCommand(command, userData, payload);
+    }
 }
 
 void* MacHost::ActiveWindow() const {
@@ -151,7 +166,11 @@ void MacHost::RequestQuit() {
 void MacHost::OnProgramManagerCloseRequested() {
     if (m_workspaceRuntime && m_workspaceWindow) {
         if (m_homeRuntime) m_homeRuntime->ClearQuitRequest();
-        if (m_homeWindow) [m_homeWindow orderOut:nil];
+        if (m_useCloverProgramManager) {
+            HideCloverProgramManagerWindow();
+        } else if (m_homeWindow) {
+            [m_homeWindow orderOut:nil];
+        }
         [m_workspaceWindow makeKeyAndOrderFront:nil];
         if (m_workspaceView) [m_workspaceView requestFrame];
         return;
@@ -276,7 +295,11 @@ void MacHost::OpenWorkspace(Core::WorkspaceLaunchRequest request) {
     }
     m_workspaceRuntime->AcceptWorkspaceLaunchRequest(std::move(request));
     [m_workspaceWindow makeKeyAndOrderFront:nil];
-    if (m_homeWindow) [m_homeWindow orderOut:nil];
+    if (m_useCloverProgramManager) {
+        HideCloverProgramManagerWindow();
+    } else if (m_homeWindow) {
+        [m_homeWindow orderOut:nil];
+    }
     if (m_workspaceView) [m_workspaceView requestFrame];
 }
 
@@ -287,7 +310,9 @@ void MacHost::PumpRuntimeRequests() {
             m_homeRuntime->RefreshRecentFiles();
             if (showSettings) m_homeRuntime->ShowSettingsPage();
         }
-        if (m_homeWindow) {
+        if (m_useCloverProgramManager) {
+            ShowCloverProgramManagerWindow();
+        } else if (m_homeWindow) {
             [m_homeWindow makeKeyAndOrderFront:nil];
             if (m_homeView) [m_homeView requestFrame];
         }

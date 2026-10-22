@@ -28,6 +28,13 @@ public:
     void RefreshRecentFiles();
     void ShowSettingsPage();
 
+    /// Runs a command exactly as if the core-drawn scene had raised it.
+    ///
+    /// This is the entry point for alternative UI front-ends: a host that owns
+    /// the presentation (CloverPlatform, for instance) still drives the same
+    /// state machine instead of reimplementing project-manager behaviour.
+    void HandleCommand(AppCommand command, uint64_t userData = 0, const String& payload = L"");
+
 private:
     void BuildScene();
     void MarkDirty(const Rect& rect);

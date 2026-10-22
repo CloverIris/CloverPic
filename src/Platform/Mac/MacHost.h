@@ -49,6 +49,11 @@ public:
     // Opaque NSWindow* used to parent modal dialogs.
     void* ActiveWindow() const;
 
+    /// Runs a Program Manager command. Used by UI front-ends that are not the
+    /// core-drawn scene (CloverPlatform), so both drive the same state machine.
+    void HandleProgramManagerCommand(Core::AppCommand command, uint64_t userData = 0,
+                                     const String& payload = L"");
+
 private:
     bool ConfirmWorkspaceDestructiveAction(const String& actionLabel);
     void CreateHomeWindow();
@@ -63,6 +68,7 @@ private:
     std::unique_ptr<Core::WorkspaceRuntime> m_workspaceRuntime;
 
     NSWindow* m_homeWindow = nil;
+    bool m_useCloverProgramManager = false;
     NSWindow* m_workspaceWindow = nil;
     MacSurfaceView* m_homeView = nil;
     MacSurfaceView* m_workspaceView = nil;

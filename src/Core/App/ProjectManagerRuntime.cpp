@@ -113,6 +113,10 @@ void ProjectManagerRuntime::DispatchCommand(AppCommand command, uint64_t userDat
     m_commands.Dispatch(*this, command, userData, payload);
 }
 
+void ProjectManagerRuntime::HandleCommand(AppCommand command, uint64_t userData, const String& payload) {
+    DispatchCommand(command, userData, payload);
+}
+
 void ProjectManagerRuntime::StartNewCanvas(uint32_t width, uint32_t height) {
     m_launchRequest.kind = WorkspaceLaunchKind::NewCanvas;
     m_launchRequest.width = width;

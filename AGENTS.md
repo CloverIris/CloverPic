@@ -139,3 +139,20 @@ CLOVERPIC_CLOVER_DEMO=1 ./build-mac/CloverPic
   any real UI migrates.
 - See `CloverPlatform/docs/MIGRATION.md` for the hosting pattern and the traps
   found so far (damage coordinate space, single damage owner, window key order).
+
+### CloverPlatform Program Manager
+
+The Program Manager can be rendered by CloverPlatform instead of the core scene.
+Same `Core::ProjectManagerRuntime`, different presentation:
+
+```bash
+CLOVERPIC_CLOVER_PM=1 ./build-mac/CloverPic
+```
+
+- `MacCloverProgramManager.mm` builds the page from the recent-files service and
+  maps `Command` actions onto `MacHost::HandleProgramManagerCommand`, which calls
+  the runtime's public `HandleCommand`.
+- Core must not grow UI code for this: a new capability either already exists as
+  a command or is added as one.
+- Settings still lives in the core-drawn scene; the CloverPlatform page covers
+  new-canvas presets, open project, recents and quit.
