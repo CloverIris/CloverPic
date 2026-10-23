@@ -191,6 +191,11 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   once already.
 - The native cursor becomes a crosshair over the canvas; the brush ring itself is
   drawn by the editor at the reported pointer position.
+- **Wheel and keys go to the editor when the pointer is over the canvas** (and the
+  canvas holds keyboard focus after a press). Before that they only reached the
+  UI surface, so canvas zoom and every editor shortcut were dead.
+- Key translation lives in `Platform/Mac/MacInput.mm`; `MacSurfaceView` still has
+  its own copy, which should be folded in.
 - `SetCanvasViewport` switches the runtime to **external layout**: core stops
   hit-testing its own panels, which still occupy screen space but are not drawn.
   Without this, clicking the part of the canvas that overlaps core's left dock is

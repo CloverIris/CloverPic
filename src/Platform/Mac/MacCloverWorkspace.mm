@@ -4,6 +4,7 @@
 #include "Core/UI/Workspace/Clover/WorkspaceActionRouter.h"
 #include "Core/UI/Workspace/Clover/WorkspaceViewModel.h"
 #include "Platform/Mac/MacCloverIme.h"
+#include "Platform/Mac/MacInput.h"
 #include "Platform/Mac/MacString.h"
 #include "clover_platform.h"
 
@@ -31,6 +32,7 @@ using CloverPic::Platform::Mac::ToUtf8;
     bool _canvasBound;
     bool _canvasDirty;
     CloverPic::Rect _canvasRect;
+    bool _canvasFocused;
     int32_t _frameWidth;
     int32_t _frameHeight;
     float _frameScale;
@@ -352,9 +354,18 @@ using CloverPic::Platform::Mac::ToUtf8;
         return;
     }
     if ([self forwardToCanvas:kind button:button event:event]) {
+        // Pressing the canvas takes keyboard focus; releasing it must not give the
+        // focus back, or every shortcut after a stroke would go to the chrome.
+        if (kind == CLOVER_POINTER_DOWN) {
+            _canvasFocused = true;
+        }
         [[NSCursor crosshairCursor] set];
         [self setNeedsDisplay:YES];
         return;
+    }
+    if (kind == CLOVER_POINTER_DOWN) {
+        // Clicking the chrome moves focus away from the canvas.
+        _canvasFocused = false;
     }
     const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
     clover_surface_pointer(_surface, static_cast<float>(local.x), static_cast<float>(local.y), kind,
@@ -428,6 +439,19 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (std::abs(delta) < 0.01) {
         return;
     }
+    // Over the canvas the wheel zooms and pans the document; everywhere else it
+    // scrolls the UI.
+    const float scale = [self currentScale];
+    const int32_t x = static_cast<int32_t>(std::lround(local.x * scale));
+    const int32_t y = static_cast<int32_t>(std::lround(local.y * scale));
+    if (_canvasBound && x >= _canvasRect.left && x < _canvasRect.right && y >= _canvasRect.top &&
+        y < _canvasRect.bottom) {
+        _runtime->HandleWheel(static_cast<int>(std::lround(delta)),
+                              CloverPic::Point(x - _canvasRect.left, y - _canvasRect.top));
+        _canvasDirty = true;
+        [self setNeedsDisplay:YES];
+        return;
+    }
     clover_surface_wheel(_surface, (float)local.x, (float)local.y, (float)delta, 0);
     [self setNeedsDisplay:YES];
 }
@@ -436,7 +460,28 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (!_surface) {
         return;
     }
+    if (_canvasFocused) {
+        const CloverPic::Input::KeyEvent key =
+            CloverPic::Platform::Mac::TranslateKeyEvent(event, CloverPic::Input::KeyAction::Down);
+        if (key.keyCode != 0) {
+            _runtime->HandleKey(key);
+            _canvasDirty = true;
+            [self setNeedsDisplay:YES];
+            return;
+        }
+    }
     [self interpretKeyEvents:@[ event ]];
+}
+
+- (void)keyUp:(NSEvent*)event {
+    if (!_surface || !_canvasFocused) {
+        return;
+    }
+    const CloverPic::Input::KeyEvent key =
+        CloverPic::Platform::Mac::TranslateKeyEvent(event, CloverPic::Input::KeyAction::Up);
+    if (key.keyCode != 0) {
+        _runtime->HandleKey(key);
+    }
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
