@@ -209,6 +209,13 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   Writing into the region's internal buffer directly changes pixels nobody
   publishes: the canvas looks frozen until something takes the full path.
 
+### Workspace docking, current state
+
+- The docks resize: `<Splitter Target="leftDock|rightDock" Min Max>` drags the
+  column width and the canvas reflows. Verified by dragging the seam.
+- Panels cannot yet be **moved** between docks, and nothing about the layout is
+  persisted. Both are still open.
+
 ### Composed UI documents
 
 A page may embed other documents, and the workspace now does:

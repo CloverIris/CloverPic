@@ -137,7 +137,7 @@
       </StackPanel>
 
       <!-- Left dock: colour + brush controls -->
-      <StackPanel x:Name="dock" Width="212" Height="Fill">
+      <StackPanel x:Name="leftDock" Width="212" Height="Fill">
 
         <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
           <TextBlock x:Name="title" Text="COLOR" VerticalAlignment="Center"/>
@@ -206,6 +206,9 @@
         <Content x:Name="presets" Source="panels/brush-presets.cui" Height="Fill"/>
       </StackPanel>
 
+      <Splitter x:Name="leftSplit" Orientation="Vertical" Target="leftDock" Min="160" Max="420"
+                Width="4" Height="Fill" Background="#2A2A2A" Cursor="resize-h"/>
+
       <!-- Canvas area: the direct surface will sit here -->
       <Panel Width="Fill" Height="Fill" Background="#2B2B2B" Padding="16">
         <Panel Width="Fill" Height="Fill" Background="#3C3C3C" BorderThickness="1" BorderBrush="#4A4A4A">
@@ -215,8 +218,11 @@
         </Panel>
       </Panel>
 
+      <Splitter x:Name="rightSplit" Orientation="Vertical" Target="rightDock" Min="180" Max="420"
+                Width="4" Height="Fill" Background="#2A2A2A" Cursor="resize-h"/>
+
       <!-- Right dock: navigator, layers, brush size -->
-      <StackPanel x:Name="dock" Width="248" Height="Fill">
+      <StackPanel x:Name="rightDock" Width="248" Height="Fill">
         <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
           <TextBlock x:Name="title" Text="NAVIGATOR" VerticalAlignment="Center"/>
         </StackPanel>
