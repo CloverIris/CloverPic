@@ -48,6 +48,10 @@ public:
     void InvokeSetLayerOpacity(uint8_t opacity);
     void InvokeToggleLayerVisibility(size_t index);
     void InvokeZoom(int zoomPercent);
+    void InvokeDuplicateLayer();
+    void InvokeDeleteLayer();
+    void InvokeMergeLayerDown();
+    void InvokeToggleActiveLayerVisibility();
     const WorkspaceUiState& UiState() const { return m_uiState; }
     WorkspaceEditorFacade& Editor() { return m_editor; }
     const EditorSession& Session() const { return m_session; }

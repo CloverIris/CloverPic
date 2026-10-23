@@ -710,5 +710,9 @@ void WorkspaceRuntime::InvokeToggleLayerVisibility(size_t index) {
     }
 }
 void WorkspaceRuntime::InvokeZoom(int zoomPercent) { OnSetZoomPreset(static_cast<uint16_t>(std::max(0, zoomPercent))); }
+void WorkspaceRuntime::InvokeDuplicateLayer() { OnDuplicateLayer(); }
+void WorkspaceRuntime::InvokeDeleteLayer() { OnDeleteLayer(); }
+void WorkspaceRuntime::InvokeMergeLayerDown() { OnMergeLayerDown(); }
+void WorkspaceRuntime::InvokeToggleActiveLayerVisibility() { OnToggleActiveLayerVisibility(); }
 
 } // namespace CloverPic::Core

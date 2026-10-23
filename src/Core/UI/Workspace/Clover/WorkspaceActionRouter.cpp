@@ -102,6 +102,32 @@ bool WorkspaceActionRouter::Handle(const std::string& action) {
         m_runtime->InvokeSelectLayer(static_cast<size_t>(index));
         return true;
     }
+    // Context-menu rows: layer:0 duplicate, 1 delete, 2 submenu, 3 toggle visible.
+    if (parts[0] == "layer" && parts.size() >= 2 && parts[1] != "select") {
+        int index = 0;
+        if (!ParseNumber(parts[1], index)) {
+            return false;
+        }
+        switch (index) {
+        case 0: m_runtime->InvokeDuplicateLayer(); return true;
+        case 1: m_runtime->InvokeDeleteLayer(); return true;
+        case 2: return false; // the host cascades into a submenu
+        case 3: m_runtime->InvokeToggleActiveLayerVisibility(); return true;
+        default: return false;
+        }
+    }
+    // Submenu rows: merge:0 merge down.
+    if (parts[0] == "merge" && parts.size() >= 2) {
+        int index = 0;
+        if (!ParseNumber(parts[1], index)) {
+            return false;
+        }
+        if (index == 0) {
+            m_runtime->InvokeMergeLayerDown();
+            return true;
+        }
+        return false;
+    }
     if (parts[0] == "zoom" && parts.size() >= 2) {
         int percent = 0;
         if (!ParseNumber(parts[1], percent)) {

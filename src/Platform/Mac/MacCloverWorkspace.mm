@@ -177,6 +177,11 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (_router && _router->Handle(action)) {
         return;
     }
+    // A submenu parent keeps the menu open; cascade beside it.
+    if (action == "layer:2") {
+        clover_surface_open_submenu(_surface, "Merge Down,Flatten Layer", "merge");
+        return;
+    }
     std::fprintf(stderr, "[clover-workspace] unhandled action: %s\n", action.c_str());
 }
 
@@ -201,6 +206,29 @@ using CloverPic::Platform::Mac::ToUtf8;
 
 - (void)mouseDragged:(NSEvent*)event {
     [self pushPointer:CLOVER_POINTER_MOVE button:1 event:event];
+}
+
+/// Right-click on the layer list opens the layer menu.
+///
+/// Menus are not part of the page tree: the host decides what a right-click
+/// means, and the framework only places and runs the popup.
+- (void)rightMouseDown:(NSEvent*)event {
+    if (!_surface) {
+        return;
+    }
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    clover_rect list{};
+    if (clover_surface_node_bounds(_surface, "layerList", &list) != CLOVER_OK) {
+        return;
+    }
+    const bool inside = local.x >= list.x && local.x < list.x + list.w &&
+                        local.y >= list.y && local.y < list.y + list.h;
+    if (!inside) {
+        return;
+    }
+    clover_surface_open_menu(_surface, (float)local.x, (float)local.y, 180.0f, 20.0f,
+                             "Duplicate,Delete,Merge Down>,Toggle Visible", "layer");
+    [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent*)event {
