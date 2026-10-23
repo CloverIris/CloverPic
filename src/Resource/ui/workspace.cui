@@ -203,37 +203,7 @@
           </StackPanel>
         </StackPanel>
 
-        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
-          <TextBlock x:Name="title" Text="BRUSH: PEN" VerticalAlignment="Center"/>
-        </StackPanel>
-        <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
-          <StackPanel Width="Fill">
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="15 PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="8 PEN SOFT" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#E04A4A" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="20 MAPPING PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#E0A24A" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="30 KABURA PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#E0DC4A" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="40 WATERCOLOR" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-            <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
-              <Panel Width="8" Height="8" Background="#4AE06A" CornerRadius="4" VerticalAlignment="Center"/>
-              <TextBlock x:Name="label" Text="60 TEXTURE PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-          </StackPanel>
-        </ScrollViewer>
+        <Content x:Name="presets" Source="panels/brush-presets.cui" Height="Fill"/>
       </StackPanel>
 
       <!-- Canvas area: the direct surface will sit here -->
@@ -380,25 +350,7 @@
           <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="ME" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
         </StackPanel>
 
-        <StackPanel x:Name="panelTitle" Height="18" Width="Fill">
-          <TextBlock x:Name="title" Text="BRUSH SIZE" VerticalAlignment="Center"/>
-        </StackPanel>
-        <StackPanel Padding="8,6" Spacing="4">
-          <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="5" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="7" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="rowSel" Width="34" Height="16"><TextBlock x:Name="value" Text="10" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-          </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="20" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="25" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="30" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="40" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-            <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="50" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
-          </StackPanel>
-        </StackPanel>
+        <Content x:Name="sizes" Source="panels/brush-sizes.cui" Height="110"/>
       </StackPanel>
     </StackPanel>
 

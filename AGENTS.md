@@ -179,6 +179,24 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
 - `CLOVERPIC_NEW_CANVAS=WxH` is a development hook that opens a canvas at startup
   so the workspace can be exercised without going through the home screen.
 
+### Composed UI documents
+
+A page may embed other documents, and the workspace now does:
+
+```xml
+<Content x:Name="presets" Source="panels/brush-presets.cui" Height="Fill"/>
+```
+
+- `src/Resource/ui/workspace.cui` is the page; `src/Resource/ui/panels/*.cui` are
+  panels it embeds.
+- Each child owns its tree, renderer and texture; the parent composites the
+  texture. A child that fails to load is marked and skipped, never propagated.
+- `clover_surface_set_content(slot, path)` swaps a slot's document in place.
+- `Source` resolves relative to the document that declares it.
+- Bindings do **not** cross document levels yet: a slider moved into a child
+  document stops receiving `set_value` from the host. Give a slot its own data
+  context before moving interactive controls into one.
+
 ### CloverPlatform workspace shell
 
 The workspace chrome (menu bar, toolbar, tool rail, docks, status bar) is now a

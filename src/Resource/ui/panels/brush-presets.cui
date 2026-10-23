@@ -1,0 +1,41 @@
+<Ui>
+  <Styles>
+    <Style x:Name="title" FontSize="10" Foreground="#9C9C9C"/>
+    <Style x:Name="row" Background="#1E1E1E"/>
+    <Style x:Name="name" FontSize="10" Foreground="#C8C8C8"/>
+    <Style x:Name="header" Background="#2F2F2F" Padding="8,3"/>
+  </Styles>
+  <StackPanel Width="Fill" Height="Fill" Background="#232323">
+    <StackPanel x:Name="header" Height="18" Width="Fill">
+      <TextBlock x:Name="title" Text="BRUSH: PEN" VerticalAlignment="Center"/>
+    </StackPanel>
+    <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
+      <StackPanel Width="Fill">
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="15 PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#4A9EFF" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="8 PEN SOFT" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#E04A4A" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="20 MAPPING PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#E0A24A" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="30 KABURA PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#E0DC4A" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="40 WATERCOLOR" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+        <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">
+          <Panel Width="8" Height="8" Background="#4AE06A" CornerRadius="4" VerticalAlignment="Center"/>
+          <TextBlock x:Name="name" Text="60 TEXTURE PEN" VerticalAlignment="Center" Margin="8,0,0,0"/>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </StackPanel>
+</Ui>

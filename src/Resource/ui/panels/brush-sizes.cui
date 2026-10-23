@@ -1,0 +1,30 @@
+<Ui>
+  <Styles>
+    <Style x:Name="title" FontSize="10" Foreground="#9C9C9C"/>
+    <Style x:Name="chip" Background="#3C3C3C" CornerRadius="3"/>
+    <Style x:Name="label" FontSize="9" Foreground="#C8C8C8"/>
+    <Style x:Name="header" Background="#2F2F2F" Padding="8,3"/>
+    <Style x:Name="selected" Background="#3B6FD4" CornerRadius="3"/>
+  </Styles>
+  <StackPanel Width="Fill" Height="Fill" Background="#232323">
+    <StackPanel x:Name="header" Height="18" Width="Fill">
+      <TextBlock x:Name="title" Text="BRUSH SIZE" VerticalAlignment="Center"/>
+    </StackPanel>
+    <StackPanel Padding="8,6" Spacing="4">
+      <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="1" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="3" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="5" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="7" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="selected" Width="34" Height="16"><TextBlock x:Name="label" Text="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="20" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="25" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="30" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="40" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+        <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="50" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>
+      </StackPanel>
+    </StackPanel>
+  </StackPanel>
+</Ui>
