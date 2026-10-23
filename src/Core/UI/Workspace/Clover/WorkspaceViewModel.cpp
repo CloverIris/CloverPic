@@ -38,6 +38,14 @@ String LayerDisplayName(const String& name, size_t index) {
     return L"LAYER " + std::to_wstring(index + 1);
 }
 
+const std::vector<String>& BlendModeNames() {
+    static const std::vector<String> names = {
+        L"Normal",   L"Multiply",  L"Screen",    L"Overlay",    L"Difference", L"Add",
+        L"Subtract", L"Darken",    L"Lighten",   L"Color Dodge", L"Color Burn", L"Hard Light",
+        L"Soft Light", L"Exclusion", L"Hue",     L"Saturation", L"Color",      L"Luminosity"};
+    return names;
+}
+
 WorkspaceSnapshot CaptureWorkspaceSnapshot(const WorkspaceEditorFacade& editor,
                                            const WorkspaceUiState& ui,
                                            const String& documentPath) {
@@ -51,7 +59,11 @@ WorkspaceSnapshot CaptureWorkspaceSnapshot(const WorkspaceEditorFacade& editor,
     snapshot.brushFlow = editor.GetBrushFlow();
     snapshot.brushSpacing = editor.GetBrushSpacing();
 
+    snapshot.blendModes = BlendModeNames();
     if (const LayerManager* layers = editor.GetLayerManager()) {
+        if (const Ref<Layer> active = const_cast<LayerManager*>(layers)->GetActiveLayer()) {
+            snapshot.blendIndex = static_cast<uint32_t>(active->GetBlendMode());
+        }
         snapshot.activeLayer = layers->GetActiveLayerIndex();
         snapshot.layers.reserve(layers->GetLayerCount());
         for (size_t index = 0; index < layers->GetLayerCount(); ++index) {

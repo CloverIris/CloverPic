@@ -273,8 +273,10 @@
           <Panel x:Name="track" Height="4" Width="Fill">
             <Panel x:Name="fill" Height="4" Width="100%"/>
           </Panel>
+          <!-- The host replaces these items with the real blend list at runtime;
+               the placeholder only exists so the box has a label before the first sync. -->
           <ComboBox x:Name="blend" Height="22" Width="Fill" TextColor="#D0D0D0"
-                    Items="Normal,Multiply,Screen,Darken,Lighten" SelectedIndex="0"/>
+                    Items="Normal" SelectedIndex="0"/>
         </StackPanel>
 
         <StackPanel Orientation="Horizontal" Width="Fill" Height="Fill">

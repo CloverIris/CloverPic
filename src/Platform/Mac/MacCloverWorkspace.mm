@@ -126,6 +126,19 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (!_hasLast || snapshot.brushOpacity != _last.brushOpacity) {
         clover_surface_set_value(_surface, "opacity", snapshot.brushOpacity * 100.0f);
     }
+    if (!_hasLast || snapshot.blendModes != _last.blendModes) {
+        std::string csv;
+        for (size_t index = 0; index < snapshot.blendModes.size(); ++index) {
+            if (index) {
+                csv += ",";
+            }
+            csv += ToUtf8(snapshot.blendModes[index]);
+        }
+        clover_surface_set_items(_surface, "blend", csv.c_str());
+    }
+    if (!_hasLast || snapshot.blendIndex != _last.blendIndex) {
+        clover_surface_set_selected(_surface, "blend", snapshot.blendIndex);
+    }
     if (!_hasLast || snapshot.canvasWidth != _last.canvasWidth ||
         snapshot.canvasHeight != _last.canvasHeight) {
         [self pushLabel:"statusCanvas" value:std::to_string(snapshot.canvasWidth) + " " +

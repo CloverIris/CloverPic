@@ -37,7 +37,16 @@ struct WorkspaceSnapshot {
     std::vector<WorkspaceLayerRow> layers;
     size_t activeLayer = 0;
     bool hasProject = false;
+    /// Blend mode names in `BlendMode` order; the popup index *is* the enum value.
+    std::vector<String> blendModes;
+    uint32_t blendIndex = 0;
 };
+
+/// Blend mode names in enum order.
+///
+/// The popup shows these names, and the selected index is applied as the enum
+/// value directly, so a hard-coded list can no longer disagree with the model.
+const std::vector<String>& BlendModeNames();
 
 /// Collects a snapshot from the live editor state.
 ///
