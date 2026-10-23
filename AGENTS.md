@@ -199,9 +199,12 @@ A page may embed other documents, and the workspace now does:
   texture. A child that fails to load is marked and skipped, never propagated.
 - `clover_surface_set_content(slot, path)` swaps a slot's document in place.
 - `Source` resolves relative to the document that declares it.
-- Bindings do **not** cross document levels yet: a slider moved into a child
-  document stops receiving `set_value` from the host. Give a slot its own data
-  context before moving interactive controls into one.
+- Bindings cross levels by addressing: `set_value("presets:size", 40)` routes into
+  that slot's document. Panels own their controls without colliding with the page.
+- Input crosses levels too: a pointer event inside a slot's box is delivered to
+  that document with translated coordinates, with its own hover and press state.
+- Embedded documents render in parallel on the rayon pool (see
+  `CloverPlatform/crates/clover-render/examples/bench_embeds.rs`).
 
 ### CloverPlatform workspace shell
 
@@ -217,6 +220,6 @@ CLOVERPIC_CLOVER_SHELL=1 ./build-mac/CloverPic
   `CLOVERPIC_UI_DIR` (a compile definition) is the default directory.
 - It is additive and off by default: the core-drawn workspace is untouched, so
   the two can be compared side by side while the shell is filled in.
-- The canvas region is a placeholder panel; the core surface gets composited
-  there in a later step.
+- The canvas region is a live `<CloverSurface>` bound to a direct region; see the
+  workspace section above.
 - See `docs/UI_REWRITE_PLAN.md` for the remaining steps.
