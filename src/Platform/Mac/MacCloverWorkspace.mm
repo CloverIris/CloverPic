@@ -125,7 +125,11 @@ using CloverPic::Platform::Mac::ToUtf8;
         _runtime->Resize(static_cast<uint32_t>(frameWidth), static_cast<uint32_t>(frameHeight), scale);
         _canvasDirty = true;
     }
-    _runtime->SetCanvasViewport(rect);
+    // The render target is canvas-sized and starts at (0,0), so the runtime's
+    // viewport must be the same rect — otherwise input maps from the frame origin
+    // while rendering maps from the buffer origin, and the brush cursor drifts by
+    // exactly the canvas offset.
+    _runtime->SetCanvasViewport(CloverPic::Rect(0, 0, width, height));
 
     if (!_canvasBound) {
         _canvasHandle = clover_surface_add_direct(_surface, static_cast<uint32_t>(width),
@@ -295,7 +299,8 @@ using CloverPic::Platform::Mac::ToUtf8;
         case CLOVER_POINTER_CANCEL: pointer.action = CloverPic::Input::PointerAction::Up; break;
         default: pointer.action = CloverPic::Input::PointerAction::Move; break;
     }
-    pointer.position = CloverPic::Point(x, y);
+    // Pointer coordinates are canvas-local, matching the (0,0)-based viewport.
+    pointer.position = CloverPic::Point(x - _canvasRect.left, y - _canvasRect.top);
     pointer.button = button == 2 ? CloverPic::MouseButton::Right
                                  : (button == 1 ? CloverPic::MouseButton::Left
                                                 : CloverPic::MouseButton::None);
@@ -312,6 +317,7 @@ using CloverPic::Platform::Mac::ToUtf8;
         return;
     }
     if ([self forwardToCanvas:kind button:button event:event]) {
+        [[NSCursor crosshairCursor] set];
         [self setNeedsDisplay:YES];
         return;
     }

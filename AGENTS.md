@@ -184,6 +184,13 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   without touching the canvas renderer.
 - Pointer events inside the canvas box go to the editor and never reach the UI, so
   panels cannot react to strokes.
+- **Coordinate contract**: the direct region is canvas-sized and its origin is
+  (0,0), so `SetCanvasViewport` must be given `Rect(0,0,w,h)` and pointer positions
+  must be canvas-local. Sending frame-space coordinates here makes the brush
+  cursor and the ink drift by exactly the canvas offset; that bug has been fixed
+  once already.
+- The native cursor becomes a crosshair over the canvas; the brush ring itself is
+  drawn by the editor at the reported pointer position.
 
 ### Composed UI documents
 
