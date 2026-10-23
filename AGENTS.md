@@ -191,6 +191,14 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   once already.
 - The native cursor becomes a crosshair over the canvas; the brush ring itself is
   drawn by the editor at the reported pointer position.
+- `SetCanvasViewport` switches the runtime to **external layout**: core stops
+  hit-testing its own panels, which still occupy screen space but are not drawn.
+  Without this, clicking the part of the canvas that overlaps core's left dock is
+  swallowed by a panel nobody can see — the canvas becomes unpaintable there.
+- Strokes repaint only their damage: `TakeCanvasDamage` returns the region touched
+  since the last frame, and the surface is updated in place
+  (`clover_direct_begin_write_incremental`). Full repaints happen on press, release,
+  zoom and pan, which is what keeps stale ink from surviving.
 
 ### Composed UI documents
 

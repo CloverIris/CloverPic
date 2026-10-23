@@ -71,7 +71,15 @@ public:
     ///
     /// Zero copy: the direct-memory surface is the canvas's framebuffer, so there
     /// is no intermediate frame and no copy per frame.
-    bool RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_t height, uint32_t strideBytes);
+    bool RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_t height, uint32_t strideBytes,
+                         const Rect* dirty = nullptr);
+
+    /// True when a presentation layer owns the chrome, so core must not run its
+    /// own UI hit-testing over the canvas.
+    bool UsesExternalLayout() const { return m_externalLayout; }
+
+    /// Canvas damage since the last call; false means "repaint everything".
+    bool TakeCanvasDamage(Rect& out) { return m_canvas.TakeCanvasDamage(out); }
 
     const WorkspaceUiState& UiState() const { return m_uiState; }
     WorkspaceEditorFacade& Editor() { return m_editor; }
@@ -178,6 +186,7 @@ private:
     Size m_viewport;
     float m_dpiScale = 1.0f;
     bool m_wantsClose = false;
+    bool m_externalLayout = false;
     bool m_wantsProgramManager = false;
     bool m_wantsProgramManagerSettings = false;
     String m_status = L"READY";

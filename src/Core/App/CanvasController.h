@@ -28,7 +28,14 @@ public:
     bool ResizeCanvas(uint32_t width, uint32_t height, uint32_t anchorX = 1, uint32_t anchorY = 1);
     void CloseProject();
 
-    void Render(Presentation::SoftRenderer& renderer, const Rect& viewport);
+    void Render(Presentation::SoftRenderer& renderer, const Rect& viewport,
+                const Rect* dirty = nullptr);
+
+    /// Damage accumulated by pointer input, in viewport pixels.
+    ///
+    /// Returns false when the caller must repaint the whole canvas (after a zoom,
+    /// a pan or the end of a stroke), which keeps stale ink from surviving.
+    bool TakeCanvasDamage(Rect& out);
     void ResizeViewport(const Rect& viewport);
     bool HandlePointer(const Input::PointerEvent& event, const Rect& viewport);
     void HandleWheel(int delta, const Point& position, const Rect& viewport);
@@ -104,6 +111,7 @@ public:
     bool IsInteracting() const { return m_drawing || m_panning || m_selecting || m_shapeDrawing; }
 
 private:
+    void AddCanvasDamage(const Point& previous, const Point& current);
     void CancelActivePointerInteraction();
     void ScreenToCanvas(const Point& position, const Rect& viewport, float& canvasX, float& canvasY) const;
     void ApplySnap(float anchorX, float anchorY, float& x, float& y) const;
@@ -125,6 +133,9 @@ private:
     ToolType m_tool = ToolType::Brush;
     Color m_color = Color::FromHex(0x111111);
     float m_zoom = 1.0f;
+    Rect m_canvasDamage;
+    bool m_hasCanvasDamage = false;
+    bool m_forceFullCanvasRender = true;
     float m_panX = 0.0f;
     float m_panY = 0.0f;
     Rect m_lastViewport;

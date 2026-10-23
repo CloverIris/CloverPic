@@ -196,6 +196,13 @@ void WorkspaceRuntime::HandlePointer(const Input::PointerEvent& event) {
     if (m_frame.IsEmpty()) {
         return;
     }
+    if (m_externalLayout) {
+        // A presentation layer owns the chrome, so core must not hit-test its own
+        // panels: they still occupy screen space but are not on screen, and letting
+        // them consume pointer events makes parts of the canvas unpaintable.
+        m_editor.HandleCanvasPointer(event, CanvasRect());
+        return;
+    }
 
     WorkspacePointerInputContext context{
         &m_scene,
@@ -258,6 +265,10 @@ void WorkspaceRuntime::HandleKey(const Input::KeyEvent& event) {
 }
 
 void WorkspaceRuntime::HandleWheel(int delta, const Point& position) {
+    if (m_externalLayout) {
+        m_editor.HandleCanvasWheel(delta, position, CanvasRect());
+        return;
+    }
     if (!m_modals.HasModal() && m_uiState.IsPanelVisible(WorkspacePanelId::Layer) && m_uiState.layerListRect.Contains(position)) {
         const int itemH = 56;
         const int layerCount = m_editor.GetLayerManager()
@@ -336,11 +347,13 @@ void WorkspaceRuntime::SetCanvasViewport(const Rect& rect) {
         return;
     }
     m_layout.canvasRect = rect;
+    // Being given a canvas rect means someone else is drawing the chrome.
+    m_externalLayout = true;
     m_canvas.ResizeViewport(rect);
 }
 
 bool WorkspaceRuntime::RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_t height,
-                                        uint32_t strideBytes) {
+                                        uint32_t strideBytes, const Rect* dirty) {
     if (!pixels || width < 2 || height < 2 || !m_canvas.HasProject()) {
         return false;
     }
@@ -352,7 +365,8 @@ bool WorkspaceRuntime::RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_
     }
     RgbaFrame frame = RgbaFrame::FromBorrowed(pixels, width, height);
     Presentation::SoftRenderer renderer(frame);
-    m_canvas.Render(renderer, Rect(0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)));
+    m_canvas.Render(renderer, Rect(0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)),
+                    dirty);
     return true;
 }
 

@@ -218,12 +218,45 @@ void CanvasController::CloseProject() {
     m_panY = 0.0f;
 }
 
-void CanvasController::Render(Presentation::SoftRenderer& renderer, const Rect& viewport) {
+void CanvasController::AddCanvasDamage(const Point& previous, const Point& current) {
+    const float radius = std::max(4.0f, GetBrushSize() * m_zoom * 0.5f) + 6.0f;
+    auto stamp = [&](const Point& p) {
+        Rect rect(static_cast<int32_t>(p.x - radius), static_cast<int32_t>(p.y - radius),
+                  static_cast<int32_t>(p.x + radius), static_cast<int32_t>(p.y + radius));
+        if (!m_hasCanvasDamage) {
+            m_canvasDamage = rect;
+            m_hasCanvasDamage = true;
+        } else {
+            m_canvasDamage = Rect(std::min(m_canvasDamage.left, rect.left),
+                                  std::min(m_canvasDamage.top, rect.top),
+                                  std::max(m_canvasDamage.right, rect.right),
+                                  std::max(m_canvasDamage.bottom, rect.bottom));
+        }
+    };
+    stamp(previous);
+    stamp(current);
+}
+
+bool CanvasController::TakeCanvasDamage(Rect& out) {
+    if (!m_hasCanvasDamage || m_forceFullCanvasRender) {
+        m_hasCanvasDamage = false;
+        m_forceFullCanvasRender = false;
+        return false;
+    }
+    out = m_canvasDamage;
+    m_hasCanvasDamage = false;
+    return true;
+}
+
+void CanvasController::Render(Presentation::SoftRenderer& renderer, const Rect& viewport,
+                              const Rect* dirty) {
     if (!m_project || viewport.Width() <= 0 || viewport.Height() <= 0) {
         return;
     }
 
-    renderer.PushClip(viewport);
+    // A partial repaint clips to the damage but keeps the full viewport as the
+    // geometry, so the checkerboard phase and the canvas transform do not shift.
+    renderer.PushClip(dirty ? *dirty : viewport);
     const auto& canvas = m_project->GetCanvas();
     renderer.DrawCheckerboard(viewport, 12, Color(82, 84, 89), Color(68, 70, 74));
     if (m_layerManager.NeedsComposite()) {
@@ -310,6 +343,21 @@ bool CanvasController::HandlePointer(const Input::PointerEvent& event, const Rec
     m_lastPointer = event.position;
     if (!m_project) {
         return false;
+    }
+
+    // A stroke only touches the area between the previous and current position,
+    // expanded by the brush, so that is all that needs repainting. Everything else
+    // (zoom, pan, tool change, end of stroke) asks for a full repaint instead.
+    if (event.action == Input::PointerAction::Down || event.action == Input::PointerAction::Move) {
+        if (event.action == Input::PointerAction::Down) {
+            m_forceFullCanvasRender = true;
+            m_hasCanvasDamage = false;
+        } else {
+            AddCanvasDamage(previousPointer, event.position);
+        }
+    } else if (event.action == Input::PointerAction::Up) {
+        m_forceFullCanvasRender = true;
+        m_hasCanvasDamage = false;
     }
 
     const bool hasInteraction = m_drawing || m_panning || m_selecting || m_shapeDrawing;

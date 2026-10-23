@@ -155,14 +155,36 @@ using CloverPic::Platform::Mac::ToUtf8;
     uint32_t* pixels = nullptr;
     size_t stride = 0;
     uint32_t rows = 0;
-    if (clover_direct_begin_write(_surface, _canvasHandle, &pixels, &stride, &rows) != CLOVER_OK ||
-        !pixels) {
+
+    // During a stroke only the touched region is repainted; the rest of the image
+    // survives because the incremental write starts from the published frame.
+    CloverPic::Rect damage;
+    const bool partial = _runtime->TakeCanvasDamage(damage);
+    const clover_result locked =
+        partial ? clover_direct_begin_write_incremental(_surface, _canvasHandle, &pixels, &stride, &rows)
+                : clover_direct_begin_write(_surface, _canvasHandle, &pixels, &stride, &rows);
+    if (locked != CLOVER_OK || !pixels) {
         return;
     }
+
+    const CloverPic::Rect* dirty = nullptr;
+    CloverPic::Rect clipped;
+    if (partial) {
+        clipped = CloverPic::Rect(std::max(0, damage.left), std::max(0, damage.top),
+                                  std::min(static_cast<int32_t>(stride), damage.right),
+                                  std::min(static_cast<int32_t>(rows), damage.bottom));
+        if (clipped.right <= clipped.left || clipped.bottom <= clipped.top) {
+            clover_direct_commit(_surface, _canvasHandle);
+            _canvasDirty = false;
+            return;
+        }
+        dirty = &clipped;
+    }
+
     // Zero copy: the editor renders straight into the surface's back buffer.
     const bool painted = _runtime->RenderCanvasInto(
         reinterpret_cast<uint8_t*>(pixels), static_cast<uint32_t>(stride), rows,
-        static_cast<uint32_t>(stride * 4));
+        static_cast<uint32_t>(stride * 4), dirty);
     clover_direct_commit(_surface, _canvasHandle);
     // If the project was not ready yet, try again next frame.
     _canvasDirty = !painted;
