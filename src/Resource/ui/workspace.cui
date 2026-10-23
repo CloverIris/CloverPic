@@ -209,7 +209,9 @@
       <!-- Canvas area: the direct surface will sit here -->
       <Panel Width="Fill" Height="Fill" Background="#2B2B2B" Padding="16">
         <Panel Width="Fill" Height="Fill" Background="#3C3C3C" BorderThickness="1" BorderBrush="#4A4A4A">
-          <Panel Width="Fill" Height="Fill" Background="#BFBFBF"/>
+          <!-- The canvas is a direct-memory region bound by the host; its
+               placement is layout, its pixels come from the editor. -->
+          <CloverSurface x:Name="canvas" Width="Fill" Height="Fill"/>
         </Panel>
       </Panel>
 

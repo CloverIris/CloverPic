@@ -325,6 +325,30 @@ void WorkspaceRuntime::MarkDirty(const Rect& rect) {
 
 Rect WorkspaceRuntime::CanvasRect() const { return m_layout.canvasRect; }
 
+void WorkspaceRuntime::SetCanvasViewport(const Rect& rect) {
+    if (rect.right <= rect.left || rect.bottom <= rect.top) {
+        return;
+    }
+    // ResizeViewport recomputes the canvas transform; calling it every frame is
+    // pointless work, so only react to a real change.
+    if (m_layout.canvasRect.left == rect.left && m_layout.canvasRect.top == rect.top &&
+        m_layout.canvasRect.right == rect.right && m_layout.canvasRect.bottom == rect.bottom) {
+        return;
+    }
+    m_layout.canvasRect = rect;
+    m_canvas.ResizeViewport(rect);
+}
+
+const RgbaFrame& WorkspaceRuntime::RenderCanvasOnly(uint64_t nowMs) {
+    (void)nowMs;
+    if (m_frame.IsEmpty()) {
+        return m_frame;
+    }
+    Presentation::SoftRenderer renderer(m_frame);
+    m_canvas.Render(renderer, CanvasRect());
+    return m_frame;
+}
+
 void WorkspaceRuntime::DispatchCommand(AppCommand command, uint64_t userData, const String& payload) {
     m_commands.Dispatch(*this, command, userData, payload);
 }

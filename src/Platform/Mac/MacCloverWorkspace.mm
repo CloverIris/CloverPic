@@ -27,6 +27,13 @@ using CloverPic::Platform::Mac::ToUtf8;
     WorkspaceSnapshot _last;
     bool _hasLast;
     std::string _lastLayerMarkup;
+    uint64_t _canvasHandle;
+    bool _canvasBound;
+    bool _canvasDirty;
+    CloverPic::Rect _canvasRect;
+    int32_t _frameWidth;
+    int32_t _frameHeight;
+    float _frameScale;
 }
 
 - (instancetype)initWithRuntime:(CloverPic::Core::WorkspaceRuntime*)runtime {
@@ -76,6 +83,98 @@ using CloverPic::Platform::Mac::ToUtf8;
     (void)timer;
     [self syncFromRuntime];
     [self setNeedsDisplay:YES];
+}
+
+/// Places the canvas node and keeps the core's viewport in step with it.
+///
+/// The runtime is also resized here: the core view that used to do it is gone in
+/// this mode, and without a sized frame the canvas has nowhere to render.
+- (void)syncCanvas {
+    if (!_surface || !_runtime) {
+        return;
+    }
+    const float scale = [self currentScale];
+    const NSRect bounds = self.bounds;
+    const int32_t frameWidth = static_cast<int32_t>(std::lround(NSWidth(bounds) * scale));
+    const int32_t frameHeight = static_cast<int32_t>(std::lround(NSHeight(bounds) * scale));
+
+    clover_rect node{};
+    if (clover_surface_node_bounds(_surface, "canvas", &node) != CLOVER_OK) {
+        return;
+    }
+    CloverPic::Rect rect(static_cast<int32_t>(std::lround(node.x * scale)),
+                         static_cast<int32_t>(std::lround(node.y * scale)),
+                         static_cast<int32_t>(std::lround((node.x + node.w) * scale)),
+                         static_cast<int32_t>(std::lround((node.y + node.h) * scale)));
+    const int32_t width = rect.right - rect.left;
+    const int32_t height = rect.bottom - rect.top;
+    if (width < 2 || height < 2) {
+        return;
+    }
+
+    const bool sizeChanged =
+        _canvasRect.right - _canvasRect.left != width || _canvasRect.bottom - _canvasRect.top != height;
+    _canvasRect = rect;
+    // Resize reallocates and clears the whole frame, so it must only run when the
+    // size or scale actually changed.
+    if (_frameWidth != frameWidth || _frameHeight != frameHeight ||
+        std::fabs(_frameScale - scale) > 0.001f) {
+        _frameWidth = frameWidth;
+        _frameHeight = frameHeight;
+        _frameScale = scale;
+        _runtime->Resize(static_cast<uint32_t>(frameWidth), static_cast<uint32_t>(frameHeight), scale);
+        _canvasDirty = true;
+    }
+    _runtime->SetCanvasViewport(rect);
+
+    if (!_canvasBound) {
+        _canvasHandle = clover_surface_add_direct(_surface, static_cast<uint32_t>(width),
+                                                  static_cast<uint32_t>(height));
+        clover_surface_bind_direct(_surface, "canvas", _canvasHandle);
+        _canvasBound = true;
+        _canvasDirty = true;
+    } else if (sizeChanged) {
+        clover_direct_resize(_surface, _canvasHandle, static_cast<uint32_t>(width),
+                             static_cast<uint32_t>(height));
+        _canvasDirty = true;
+    }
+}
+
+/// Copies the canvas region out of the core frame into the direct surface.
+///
+/// Only when the canvas actually changed: a full copy of a 1200x800 region at 2x
+/// is 15 MB, which is not something to do every frame.
+- (void)paintCanvasIfNeeded {
+    if (!_canvasDirty || !_canvasBound || !_runtime) {
+        return;
+    }
+    const CloverPic::Core::RgbaFrame& frame = _runtime->RenderCanvasOnly(0);
+    if (frame.pixels.empty()) {
+        return;
+    }
+    uint32_t* pixels = nullptr;
+    size_t stride = 0;
+    uint32_t rows = 0;
+    if (clover_direct_begin_write(_surface, _canvasHandle, &pixels, &stride, &rows) != CLOVER_OK ||
+        !pixels) {
+        return;
+    }
+    const int32_t left = _canvasRect.left;
+    const int32_t top = _canvasRect.top;
+    const uint32_t copyWidth = std::min<uint32_t>(stride, static_cast<uint32_t>(_canvasRect.right - left));
+    for (uint32_t row = 0; row < rows; ++row) {
+        const int32_t sourceY = top + static_cast<int32_t>(row);
+        const int32_t sourceX = left;
+        if (sourceY < 0 || sourceY >= static_cast<int32_t>(frame.height)) {
+            continue;
+        }
+        const uint32_t* source =
+            reinterpret_cast<const uint32_t*>(frame.pixels.data()) +
+            static_cast<size_t>(sourceY) * (frame.width) + sourceX;
+        std::copy(source, source + copyWidth, pixels + static_cast<size_t>(row) * stride);
+    }
+    clover_direct_commit(_surface, _canvasHandle);
+    _canvasDirty = false;
 }
 
 - (void)createSurfaceIfNeeded {
@@ -174,6 +273,8 @@ using CloverPic::Platform::Mac::ToUtf8;
 }
 
 - (void)handleAction:(const std::string&)action {
+    // Any command can change the document, so the canvas is 'dirty' from here.
+    _canvasDirty = true;
     if (_router && _router->Handle(action)) {
         return;
     }
@@ -185,8 +286,46 @@ using CloverPic::Platform::Mac::ToUtf8;
     std::fprintf(stderr, "[clover-workspace] unhandled action: %s\n", action.c_str());
 }
 
+/// Returns true when the point is inside the canvas, after forwarding it to the
+/// editor. The UI must not also see the event, or panels would react to strokes.
+- (bool)forwardToCanvas:(clover_pointer_action)kind button:(uint32_t)button event:(NSEvent*)event {
+    if (!_canvasBound || !_runtime) {
+        return false;
+    }
+    const float scale = [self currentScale];
+    const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    const int32_t x = static_cast<int32_t>(std::lround(local.x * scale));
+    const int32_t y = static_cast<int32_t>(std::lround(local.y * scale));
+    if (x < _canvasRect.left || x >= _canvasRect.right || y < _canvasRect.top ||
+        y >= _canvasRect.bottom) {
+        return false;
+    }
+    CloverPic::Input::PointerEvent pointer;
+    pointer.device = CloverPic::Input::PointerDeviceType::Mouse;
+    switch (kind) {
+        case CLOVER_POINTER_DOWN: pointer.action = CloverPic::Input::PointerAction::Down; break;
+        case CLOVER_POINTER_UP: pointer.action = CloverPic::Input::PointerAction::Up; break;
+        case CLOVER_POINTER_CANCEL: pointer.action = CloverPic::Input::PointerAction::Up; break;
+        default: pointer.action = CloverPic::Input::PointerAction::Move; break;
+    }
+    pointer.position = CloverPic::Point(x, y);
+    pointer.button = button == 2 ? CloverPic::MouseButton::Right
+                                 : (button == 1 ? CloverPic::MouseButton::Left
+                                                : CloverPic::MouseButton::None);
+    pointer.pressure = 1.0f;
+    pointer.inContact = kind == CLOVER_POINTER_DOWN || (kind == CLOVER_POINTER_MOVE && button != 0);
+    pointer.modifiers = 0;
+    _runtime->HandlePointer(pointer);
+    _canvasDirty = true;
+    return true;
+}
+
 - (void)pushPointer:(clover_pointer_action)kind button:(uint32_t)button event:(NSEvent*)event {
     if (!_surface) {
+        return;
+    }
+    if ([self forwardToCanvas:kind button:button event:event]) {
+        [self setNeedsDisplay:YES];
         return;
     }
     const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
@@ -286,6 +425,8 @@ using CloverPic::Platform::Mac::ToUtf8;
                               static_cast<float>(NSHeight(self.bounds)), [self currentScale]);
     }
     [self syncFromRuntime];
+    [self syncCanvas];
+    [self paintCanvasIfNeeded];
 
     clover_frame frame{};
     if (clover_surface_frame(_surface, &frame) != CLOVER_OK || !frame.pixels) {

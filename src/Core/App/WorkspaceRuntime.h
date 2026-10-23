@@ -52,6 +52,21 @@ public:
     void InvokeDeleteLayer();
     void InvokeMergeLayerDown();
     void InvokeToggleActiveLayerVisibility();
+    /// Rect the canvas occupies, in frame (backing) pixels.
+    ///
+    /// A replacement presentation needs this to place its own canvas node and to
+    /// translate pointer events into canvas space.
+    Rect CanvasRect() const;
+
+    /// Places the canvas at `rect` (frame pixels) instead of the core layout.
+    void SetCanvasViewport(const Rect& rect);
+
+    /// Renders only the canvas into the frame, skipping the core-drawn chrome.
+    ///
+    /// The full `Render` redraws every panel, which a replacement UI does not need
+    /// and cannot afford.
+    const RgbaFrame& RenderCanvasOnly(uint64_t nowMs);
+
     const WorkspaceUiState& UiState() const { return m_uiState; }
     WorkspaceEditorFacade& Editor() { return m_editor; }
     const EditorSession& Session() const { return m_session; }
@@ -64,7 +79,6 @@ private:
     void RecomputeLayout();
     void MarkDirty(const Rect& rect);
     Rect FullRect() const { return Rect(0, 0, static_cast<int32_t>(m_frame.width), static_cast<int32_t>(m_frame.height)); }
-    Rect CanvasRect() const;
     void DispatchCommand(AppCommand command, uint64_t userData = 0, const String& payload = L"");
     WorkspaceActionContext BuildActionContext();
     WorkspaceActionCallbacks BuildActionCallbacks();
