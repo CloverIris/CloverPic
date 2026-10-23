@@ -178,6 +178,12 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   pushes only what changed (`set_label` / `set_value` / `set_children_xaml`).
 - `CLOVERPIC_NEW_CANVAS=WxH` is a development hook that opens a canvas at startup
   so the workspace can be exercised without going through the home screen.
+- The canvas is zero-copy: `<CloverSurface x:Name="canvas"/>` is bound to a direct
+  region, and `WorkspaceRuntime::RenderCanvasInto` draws the editor straight into
+  that region's back buffer. `RgbaFrame::FromBorrowed` is what makes this possible
+  without touching the canvas renderer.
+- Pointer events inside the canvas box go to the editor and never reach the UI, so
+  panels cannot react to strokes.
 
 ### Composed UI documents
 

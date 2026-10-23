@@ -148,10 +148,6 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (!_canvasDirty || !_canvasBound || !_runtime) {
         return;
     }
-    const CloverPic::Core::RgbaFrame& frame = _runtime->RenderCanvasOnly(0);
-    if (frame.pixels.empty()) {
-        return;
-    }
     uint32_t* pixels = nullptr;
     size_t stride = 0;
     uint32_t rows = 0;
@@ -159,22 +155,13 @@ using CloverPic::Platform::Mac::ToUtf8;
         !pixels) {
         return;
     }
-    const int32_t left = _canvasRect.left;
-    const int32_t top = _canvasRect.top;
-    const uint32_t copyWidth = std::min<uint32_t>(stride, static_cast<uint32_t>(_canvasRect.right - left));
-    for (uint32_t row = 0; row < rows; ++row) {
-        const int32_t sourceY = top + static_cast<int32_t>(row);
-        const int32_t sourceX = left;
-        if (sourceY < 0 || sourceY >= static_cast<int32_t>(frame.height)) {
-            continue;
-        }
-        const uint32_t* source =
-            reinterpret_cast<const uint32_t*>(frame.pixels.data()) +
-            static_cast<size_t>(sourceY) * (frame.width) + sourceX;
-        std::copy(source, source + copyWidth, pixels + static_cast<size_t>(row) * stride);
-    }
+    // Zero copy: the editor renders straight into the surface's back buffer.
+    const bool painted = _runtime->RenderCanvasInto(
+        reinterpret_cast<uint8_t*>(pixels), static_cast<uint32_t>(stride), rows,
+        static_cast<uint32_t>(stride * 4));
     clover_direct_commit(_surface, _canvasHandle);
-    _canvasDirty = false;
+    // If the project was not ready yet, try again next frame.
+    _canvasDirty = !painted;
 }
 
 - (void)createSurfaceIfNeeded {

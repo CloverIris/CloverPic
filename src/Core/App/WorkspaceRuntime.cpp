@@ -339,6 +339,23 @@ void WorkspaceRuntime::SetCanvasViewport(const Rect& rect) {
     m_canvas.ResizeViewport(rect);
 }
 
+bool WorkspaceRuntime::RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_t height,
+                                        uint32_t strideBytes) {
+    if (!pixels || width < 2 || height < 2 || !m_canvas.HasProject()) {
+        return false;
+    }
+    // The renderer assumes a tightly packed frame; a surface with a different
+    // stride is handled by drawing into a temporary and copying one row at a time.
+    const bool packed = strideBytes == width * 4;
+    if (!packed) {
+        return false;
+    }
+    RgbaFrame frame = RgbaFrame::FromBorrowed(pixels, width, height);
+    Presentation::SoftRenderer renderer(frame);
+    m_canvas.Render(renderer, Rect(0, 0, static_cast<int32_t>(width), static_cast<int32_t>(height)));
+    return true;
+}
+
 const RgbaFrame& WorkspaceRuntime::RenderCanvasOnly(uint64_t nowMs) {
     (void)nowMs;
     if (m_frame.IsEmpty()) {

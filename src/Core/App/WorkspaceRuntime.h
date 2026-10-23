@@ -67,6 +67,12 @@ public:
     /// and cannot afford.
     const RgbaFrame& RenderCanvasOnly(uint64_t nowMs);
 
+    /// Renders the canvas straight into memory the presentation layer owns.
+    ///
+    /// Zero copy: the direct-memory surface is the canvas's framebuffer, so there
+    /// is no intermediate frame and no copy per frame.
+    bool RenderCanvasInto(uint8_t* pixels, uint32_t width, uint32_t height, uint32_t strideBytes);
+
     const WorkspaceUiState& UiState() const { return m_uiState; }
     WorkspaceEditorFacade& Editor() { return m_editor; }
     const EditorSession& Session() const { return m_session; }

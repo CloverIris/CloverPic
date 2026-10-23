@@ -307,10 +307,11 @@ void SoftRenderer::BlendPixel(int x, int y, const Color& color) {
     const size_t idx = (static_cast<size_t>(y) * m_frame.width + x) * 4;
     const float a = color.a / 255.0f;
     const float inv = 1.0f - a;
-    m_frame.pixels[idx + 0] = static_cast<uint8_t>(color.b * a + m_frame.pixels[idx + 0] * inv);
-    m_frame.pixels[idx + 1] = static_cast<uint8_t>(color.g * a + m_frame.pixels[idx + 1] * inv);
-    m_frame.pixels[idx + 2] = static_cast<uint8_t>(color.r * a + m_frame.pixels[idx + 2] * inv);
-    m_frame.pixels[idx + 3] = 255;
+    uint8_t* target = m_frame.MutableData();
+    target[idx + 0] = static_cast<uint8_t>(color.b * a + target[idx + 0] * inv);
+    target[idx + 1] = static_cast<uint8_t>(color.g * a + target[idx + 1] * inv);
+    target[idx + 2] = static_cast<uint8_t>(color.r * a + target[idx + 2] * inv);
+    target[idx + 3] = 255;
 }
 
 void SoftRenderer::DrawGlyph(int x, int y, wchar_t ch, const Color& color, int scale) {
