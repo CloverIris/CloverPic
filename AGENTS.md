@@ -196,9 +196,13 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
   Without this, clicking the part of the canvas that overlaps core's left dock is
   swallowed by a panel nobody can see — the canvas becomes unpaintable there.
 - Strokes repaint only their damage: `TakeCanvasDamage` returns the region touched
-  since the last frame, and the surface is updated in place
-  (`clover_direct_begin_write_incremental`). Full repaints happen on press, release,
-  zoom and pan, which is what keeps stale ink from surviving.
+  since the last frame, then `clover_direct_begin_write_incremental` +
+  `clover_direct_commit_rect` publish it and repaint just that rect. Full repaints
+  happen on press, release, zoom and pan, which is what keeps stale ink from
+  surviving.
+- Partial writes must go through the **same pending-buffer mechanism** as full ones.
+  Writing into the region's internal buffer directly changes pixels nobody
+  publishes: the canvas looks frozen until something takes the full path.
 
 ### Composed UI documents
 

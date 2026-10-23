@@ -185,7 +185,20 @@ using CloverPic::Platform::Mac::ToUtf8;
     const bool painted = _runtime->RenderCanvasInto(
         reinterpret_cast<uint8_t*>(pixels), static_cast<uint32_t>(stride), rows,
         static_cast<uint32_t>(stride * 4), dirty);
-    clover_direct_commit(_surface, _canvasHandle);
+    if (partial && painted) {
+        // Publish and repaint only the damaged part of the page. The canvas box is
+        // positioned in logical points, so the damage is divided by the scale.
+        const float scale = [self currentScale];
+        clover_rect node{};
+        clover_surface_node_bounds(_surface, "canvas", &node);
+        const float x = static_cast<float>(node.x) + static_cast<float>(clipped.left) / scale;
+        const float y = static_cast<float>(node.y) + static_cast<float>(clipped.top) / scale;
+        clover_direct_commit_rect(_surface, _canvasHandle, x, y,
+                                  static_cast<float>(clipped.right - clipped.left) / scale,
+                                  static_cast<float>(clipped.bottom - clipped.top) / scale);
+    } else {
+        clover_direct_commit(_surface, _canvasHandle);
+    }
     // If the project was not ready yet, try again next frame.
     _canvasDirty = !painted;
 }
