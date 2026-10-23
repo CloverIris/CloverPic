@@ -36,6 +36,22 @@ public:
     bool ConsumeProgramManagerRequest();
     bool ConsumeProgramManagerSettingsRequest();
 
+    /// UI entry points used by the CloverPlatform presenter.
+    ///
+    /// These exist so a replacement view can drive the same state machine as the
+    /// built-in scene without reaching into private handlers or AppCommand
+    /// plumbing. They are the only surface a new presentation layer needs.
+    void InvokeSelectTool(ToolType tool);
+    void InvokeBrushParam(BrushParamId param, uint16_t value);
+    void InvokeSelectLayer(size_t index);
+    void InvokeSetBlendMode(uint32_t mode);
+    void InvokeSetLayerOpacity(uint8_t opacity);
+    void InvokeToggleLayerVisibility(size_t index);
+    void InvokeZoom(int zoomPercent);
+    const WorkspaceUiState& UiState() const { return m_uiState; }
+    WorkspaceEditorFacade& Editor() { return m_editor; }
+    const EditorSession& Session() const { return m_session; }
+
 private:
     bool OpenLaunchRequest(const WorkspaceLaunchRequest& launchRequest);
     void BuildScene();

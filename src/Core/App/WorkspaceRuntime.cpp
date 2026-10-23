@@ -697,4 +697,18 @@ void WorkspaceRuntime::OnCloseWorkspace() {
     WorkspaceActionController::CloseWorkspaceProject(context, BuildActionCallbacks());
 }
 
+
+void WorkspaceRuntime::InvokeSelectTool(ToolType tool) { OnSelectTool(tool); }
+void WorkspaceRuntime::InvokeBrushParam(BrushParamId param, uint16_t value) { OnSetBrushParam(param, value); }
+void WorkspaceRuntime::InvokeSelectLayer(size_t index) { OnSelectLayer(index); }
+void WorkspaceRuntime::InvokeSetBlendMode(uint32_t mode) { OnSetBlendMode(mode); }
+void WorkspaceRuntime::InvokeSetLayerOpacity(uint8_t opacity) { OnSetLayerOpacity(opacity); }
+void WorkspaceRuntime::InvokeToggleLayerVisibility(size_t index) {
+    if (LayerManager* layers = m_canvas.GetLayerManager()) {
+        layers->ToggleLayerVisibility(index);
+        MarkProjectDirty();
+    }
+}
+void WorkspaceRuntime::InvokeZoom(int zoomPercent) { OnSetZoomPreset(static_cast<uint16_t>(std::max(0, zoomPercent))); }
+
 } // namespace CloverPic::Core

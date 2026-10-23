@@ -31,6 +31,16 @@ public:
     float GetBrushFlow() const { return m_canvas ? m_canvas->GetBrushFlow() : 1.0f; }
     float GetBrushSpacing() const { return m_canvas ? m_canvas->GetBrushSpacing() : 0.25f; }
     float GetBrushWetMix() const { return m_canvas ? m_canvas->GetBrushWetMix() : 0.0f; }
+    float GetZoom() const { return m_canvas ? m_canvas->GetZoom() : 1.0f; }
+    void SetZoom(float zoom) { if (m_canvas) m_canvas->SetZoom(zoom); }
+    uint32_t GetCanvasWidth() const {
+        const Ref<Project> project = GetProject();
+        return project ? project->GetCanvas().widthPx : 0;
+    }
+    uint32_t GetCanvasHeight() const {
+        const Ref<Project> project = GetProject();
+        return project ? project->GetCanvas().heightPx : 0;
+    }
     Render::BrushTipType GetBrushTip() const { return m_canvas ? m_canvas->GetBrushTip() : Render::BrushTipType::RoundHard; }
 
     void SetBrushParam(BrushParamId param, uint16_t value) { if (m_canvas) m_canvas->SetBrushParam(param, value); }

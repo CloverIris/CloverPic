@@ -402,15 +402,13 @@
 
     <!-- Status bar -->
     <StackPanel x:Name="status" Orientation="Horizontal" Height="22" Width="Fill" Spacing="14">
-      <TextBlock x:Name="statusText" Text="NEW CANVAS"/>
-      <TextBlock x:Name="statusText" Text="{Binding tool}"/>
-      <TextBlock x:Name="statusText" Text="SIZE 10"/>
-      <TextBlock x:Name="statusText" Text="OP 100%"/>
-      <TextBlock x:Name="statusText" Text="HARD 0"/>
-      <TextBlock x:Name="brushReadout" Text="size 10"/>
-      <TextBlock x:Name="statusText" Text="ZOOM {Binding zoom}"/>
+      <TextBlock x:Name="statusCanvas" Text="NEW CANVAS"/>
+      <TextBlock x:Name="statusTool" Text="BRUSH"/>
+      <TextBlock x:Name="statusSize" Text="SIZE 10"/>
+      <TextBlock x:Name="brushReadout" Text="OP 100%"/>
+      <TextBlock x:Name="statusZoom" Text="ZOOM 100%"/>
       <TextBlock Width="Fill"/>
-      <TextBlock x:Name="statusText" Text="{Binding doc}"/>
+      <TextBlock x:Name="statusDoc" Text="untitled.cloverpic"/>
     </StackPanel>
   </StackPanel>
 </Ui>

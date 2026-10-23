@@ -162,6 +162,23 @@ CLOVERPIC_CLOVER_PM=1 ./build-mac/CloverPic
 - Settings still lives in the core-drawn scene; the CloverPlatform page covers
   new-canvas presets, open project, recents and quit.
 
+### CloverPlatform workspace (real integration)
+
+The workspace itself can be rendered by CloverPlatform, in the same window and
+driven by the same `Core::WorkspaceRuntime`:
+
+```bash
+CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPic
+```
+
+- `src/Core/UI/Workspace/Clover/WorkspaceViewModel` produces a `WorkspaceSnapshot`
+  from core state; it holds no window, surface or rectangle.
+- `WorkspaceActionRouter` maps `change:<control>:<value>` onto runtime commands.
+- `src/Platform/Mac/MacCloverWorkspace.mm` owns the surface, diffs snapshots and
+  pushes only what changed (`set_label` / `set_value` / `set_children_xaml`).
+- `CLOVERPIC_NEW_CANVAS=WxH` is a development hook that opens a canvas at startup
+  so the workspace can be exercised without going through the home screen.
+
 ### CloverPlatform workspace shell
 
 The workspace chrome (menu bar, toolbar, tool rail, docks, status bar) is now a

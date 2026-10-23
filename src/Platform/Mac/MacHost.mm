@@ -3,6 +3,7 @@
 #include "Platform/Mac/MacCloverDemo.h"
 #include "Platform/Mac/MacCloverProgramManager.h"
 #include "Platform/Mac/MacCloverShell.h"
+#include "Platform/Mac/MacCloverWorkspace.h"
 #include "Platform/Mac/MacCoreServices.h"
 #include "Platform/Mac/MacString.h"
 #include "Platform/Mac/MacTime.h"
@@ -116,7 +117,14 @@ bool MacHost::Initialize() {
     }
 
     [app activateIgnoringOtherApps:YES];
-    if (m_homeWindow) {
+    // A workspace that already opened a project wins over the home screen; the
+    // home window is only the default when there is nothing to show.
+    if (m_workspaceWindow && m_workspaceRuntime && m_workspaceRuntime->HasProject()) {
+        [m_workspaceWindow makeKeyAndOrderFront:nil];
+        if (m_homeWindow) {
+            [m_homeWindow orderOut:nil];
+        }
+    } else if (m_homeWindow) {
         [m_homeWindow makeKeyAndOrderFront:nil];
     } else if (m_workspaceWindow) {
         [m_workspaceWindow makeKeyAndOrderFront:nil];
@@ -228,7 +236,24 @@ bool MacHost::ConfirmWorkspaceDestructiveAction(const String& actionLabel) {
 void MacHost::CreateWorkspaceWindow() {
     const Size client = ComputeWorkspaceClientSize();
 
-    m_workspaceRuntime = std::make_unique<Core::WorkspaceRuntime>(Core::WorkspaceLaunchRequest{});
+    // A development hook: start with a canvas instead of the home screen so the
+    // workspace can be exercised directly. CLOVERPIC_NEW_CANVAS=1600x1000.
+    Core::WorkspaceLaunchRequest launch{};
+    if (const char* size = std::getenv("CLOVERPIC_NEW_CANVAS")) {
+        int width = 0;
+        int height = 0;
+        if (std::sscanf(size, "%dx%d", &width, &height) == 2 && width > 0 && height > 0) {
+            launch.kind = Core::WorkspaceLaunchKind::NewCanvas;
+            launch.width = static_cast<uint32_t>(width);
+            launch.height = static_cast<uint32_t>(height);
+        }
+    }
+    m_workspaceRuntime = std::make_unique<Core::WorkspaceRuntime>(launch);
+    if (launch.kind != Core::WorkspaceLaunchKind::None) {
+        // Nothing else initialises the runtime on this path, and Initialize is what
+        // applies the launch request.
+        m_workspaceRuntime->Initialize();
+    }
     m_workspaceView = [[MacSurfaceView alloc] initWithRuntime:m_workspaceRuntime.get()
                                                         role:MacSurfaceRoleWorkspace];
 
@@ -248,6 +273,19 @@ void MacHost::CreateWorkspaceWindow() {
     m_workspaceWindowDelegate.host = this;
     m_workspaceWindowDelegate.role = MacSurfaceRoleWorkspace;
     m_workspaceWindow.delegate = m_workspaceWindowDelegate;
+
+    // Optional: render the workspace itself with CloverPlatform. Same runtime,
+    // same window, different presentation.
+    if (const char* clover = std::getenv("CLOVERPIC_CLOVER_WORKSPACE");
+        clover && std::string(clover) != "0") {
+        CloverWorkspaceView* view =
+            [[CloverWorkspaceView alloc] initWithRuntime:m_workspaceRuntime.get()];
+        view.frame = NSMakeRect(0, 0, client.width, client.height);
+        view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        m_workspaceWindow.contentView = view;
+        if (launch.kind != Core::WorkspaceLaunchKind::None && m_homeWindow) {
+            [m_homeWindow orderOut:nil];
+        }    }
 
     [m_workspaceWindow makeKeyAndOrderFront:nil];
     std::fprintf(stderr, "[mac] workspace window %dx%d pt\n", client.width, client.height);
