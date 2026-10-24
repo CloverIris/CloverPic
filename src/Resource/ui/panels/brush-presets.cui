@@ -6,9 +6,6 @@
     <Style x:Name="header" Background="#2F2F2F" Padding="8,3"/>
   </Styles>
   <StackPanel Width="Fill" Height="Fill" Background="#232323">
-    <StackPanel x:Name="header" Height="18" Width="Fill">
-      <TextBlock x:Name="title" Text="BRUSH: PEN" VerticalAlignment="Center"/>
-    </StackPanel>
     <ScrollViewer Width="Fill" Height="Fill" Padding="0,4">
       <StackPanel Width="Fill">
         <StackPanel x:Name="row" Orientation="Horizontal" Height="20" Padding="8,0">

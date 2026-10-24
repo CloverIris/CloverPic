@@ -15,6 +15,49 @@
 #define CLOVERPIC_UI_DIR "src/Resource/ui"
 #endif
 
+namespace {
+
+/// A dockable panel: the host owns the header (so it can carry a drag payload) and
+/// embeds the panel's document under it.
+struct PanelDef {
+    std::string id;
+    std::string title;
+    std::string source;
+};
+
+std::vector<std::string> SplitAction(const std::string& action) {
+    std::vector<std::string> parts;
+    std::string current;
+    for (const char ch : action) {
+        if (ch == ':') {
+            parts.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(ch);
+        }
+    }
+    parts.push_back(current);
+    return parts;
+}
+
+std::string PanelMarkup(const std::vector<PanelDef>& panels) {
+    std::string out;
+    for (const auto& panel : panels) {
+        out += "<StackPanel Width=\"Fill\" Height=\"Fill\">";
+        out += "<StackPanel x:Name=\"hdr-" + panel.id + "\" Orientation=\"Horizontal\" "
+               "Height=\"20\" Padding=\"8,0\" Background=\"#2F2F2F\" Drag=\"panel-" +
+               panel.id + "\" Cursor=\"move\">";
+        out += "<TextBlock Text=\"" + panel.title +
+               "\" FontSize=\"10\" Foreground=\"#9C9C9C\" VerticalAlignment=\"Center\"/>";
+        out += "</StackPanel>";
+        out += "<Content Source=\"" + panel.source + "\" Height=\"Fill\"/>";
+        out += "</StackPanel>";
+    }
+    return out;
+}
+
+} // namespace
+
 using CloverPic::Core::WorkspaceSnapshot;
 using CloverPic::Platform::Mac::ToUtf8;
 
@@ -33,6 +76,11 @@ using CloverPic::Platform::Mac::ToUtf8;
     bool _canvasDirty;
     CloverPic::Rect _canvasRect;
     bool _canvasFocused;
+    std::vector<PanelDef> _leftPanels;
+    std::vector<PanelDef> _rightPanels;
+    std::string _draggingPanel;
+    float _dragX;
+    float _dragY;
     int32_t _frameWidth;
     int32_t _frameHeight;
     float _frameScale;
@@ -205,6 +253,60 @@ using CloverPic::Platform::Mac::ToUtf8;
     _canvasDirty = !painted;
 }
 
+/// Rebuilds both dock containers from the panel model.
+- (void)refreshPanels {
+    if (!_surface) {
+        return;
+    }
+    clover_surface_set_children_xaml(_surface, "leftPanels", PanelMarkup(_leftPanels).c_str());
+    clover_surface_set_children_xaml(_surface, "rightPanels", PanelMarkup(_rightPanels).c_str());
+    [self setNeedsDisplay:YES];
+}
+
+/// Moves `panel` to whichever dock container contains `(x, y)`.
+- (bool)dropPanel:(const std::string&)panel at:(float)x y:(float)y {
+    clover_rect left{};
+    clover_rect right{};
+    const bool hasLeft = clover_surface_node_bounds(_surface, "leftPanels", &left) == CLOVER_OK;
+    const bool hasRight = clover_surface_node_bounds(_surface, "rightPanels", &right) == CLOVER_OK;
+
+    auto contains = [&](const clover_rect& rect) {
+        return x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+    };
+
+    std::vector<PanelDef>* destination = nullptr;
+    if (hasLeft && contains(left)) {
+        destination = &_leftPanels;
+    } else if (hasRight && contains(right)) {
+        destination = &_rightPanels;
+    } else {
+        return false;
+    }
+
+    // Find the panel wherever it currently lives.
+    PanelDef moved;
+    bool found = false;
+    for (auto* list : {&_leftPanels, &_rightPanels}) {
+        for (auto it = list->begin(); it != list->end(); ++it) {
+            if (it->id == panel) {
+                moved = *it;
+                list->erase(it);
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            break;
+        }
+    }
+    if (!found) {
+        return false;
+    }
+    destination->push_back(moved);
+    [self refreshPanels];
+    return true;
+}
+
 - (void)createSurfaceIfNeeded {
     const NSRect bounds = self.bounds;
     if (NSWidth(bounds) < 2.0 || NSHeight(bounds) < 2.0) {
@@ -221,6 +323,9 @@ using CloverPic::Platform::Mac::ToUtf8;
     }
     _scale = scale;
     _lastSize = bounds.size;
+    _leftPanels = {{"presets", "BRUSH: PEN", "panels/brush-presets.cui"}};
+    _rightPanels = {{"sizes", "BRUSH SIZE", "panels/brush-sizes.cui"}};
+    [self refreshPanels];
     std::fprintf(stderr, "[clover-workspace] shell loaded from %s\n", path.c_str());
 }
 
@@ -307,6 +412,27 @@ using CloverPic::Platform::Mac::ToUtf8;
         return;
     }
     // A submenu parent keeps the menu open; cascade beside it.
+    if (action.rfind("drag:", 0) == 0) {
+        const auto parts = SplitAction(action);
+        if (parts.size() >= 3) {
+            const std::string& phase = parts[1];
+            std::string payload = parts[2];
+            if (payload.rfind("panel-", 0) == 0) {
+                payload = payload.substr(6);
+                if (phase == "begin") {
+                    _draggingPanel = payload;
+                } else if (phase == "move" && parts.size() >= 7) {
+                    // drag:move:<payload>:<dx>:<dy>:<x>:<y>
+                    _dragX = std::stof(parts[5]);
+                    _dragY = std::stof(parts[6]);
+                } else if (phase == "end" && !_draggingPanel.empty()) {
+                    [self dropPanel:_draggingPanel at:_dragX y:_dragY];
+                    _draggingPanel.clear();
+                }
+            }
+        }
+        return;
+    }
     if (action == "layer:2") {
         clover_surface_open_submenu(_surface, "Merge Down,Flatten Layer", "merge");
         return;

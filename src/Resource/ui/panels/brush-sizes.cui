@@ -7,9 +7,6 @@
     <Style x:Name="selected" Background="#3B6FD4" CornerRadius="3"/>
   </Styles>
   <StackPanel Width="Fill" Height="Fill" Background="#232323">
-    <StackPanel x:Name="header" Height="18" Width="Fill">
-      <TextBlock x:Name="title" Text="BRUSH SIZE" VerticalAlignment="Center"/>
-    </StackPanel>
     <StackPanel Padding="8,6" Spacing="4">
       <StackPanel Orientation="Horizontal" Spacing="3" Height="18">
         <Panel x:Name="chip" Width="34" Height="16"><TextBlock x:Name="label" Text="1" HorizontalAlignment="Center" VerticalAlignment="Center"/></Panel>

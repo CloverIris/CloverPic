@@ -203,7 +203,7 @@
           </StackPanel>
         </StackPanel>
 
-        <Content x:Name="presets" Source="panels/brush-presets.cui" Height="Fill"/>
+        <StackPanel x:Name="leftPanels" Width="Fill" Height="Fill"/>
       </StackPanel>
 
       <Splitter x:Name="leftSplit" Orientation="Vertical" Target="leftDock" Min="160" Max="420"
@@ -358,7 +358,7 @@
           <Panel x:Name="chip" Width="34" Height="18"><TextBlock x:Name="label" Text="ME" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="9"/></Panel>
         </StackPanel>
 
-        <Content x:Name="sizes" Source="panels/brush-sizes.cui" Height="110"/>
+        <StackPanel x:Name="rightPanels" Width="Fill" Height="Fill"/>
       </StackPanel>
     </StackPanel>
 
