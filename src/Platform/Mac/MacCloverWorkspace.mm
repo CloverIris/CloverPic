@@ -81,6 +81,8 @@ using CloverPic::Platform::Mac::ToUtf8;
     std::string _draggingPanel;
     float _dragX;
     float _dragY;
+    float _pointerX;
+    float _pointerY;
     int32_t _frameWidth;
     int32_t _frameHeight;
     float _frameScale;
@@ -421,15 +423,24 @@ using CloverPic::Platform::Mac::ToUtf8;
                 payload = payload.substr(6);
                 if (phase == "begin") {
                     _draggingPanel = payload;
-                } else if (phase == "move" && parts.size() >= 7) {
-                    // drag:move:<payload>:<dx>:<dy>:<x>:<y>
-                    _dragX = std::stof(parts[5]);
-                    _dragY = std::stof(parts[6]);
                 } else if (phase == "end" && !_draggingPanel.empty()) {
-                    [self dropPanel:_draggingPanel at:_dragX y:_dragY];
+                    [self dropPanel:_draggingPanel at:_pointerX y:_pointerY];
                     _draggingPanel.clear();
                 }
             }
+        }
+        return;
+    }
+    if (action.rfind("panelmove:", 0) == 0) {
+        const bool toLeft = action == "panelmove:0";
+        // Move the first panel of the other dock over, so the menu works even
+        // though it does not know which header was clicked.
+        std::vector<PanelDef>& source = toLeft ? _rightPanels : _leftPanels;
+        std::vector<PanelDef>& destination = toLeft ? _leftPanels : _rightPanels;
+        if (!source.empty()) {
+            destination.push_back(source.front());
+            source.erase(source.begin());
+            [self refreshPanels];
         }
         return;
     }
@@ -494,6 +505,10 @@ using CloverPic::Platform::Mac::ToUtf8;
         _canvasFocused = false;
     }
     const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
+    // Tracked here because the drop target should be where this view saw the
+    // pointer, not a value that travelled through the action string.
+    _pointerX = static_cast<float>(local.x);
+    _pointerY = static_cast<float>(local.y);
     clover_surface_pointer(_surface, static_cast<float>(local.x), static_cast<float>(local.y), kind,
                            button, 0);
     [self setNeedsDisplay:YES];
@@ -516,23 +531,36 @@ using CloverPic::Platform::Mac::ToUtf8;
 ///
 /// Menus are not part of the page tree: the host decides what a right-click
 /// means, and the framework only places and runs the popup.
+- (bool)pointInsideNode:(const char*)name x:(CGFloat)x y:(CGFloat)y {
+    clover_rect rect{};
+    if (clover_surface_node_bounds(_surface, name, &rect) != CLOVER_OK) {
+        return false;
+    }
+    return x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+}
+
 - (void)rightMouseDown:(NSEvent*)event {
     if (!_surface) {
         return;
     }
     const NSPoint local = [self convertPoint:event.locationInWindow fromView:nil];
-    clover_rect list{};
-    if (clover_surface_node_bounds(_surface, "layerList", &list) != CLOVER_OK) {
+
+    // A panel header offers to move its panel to the other dock. This is also the
+    // keyboard/pointer alternative when dragging is impractical.
+    if (_leftPanels.size() + _rightPanels.size() > 0 &&
+        ([self pointInsideNode:"leftPanels" x:local.x y:local.y] ||
+         [self pointInsideNode:"rightPanels" x:local.x y:local.y])) {
+        clover_surface_open_menu(_surface, (float)local.x, (float)local.y, 200.0f, 20.0f,
+                                 "Move to Left Dock,Move to Right Dock", "panelmove");
+        [self setNeedsDisplay:YES];
         return;
     }
-    const bool inside = local.x >= list.x && local.x < list.x + list.w &&
-                        local.y >= list.y && local.y < list.y + list.h;
-    if (!inside) {
-        return;
+
+    if ([self pointInsideNode:"layerList" x:local.x y:local.y]) {
+        clover_surface_open_menu(_surface, (float)local.x, (float)local.y, 180.0f, 20.0f,
+                                 "Duplicate,Delete,Merge Down>,Toggle Visible", "layer");
+        [self setNeedsDisplay:YES];
     }
-    clover_surface_open_menu(_surface, (float)local.x, (float)local.y, 180.0f, 20.0f,
-                             "Duplicate,Delete,Merge Down>,Toggle Visible", "layer");
-    [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent*)event {
