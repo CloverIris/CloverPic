@@ -23,6 +23,12 @@ struct PanelDef {
     std::string id;
     std::string title;
     std::string source;
+    /// 0 left dock, 1 right dock, 2 floating. Order within a dock is vector order.
+    int side = 0;
+    float fx = 0.0f;
+    float fy = 0.0f;
+    float fw = 240.0f;
+    float fh = 220.0f;
 };
 
 std::vector<std::string> SplitAction(const std::string& action) {
@@ -40,19 +46,43 @@ std::vector<std::string> SplitAction(const std::string& action) {
     return parts;
 }
 
-std::string PanelMarkup(const std::vector<PanelDef>& panels) {
+std::string PanelHeader(const PanelDef& panel) {
+    return "<StackPanel x:Name=\"hdr-" + panel.id + "\" Orientation=\"Horizontal\" Height=\"20\" "
+           "Padding=\"8,0\" Background=\"#2F2F2F\" Drag=\"panel-" + panel.id +
+           "\" Cursor=\"move\"><TextBlock Text=\"" + panel.title +
+           "\" FontSize=\"10\" Foreground=\"#9C9C9C\" VerticalAlignment=\"Center\"/></StackPanel>";
+}
+
+/// Docked panels, stacked in order inside one dock container.
+std::string PanelMarkup(const std::vector<PanelDef>& panels, int side) {
     std::string out;
     for (const auto& panel : panels) {
-        out += "<StackPanel Width=\"Fill\" Height=\"Fill\">";
-        out += "<StackPanel x:Name=\"hdr-" + panel.id + "\" Orientation=\"Horizontal\" "
-               "Height=\"20\" Padding=\"8,0\" Background=\"#2F2F2F\" Drag=\"panel-" +
-               panel.id + "\" Cursor=\"move\">";
-        out += "<TextBlock Text=\"" + panel.title +
-               "\" FontSize=\"10\" Foreground=\"#9C9C9C\" VerticalAlignment=\"Center\"/>";
-        out += "</StackPanel>";
+        if (panel.side != side) {
+            continue;
+        }
+        out += "<StackPanel x:Name=\"panel-" + panel.id + "\" Width=\"Fill\" Height=\"Fill\">";
+        out += PanelHeader(panel);
         out += "<Content Source=\"" + panel.source + "\" Height=\"Fill\"/>";
         out += "</StackPanel>";
     }
+    return out;
+}
+
+/// A floating panel: positioned absolutely in the overlay.
+std::string FloatingMarkup(const PanelDef& panel, float viewportW, float viewportH) {
+    const float w = std::clamp(panel.fw, 180.0f, std::max(200.0f, viewportW - 40.0f));
+    const float h = std::clamp(panel.fh, 120.0f, std::max(140.0f, viewportH - 40.0f));
+    const float x = std::clamp(panel.fx, 0.0f, std::max(0.0f, viewportW - w));
+    const float y = std::clamp(panel.fy, 0.0f, std::max(0.0f, viewportH - h));
+    std::string out = "<StackPanel x:Name=\"panel-" + panel.id + "\" Position=\"" +
+                      std::to_string(static_cast<int>(x)) + "," +
+                      std::to_string(static_cast<int>(y)) + "\" Width=\"" +
+                      std::to_string(static_cast<int>(w)) + "\" Height=\"" +
+                      std::to_string(static_cast<int>(h)) +
+                      "\" Background=\"#232323\" BorderThickness=\"1\" BorderBrush=\"#4A4A4A\">";
+    out += PanelHeader(panel);
+    out += "<Content Source=\"" + panel.source + "\" Height=\"Fill\"/>";
+    out += "</StackPanel>";
     return out;
 }
 
@@ -76,9 +106,20 @@ using CloverPic::Platform::Mac::ToUtf8;
     bool _canvasDirty;
     CloverPic::Rect _canvasRect;
     bool _canvasFocused;
-    std::vector<PanelDef> _leftPanels;
-    std::vector<PanelDef> _rightPanels;
+    std::vector<PanelDef> _panels;
     std::string _draggingPanel;
+    float _grabDX;
+    float _grabDY;
+    float _previewX;
+    float _previewY;
+    float _previewW;
+    float _previewH;
+    bool _insertVisible;
+    int _insertSide;
+    int _insertIndex;
+    float _insertX;
+    float _insertY;
+    float _insertW;
     float _dragX;
     float _dragY;
     float _pointerX;
@@ -255,58 +296,257 @@ using CloverPic::Platform::Mac::ToUtf8;
     _canvasDirty = !painted;
 }
 
-/// Rebuilds both dock containers from the panel model.
-- (void)refreshPanels {
+/// Node bounds for a panel wrapper, or an empty rect when it is not on screen.
+- (clover_rect)boundsOfPanel:(const std::string&)id {
+    clover_rect rect{};
+    const std::string name = "panel-" + id;
+    if (clover_surface_node_bounds(_surface, name.c_str(), &rect) != CLOVER_OK) {
+        rect.x = rect.y = rect.w = rect.h = 0;
+    }
+    return rect;
+}
+
+/// Where a dragged panel would be inserted on `side`, given the pointer's y.
+///
+/// Ported from the core scene: walk the docked panels in order and stop at the
+/// first whose vertical midpoint is below the pointer.
+- (int)insertIndexForSide:(int)side y:(float)y {
+    int index = 0;
+    for (const auto& panel : _panels) {
+        if (panel.side != side) {
+            continue;
+        }
+        const clover_rect rect = [self boundsOfPanel:panel.id];
+        if (rect.h > 0 && y < rect.y + rect.h * 0.5f) {
+            return index;
+        }
+        ++index;
+    }
+    return index;
+}
+
+/// Rebuilds the dock containers, the floating panels and any drag feedback.
+- (void)rebuildPanelViews {
     if (!_surface) {
         return;
     }
-    clover_surface_set_children_xaml(_surface, "leftPanels", PanelMarkup(_leftPanels).c_str());
-    clover_surface_set_children_xaml(_surface, "rightPanels", PanelMarkup(_rightPanels).c_str());
+    clover_surface_set_children_xaml(_surface, "leftPanels", PanelMarkup(_panels, 0).c_str());
+    clover_surface_set_children_xaml(_surface, "rightPanels", PanelMarkup(_panels, 1).c_str());
+
+    std::string overlay;
+    for (const auto& panel : _panels) {
+        if (panel.side == 2) {
+            overlay += FloatingMarkup(panel, static_cast<float>(_frameWidth),
+                                      static_cast<float>(_frameHeight));
+        }
+    }
+    if (_draggingPanel.empty() == false) {
+        // The ghost the user is dragging, plus the bar showing where it will land.
+        overlay += "<Panel Position=\"" + std::to_string(static_cast<int>(_previewX)) + "," +
+                   std::to_string(static_cast<int>(_previewY)) + "\" Width=\"" +
+                   std::to_string(static_cast<int>(_previewW)) + "\" Height=\"" +
+                   std::to_string(static_cast<int>(_previewH)) +
+                   "\" Background=\"#2B3138\" BorderThickness=\"1\" BorderBrush=\"#5B9CFF\" "
+                   "CornerRadius=\"4\"/>";
+        if (_insertVisible) {
+            overlay += "<Panel Position=\"" + std::to_string(static_cast<int>(_insertX)) + "," +
+                       std::to_string(static_cast<int>(_insertY)) + "\" Width=\"" +
+                       std::to_string(static_cast<int>(_insertW)) +
+                       "\" Height=\"6\" Background=\"#5B9CFF\" CornerRadius=\"3\"/>";
+        }
+    }
+    clover_surface_set_overlay_cui(_surface, ("<Panel>" + overlay + "</Panel>").c_str());
     [self setNeedsDisplay:YES];
 }
 
-/// Moves `panel` to whichever dock container contains `(x, y)`.
-- (bool)dropPanel:(const std::string&)panel at:(float)x y:(float)y {
+- (void)beginPanelDrag:(const std::string&)id x:(float)x y:(float)y {
+    for (auto& panel : _panels) {
+        if (panel.id != id) {
+            continue;
+        }
+        const clover_rect rect = [self boundsOfPanel:id];
+        _draggingPanel = id;
+        _grabDX = x - static_cast<float>(rect.x);
+        _grabDY = y - static_cast<float>(rect.y);
+        _previewW = panel.side == 2 ? panel.fw : std::max(220.0f, static_cast<float>(rect.w));
+        _previewH = panel.side == 2 ? panel.fh : std::max(120.0f, static_cast<float>(rect.h));
+        _previewX = x - _grabDX;
+        _previewY = y - _grabDY;
+        break;
+    }
+}
+
+/// Recomputes the ghost and the insertion marker from the current pointer.
+- (void)updatePanelDragAtX:(float)x y:(float)y {
+    if (_draggingPanel.empty()) {
+        return;
+    }
+    _previewX = x - _grabDX;
+    _previewY = y - _grabDY;
+    _insertVisible = false;
+
     clover_rect left{};
     clover_rect right{};
     const bool hasLeft = clover_surface_node_bounds(_surface, "leftPanels", &left) == CLOVER_OK;
     const bool hasRight = clover_surface_node_bounds(_surface, "rightPanels", &right) == CLOVER_OK;
 
-    auto contains = [&](const clover_rect& rect) {
-        return x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
-    };
-
-    std::vector<PanelDef>* destination = nullptr;
-    if (hasLeft && contains(left)) {
-        destination = &_leftPanels;
-    } else if (hasRight && contains(right)) {
-        destination = &_rightPanels;
-    } else {
-        return false;
+    int side = -1;
+    if (hasLeft && x >= left.x && x < left.x + left.w && y >= left.y - 40 && y < left.y + left.h) {
+        side = 0;
+    } else if (hasRight && x >= right.x && x < right.x + right.w && y >= right.y - 40 &&
+               y < right.y + right.h) {
+        side = 1;
     }
 
-    // Find the panel wherever it currently lives.
-    PanelDef moved;
-    bool found = false;
-    for (auto* list : {&_leftPanels, &_rightPanels}) {
-        for (auto it = list->begin(); it != list->end(); ++it) {
-            if (it->id == panel) {
-                moved = *it;
-                list->erase(it);
-                found = true;
+    if (side >= 0) {
+        _insertSide = side;
+        _insertIndex = [self insertIndexForSide:side y:y];
+        const clover_rect dock = side == 0 ? left : right;
+        // The bar sits at the top edge of the panel at the insertion index, or at
+        // the bottom of the dock when appending.
+        float barY = static_cast<float>(dock.y + dock.h);
+        int seen = 0;
+        for (const auto& panel : _panels) {
+            if (panel.side != side) {
+                continue;
+            }
+            if (seen == _insertIndex) {
+                const clover_rect rect = [self boundsOfPanel:panel.id];
+                barY = static_cast<float>(rect.y) - 3.0f;
                 break;
             }
+            ++seen;
         }
-        if (found) {
+        _insertX = static_cast<float>(dock.x + 8);
+        _insertY = barY;
+        _insertW = static_cast<float>(dock.w - 16);
+        _insertVisible = true;
+    }
+    [self rebuildPanelViews];
+}
+
+- (void)commitPanelDrag {
+    if (_draggingPanel.empty()) {
+        return;
+    }
+    PanelDef* dragged = nullptr;
+    for (auto& panel : _panels) {
+        if (panel.id == _draggingPanel) {
+            dragged = &panel;
             break;
         }
     }
-    if (!found) {
-        return false;
+    if (!dragged) {
+        _draggingPanel.clear();
+        return;
     }
-    destination->push_back(moved);
-    [self refreshPanels];
-    return true;
+
+    if (_insertVisible) {
+        // Remove from its current position, then insert at the requested index.
+        PanelDef moved = *dragged;
+        _panels.erase(std::remove_if(_panels.begin(), _panels.end(),
+                                     [&](const PanelDef& p) { return p.id == moved.id; }),
+                      _panels.end());
+        moved.side = _insertSide;
+        int seen = 0;
+        auto insertAt = _panels.end();
+        for (auto it = _panels.begin(); it != _panels.end(); ++it) {
+            if (it->side != _insertSide) {
+                continue;
+            }
+            if (seen == _insertIndex) {
+                insertAt = it;
+                break;
+            }
+            ++seen;
+        }
+        _panels.insert(insertAt, moved);
+    } else {
+        // Dropped away from both docks: it becomes a floating panel.
+        dragged->side = 2;
+        dragged->fx = _previewX;
+        dragged->fy = _previewY;
+        dragged->fw = _previewW;
+        dragged->fh = _previewH;
+    }
+    _draggingPanel.clear();
+    _insertVisible = false;
+    [self rebuildPanelViews];
+    [self savePanelLayout];
+}
+
+- (void)savePanelLayout {
+    NSString* dir = nil;
+    if (const char* data = std::getenv("CLOVERPIC_DATA_DIR")) {
+        dir = [NSString stringWithUTF8String:data];
+    }
+    if (!dir) {
+        dir = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES)
+            .firstObject stringByAppendingPathComponent:@"CloverPic"];
+    }
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    std::string text;
+    for (const auto& panel : _panels) {
+        text += panel.id + " " + std::to_string(panel.side) + " " +
+                std::to_string(static_cast<int>(panel.fx)) + " " +
+                std::to_string(static_cast<int>(panel.fy)) + " " +
+                std::to_string(static_cast<int>(panel.fw)) + " " +
+                std::to_string(static_cast<int>(panel.fh)) + "\n";
+    }
+    NSString* path = [dir stringByAppendingPathComponent:@"panels.layout"];
+    [[NSString stringWithUTF8String:text.c_str()] writeToFile:path
+                                                  atomically:YES
+                                                    encoding:NSUTF8StringEncoding
+                                                       error:nil];
+}
+
+- (void)loadPanelLayout {
+    NSString* dir = nil;
+    if (const char* data = std::getenv("CLOVERPIC_DATA_DIR")) {
+        dir = [NSString stringWithUTF8String:data];
+    }
+    if (!dir) {
+        dir = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES)
+            .firstObject stringByAppendingPathComponent:@"CloverPic"];
+    }
+    NSString* path = [dir stringByAppendingPathComponent:@"panels.layout"];
+    NSString* text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+    if (!text) {
+        return;
+    }
+    std::istringstream stream(text.UTF8String);
+    std::string id;
+    int side = 0;
+    float fx = 0, fy = 0, fw = 240, fh = 220;
+    std::vector<PanelDef> ordered;
+    while (stream >> id >> side >> fx >> fy >> fw >> fh) {
+        for (const auto& panel : _panels) {
+            if (panel.id == id) {
+                PanelDef copy = panel;
+                copy.side = side;
+                copy.fx = fx;
+                copy.fy = fy;
+                copy.fw = fw;
+                copy.fh = fh;
+                ordered.push_back(copy);
+                break;
+            }
+        }
+    }
+    // Keep any panel the file did not mention.
+    for (const auto& panel : _panels) {
+        const bool known = std::any_of(ordered.begin(), ordered.end(),
+                                       [&](const PanelDef& p) { return p.id == panel.id; });
+        if (!known) {
+            ordered.push_back(panel);
+        }
+    }
+    if (!ordered.empty()) {
+        _panels = ordered;
+    }
 }
 
 - (void)createSurfaceIfNeeded {
@@ -325,9 +565,12 @@ using CloverPic::Platform::Mac::ToUtf8;
     }
     _scale = scale;
     _lastSize = bounds.size;
-    _leftPanels = {{"presets", "BRUSH: PEN", "panels/brush-presets.cui"}};
-    _rightPanels = {{"sizes", "BRUSH SIZE", "panels/brush-sizes.cui"}};
-    [self refreshPanels];
+    _panels = {
+        {"presets", "BRUSH: PEN", "panels/brush-presets.cui", 0, 0, 0, 240, 220},
+        {"sizes", "BRUSH SIZE", "panels/brush-sizes.cui", 1, 0, 0, 240, 220},
+    };
+    [self loadPanelLayout];
+    [self rebuildPanelViews];
     std::fprintf(stderr, "[clover-workspace] shell loaded from %s\n", path.c_str());
 }
 
@@ -421,26 +664,31 @@ using CloverPic::Platform::Mac::ToUtf8;
             std::string payload = parts[2];
             if (payload.rfind("panel-", 0) == 0) {
                 payload = payload.substr(6);
+                if (phase == "move") {
+                    [self updatePanelDragAtX:_pointerX y:_pointerY];
+                }
                 if (phase == "begin") {
-                    _draggingPanel = payload;
-                } else if (phase == "end" && !_draggingPanel.empty()) {
-                    [self dropPanel:_draggingPanel at:_pointerX y:_pointerY];
-                    _draggingPanel.clear();
+                    [self beginPanelDrag:payload x:_pointerX y:_pointerY];
+                    [self updatePanelDragAtX:_pointerX y:_pointerY];
+                } else if (phase == "end") {
+                    // Recompute from the release point: the last move may have been
+                    // coalesced, and the drop must reflect where the button came up.
+                    [self updatePanelDragAtX:_pointerX y:_pointerY];
+                    [self commitPanelDrag];
                 }
             }
         }
         return;
     }
     if (action.rfind("panelmove:", 0) == 0) {
-        const bool toLeft = action == "panelmove:0";
-        // Move the first panel of the other dock over, so the menu works even
-        // though it does not know which header was clicked.
-        std::vector<PanelDef>& source = toLeft ? _rightPanels : _leftPanels;
-        std::vector<PanelDef>& destination = toLeft ? _leftPanels : _rightPanels;
-        if (!source.empty()) {
-            destination.push_back(source.front());
-            source.erase(source.begin());
-            [self refreshPanels];
+        const int target = action == "panelmove:0" ? 0 : 1;
+        for (auto& panel : _panels) {
+            if (panel.side != target) {
+                panel.side = target;
+                [self rebuildPanelViews];
+                [self savePanelLayout];
+                break;
+            }
         }
         return;
     }
@@ -490,7 +738,10 @@ using CloverPic::Platform::Mac::ToUtf8;
     if (!_surface) {
         return;
     }
-    if ([self forwardToCanvas:kind button:button event:event]) {
+    // A panel drag belongs to the UI even while the pointer is over the canvas.
+    // Forwarding there would swallow the release and the drag would never end.
+    const bool dragging = !_draggingPanel.empty();
+    if (!dragging && [self forwardToCanvas:kind button:button event:event]) {
         // Pressing the canvas takes keyboard focus; releasing it must not give the
         // focus back, or every shortcut after a stroke would go to the chrome.
         if (kind == CLOVER_POINTER_DOWN) {
@@ -547,7 +798,7 @@ using CloverPic::Platform::Mac::ToUtf8;
 
     // A panel header offers to move its panel to the other dock. This is also the
     // keyboard/pointer alternative when dragging is impractical.
-    if (_leftPanels.size() + _rightPanels.size() > 0 &&
+    if (!_panels.empty() &&
         ([self pointInsideNode:"leftPanels" x:local.x y:local.y] ||
          [self pointInsideNode:"rightPanels" x:local.x y:local.y])) {
         clover_surface_open_menu(_surface, (float)local.x, (float)local.y, 200.0f, 20.0f,

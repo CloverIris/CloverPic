@@ -211,10 +211,34 @@ CLOVERPIC_CLOVER_WORKSPACE=1 CLOVERPIC_NEW_CANVAS=1600x1000 ./build-mac/CloverPi
 
 ### Workspace docking, current state
 
-- The docks resize: `<Splitter Target="leftDock|rightDock" Min Max>` drags the
-  column width and the canvas reflows. Verified by dragging the seam.
-- Panels cannot yet be **moved** between docks, and nothing about the layout is
-  persisted. Both are still open.
+Ported from the core scene's model (`WorkspaceDockLayout` / `WorkspaceInteractionController`),
+which is the reference for behaviour:
+
+- Layout follows a **fixed model**, as before: `WorkspaceDockLayout::InsertIndexForDock`
+  walks the docked panels in order and stops at the first whose vertical midpoint is
+  below the pointer; `BuildInsertionRect` turns that index into the 6pt bar.
+  `UpdatePanelDrag` sizes the ghost from the panel and offsets it by the grab point;
+  `CommitPanelDrag` either inserts at the index or, when there is no insertion,
+  makes the panel floating at the ghost's rect.
+- The presenter reproduces that: `PanelDef` carries `side` (0 left, 1 right,
+  2 floating) and a floating rect, the ghost and the insertion bar are overlay
+  nodes, and the layout is written to `$CLOVERPIC_DATA_DIR/panels.layout`.
+- Verified: dragging a panel out of a dock onto the canvas makes it float, with its
+  document rendering, and the file records `presets 2 474 447 220 230`; a
+  hand-written file puts panels back on load.
+- Not verified: dragging a floating panel **back into** a dock. The press on a
+  floating header should start a drag (the overlay wrapper is hit_test(false) but
+  children are tested first); unconfirmed because synthetic drags drift.
+
+Traps found while porting, worth remembering:
+
+- Pointer events over the canvas are forwarded to the editor, so a panel drag that
+  crosses the canvas loses its release and never ends. While a drag is active the
+  view routes everything to the UI instead.
+- The overlay needs to be painted after the composited canvas, or drag feedback
+  hides behind the artwork; `build_page` / `build_overlay` exist for that.
+- Any markup parsed at runtime must resolve `<Content Source>` against the page's
+  directory; the surface remembers it (`parse_fragment`).
 
 ### Composed UI documents
 
