@@ -741,7 +741,14 @@ using CloverPic::Platform::Mac::ToUtf8;
     // A panel drag belongs to the UI even while the pointer is over the canvas.
     // Forwarding there would swallow the release and the drag would never end.
     const bool dragging = !_draggingPanel.empty();
-    if (!dragging && [self forwardToCanvas:kind button:button event:event]) {
+    // A floating panel sits above the canvas, so the canvas must not take the event
+    // out from under it: without this, clicks pass through the panel and paint.
+    const NSPoint probe = [self convertPoint:event.locationInWindow fromView:nil];
+    const bool overlayClaims =
+        clover_surface_overlay_hit(_surface, (float)probe.x, (float)probe.y) != 0;
+
+    if (!dragging && !overlayClaims &&
+        [self forwardToCanvas:kind button:button event:event]) {
         // Pressing the canvas takes keyboard focus; releasing it must not give the
         // focus back, or every shortcut after a stroke would go to the chrome.
         if (kind == CLOVER_POINTER_DOWN) {

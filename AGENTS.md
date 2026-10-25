@@ -226,9 +226,18 @@ which is the reference for behaviour:
 - Verified: dragging a panel out of a dock onto the canvas makes it float, with its
   document rendering, and the file records `presets 2 474 447 220 230`; a
   hand-written file puts panels back on load.
-- Not verified: dragging a floating panel **back into** a dock. The press on a
-  floating header should start a drag (the overlay wrapper is hit_test(false) but
-  children are tested first); unconfirmed because synthetic drags drift.
+- **Open bug**: a floating panel over the canvas does not take pointer events. The
+  canvas forwards everything inside its box to the editor, so clicks go *through*
+  the panel and paint an invisible stroke underneath.
+  `clover_surface_overlay_hit(x, y)` exists for the host to gate that forwarding and
+  is wired into `pushPointer`, but it reports false because the overlay wrapper is
+  unsized (its bounds are empty, so `hit_chain_into` never reaches the child).
+  Sizing the wrapper fixes the hit test and breaks positioning: every absolutely
+  placed floating child lands at (0, 0), because an overlay root with an extent
+  arranges its children from the origin.
+  The real fix is in layout: an overlay root that fills the viewport while leaving
+  `Position` children alone. Do not work around it in the host.
+- Also unverified: dragging a floating panel **back into** a dock.
 
 Traps found while porting, worth remembering:
 
